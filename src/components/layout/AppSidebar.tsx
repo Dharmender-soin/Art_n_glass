@@ -3,18 +3,19 @@ import { useAuth } from "@/hooks/useAuth";
 import {
   Building2,
   Users,
-  UserCircle,
   CalendarCheck,
   BarChart3,
   LayoutDashboard,
   LogOut,
-  Briefcase,
+  UserCircle,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import logo from "@/assets/logo.png";
 
 const AppSidebar = () => {
   const { pathname } = useLocation();
-  const { role, signOut, user } = useAuth();
+  const { role, signOut } = useAuth();
   const isManagerOrAdmin = role === "admin" || role === "manager";
 
   const links = [
@@ -25,17 +26,18 @@ const AppSidebar = () => {
     ...(isManagerOrAdmin
       ? [{ to: "/reports", label: "Reports", icon: BarChart3 }]
       : []),
+    ...(role === "admin"
+      ? [{ to: "/admin", label: "User Management", icon: Shield }]
+      : []),
     { to: "/profile", label: "Profile", icon: UserCircle },
   ];
 
   return (
     <aside className="flex h-screen w-64 flex-col bg-sidebar-background text-sidebar-foreground border-r border-sidebar-border">
-      <div className="flex h-16 items-center gap-3 px-6 border-b border-sidebar-border">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-sidebar-primary">
-          <Briefcase className="h-5 w-5 text-sidebar-primary-foreground" />
-        </div>
+      <div className="flex h-16 items-center gap-3 px-4 border-b border-sidebar-border">
+        <img src={logo} alt="Art-N-Glass" className="h-10 w-auto" />
         <div>
-          <h1 className="text-sm font-bold tracking-tight">Sales CRM</h1>
+          <h1 className="text-sm font-bold tracking-tight">Art-N-Glass</h1>
           <p className="text-xs text-sidebar-foreground/60 capitalize">{role || "executive"}</p>
         </div>
       </div>

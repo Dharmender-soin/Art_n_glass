@@ -3,19 +3,26 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Shield, MapPin, Users } from "lucide-react";
+import { Shield, MapPin, Users, UserPlus, Eye, EyeOff } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 
 const Admin = () => {
-  const { role } = useAuth();
-
+  const { role, session } = useAuth();
   const queryClient = useQueryClient();
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [newUser, setNewUser] = useState({
+    email: "", password: "", full_name: "", role: "executive" as AppRole, showroom_id: "",
+  });
 
   const { data: showrooms = [] } = useQuery({
     queryKey: ["showrooms"],
@@ -54,6 +61,30 @@ const Admin = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  const createUser = useMutation({
+    mutationFn: async () => {
+      const res = await supabase.functions.invoke("create-user", {
+        body: {
+          email: newUser.email,
+          password: newUser.password,
+          full_name: newUser.full_name,
+          role: newUser.role,
+          showroom_id: newUser.showroom_id || null,
+        },
+      });
+      if (res.error) throw new Error(res.error.message);
+      if (res.data?.error) throw new Error(res.data.error);
+      return res.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["all-user-roles"] });
+      toast.success("User created successfully!");
+      setNewUser({ email: "", password: "", full_name: "", role: "executive", showroom_id: "" });
+      setCreateDialogOpen(false);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   if (role !== "admin") {
     return <p className="text-center text-muted-foreground py-8">Access denied. Admin only.</p>;
   }
@@ -66,12 +97,59 @@ const Admin = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <Shield className="h-6 w-6 text-primary" />
-          User Management
-        </h1>
-        <p className="text-sm text-muted-foreground">Manage roles and showroom assignments</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Shield className="h-6 w-6 text-primary" />
+            User Management
+          </h1>
+          <p className="text-sm text-muted-foreground">Manage roles, showrooms & create user accounts</p>
+        </div>
+        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm"><UserPlus className="mr-1 h-4 w-4" />Create User</Button>
+          </DialogTrigger>
+          <DialogContent className="bg-popover">
+            <DialogHeader><DialogTitle>Create New User</DialogTitle></DialogHeader>
+            <form onSubmit={(e) => { e.preventDefault(); createUser.mutate(); }} className="space-y-3">
+              <div className="space-y-1"><Label>Full Name</Label><Input value={newUser.full_name} onChange={(e) => setNewUser({ ...newUser, full_name: e.target.value })} required /></div>
+              <div className="space-y-1"><Label>Email</Label><Input type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} required /></div>
+              <div className="space-y-1">
+                <Label>Password</Label>
+                <div className="relative">
+                  <Input type={showPassword ? "text" : "password"} value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} required minLength={6} />
+                  <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground" onClick={() => setShowPassword(!showPassword)}>
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label>Role</Label>
+                <Select value={newUser.role} onValueChange={(v) => setNewUser({ ...newUser, role: v as AppRole })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    <SelectItem value="executive">Executive</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1">
+                <Label>Showroom</Label>
+                <Select value={newUser.showroom_id} onValueChange={(v) => setNewUser({ ...newUser, showroom_id: v })}>
+                  <SelectTrigger><SelectValue placeholder="Select showroom..." /></SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    <SelectItem value="none">No Showroom</SelectItem>
+                    {showrooms.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} — {s.city}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button type="submit" className="w-full" disabled={createUser.isPending}>
+                {createUser.isPending ? "Creating..." : "Create User"}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {/* Showrooms overview */}

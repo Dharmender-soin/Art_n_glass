@@ -9,6 +9,7 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   role: AppRole | null;
+  showroomId: string | null;
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -17,6 +18,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   session: null,
   role: null,
+  showroomId: null,
   loading: true,
   signOut: async () => {},
 });
@@ -25,15 +27,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
+  const [showroomId, setShowroomId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   const fetchRole = async (userId: string) => {
     const { data } = await supabase
       .from("user_roles")
-      .select("role")
+      .select("role, showroom_id")
       .eq("user_id", userId)
       .maybeSingle();
-    setRole(data?.role ?? "executive");
+
+    if (data) {
+      setRole(data.role);
+      setShowroomId(data.showroom_id);
+    } else {
+      // Auto-assign executive role for new users
+      const { error } = await supabase.from("user_roles").insert({
+        user_id: userId,
+        role: "executive" as AppRole,
+      });
+      if (!error) {
+        setRole("executive");
+      } else {
+        setRole("executive");
+      }
+    }
+  };
+
+  const ensureProfile = async (userId: string, fullName: string) => {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!data) {
+      await supabase.from("profiles").insert({
+        user_id: userId,
+        full_name: fullName || "",
+      });
+    }
   };
 
   useEffect(() => {
@@ -42,9 +75,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user) {
-          setTimeout(() => fetchRole(session.user.id), 0);
+          setTimeout(() => {
+            fetchRole(session.user.id);
+            ensureProfile(session.user.id, session.user.user_metadata?.full_name || "");
+          }, 0);
         } else {
           setRole(null);
+          setShowroomId(null);
         }
         setLoading(false);
       }
@@ -55,6 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchRole(session.user.id);
+        ensureProfile(session.user.id, session.user.user_metadata?.full_name || "");
       }
       setLoading(false);
     });
@@ -67,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, role, loading, signOut }}>
+    <AuthContext.Provider value={{ user, session, role, showroomId, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

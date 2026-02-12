@@ -1,11 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Building2, Users, CalendarCheck, CheckCircle, XCircle, Clock, Briefcase } from "lucide-react";
+import logo from "@/assets/logo.png";
 
 const Dashboard = () => {
-  const { role, user } = useAuth();
+  const { role } = useAuth();
   const isManager = role === "admin" || role === "manager";
 
   const { data: stats } = useQuery({
@@ -38,16 +39,19 @@ const Dashboard = () => {
     { label: "Planned", value: stats?.plannedVisits ?? 0, icon: Clock, color: "text-[hsl(var(--status-new))]" },
     { label: "Done", value: stats?.doneVisits ?? 0, icon: CheckCircle, color: "text-[hsl(var(--status-converted))]" },
     { label: "Cancelled", value: stats?.cancelledVisits ?? 0, icon: XCircle, color: "text-[hsl(var(--status-lost))]" },
-    { label: "Work Scope Items", value: stats?.workScope ?? 0, icon: Briefcase, color: "text-accent" },
+    { label: "Work Scope Items", value: stats?.workScope ?? 0, icon: Briefcase, color: "text-primary" },
   ];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-muted-foreground text-sm">
-          {isManager ? "Overview of all team activity" : "Your activity overview"}
-        </p>
+      <div className="flex items-center gap-3">
+        <img src={logo} alt="Art-N-Glass" className="h-10 w-auto md:hidden" />
+        <div>
+          <h1 className="text-2xl font-bold">Dashboard</h1>
+          <p className="text-muted-foreground text-sm">
+            {isManager ? "Overview of all team activity" : "Your activity overview"}
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">

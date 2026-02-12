@@ -50,7 +50,20 @@ const Visits = () => {
         .select("*, clients(name), partners(name)")
         .order("visit_date", { ascending: false });
       if (error) throw error;
-      return data;
+
+      // Generate signed URLs for photos
+      const visitsWithSignedUrls = await Promise.all(
+        (data || []).map(async (v) => {
+          if (v.photo_url && !v.photo_url.startsWith("http")) {
+            const { data: urlData } = await supabase.storage
+              .from("visit-photos")
+              .createSignedUrl(v.photo_url, 3600);
+            return { ...v, _signed_photo_url: urlData?.signedUrl || null };
+          }
+          return { ...v, _signed_photo_url: v.photo_url };
+        })
+      );
+      return visitsWithSignedUrls;
     },
   });
 
@@ -99,14 +112,13 @@ const Visits = () => {
     mutationFn: async (visitId: string) => {
       if (!remarks.trim()) throw new Error("Remarks are required");
 
-      let photoUrl: string | null = null;
+      let photoPath: string | null = null;
       if (photo) {
         const ext = photo.name.split(".").pop();
         const path = `${user!.id}/${visitId}.${ext}`;
         const { error: uploadError } = await supabase.storage.from("visit-photos").upload(path, photo, { upsert: true });
         if (uploadError) throw uploadError;
-        const { data: urlData } = supabase.storage.from("visit-photos").getPublicUrl(path);
-        photoUrl = urlData.publicUrl;
+        photoPath = path;
       }
 
       let gpsLat: number | null = null;
@@ -124,7 +136,7 @@ const Visits = () => {
       const { error } = await supabase.from("visits").update({
         status: "done" as VisitStatus,
         remarks,
-        photo_url: photoUrl,
+        photo_url: photoPath,
         gps_latitude: gpsLat,
         gps_longitude: gpsLng,
         done_at: new Date().toISOString(),
@@ -246,9 +258,9 @@ const Visits = () => {
                     <Button size="sm" variant="outline" onClick={() => cancelVisit.mutate(v.id)}>Cancel</Button>
                   </div>
                 )}
-                {v.photo_url && (
+                {(v as any)._signed_photo_url && (
                   <div className="mt-2">
-                    <img src={v.photo_url} alt="Visit photo" className="h-20 w-20 rounded-lg object-cover" />
+                    <img src={(v as any)._signed_photo_url} alt="Visit photo" className="h-20 w-20 rounded-lg object-cover" />
                   </div>
                 )}
               </CardContent>

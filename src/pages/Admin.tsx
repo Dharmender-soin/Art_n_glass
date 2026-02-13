@@ -36,12 +36,23 @@ const Admin = () => {
   const { data: userRoles = [] } = useQuery({
     queryKey: ["all-user-roles"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data: roles, error: rolesError } = await supabase
         .from("user_roles")
-        .select("*, profiles:user_id(full_name, phone)")
+        .select("*")
         .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
+      if (rolesError) throw rolesError;
+
+      const userIds = [...new Set(roles.map((r) => r.user_id))];
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("user_id, full_name, phone")
+        .in("user_id", userIds);
+      if (profilesError) throw profilesError;
+
+      const profileMap = Object.fromEntries(
+        (profiles || []).map((p) => [p.user_id, p])
+      );
+      return roles.map((r) => ({ ...r, profile: profileMap[r.user_id] || null }));
     },
     enabled: role === "admin",
   });
@@ -192,7 +203,7 @@ const Admin = () => {
           ) : (
             <div className="space-y-3">
               {userRoles.map((ur) => {
-                const profile = ur.profiles as any;
+                const profile = ur.profile as any;
                 const showroom = showrooms.find((s) => s.id === ur.showroom_id);
                 return (
                   <div key={ur.id} className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-lg border p-4">

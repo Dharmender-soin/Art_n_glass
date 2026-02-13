@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format, parseISO, startOfMonth } from "date-fns";
-import { CalendarCheck, Users, Building2, CheckCircle, Clock, IndianRupee, ShieldCheck, Package } from "lucide-react";
+import { CalendarCheck, Users, Building2, CheckCircle, Clock, IndianRupee, ShieldCheck, Package, MapPin } from "lucide-react";
 
 const Reports = () => {
   const { role } = useAuth();
@@ -55,6 +56,40 @@ const Reports = () => {
   const totalWorkAmount = workScopeItems.reduce((sum, i) => sum + ((i as any).amount_in_lac || 0), 0);
   const verifiedWorkAmount = workScopeItems.filter((i) => (i as any).is_verified).reduce((sum, i) => sum + ((i as any).amount_in_lac || 0), 0);
   const verifiedCount = workScopeItems.filter((i) => (i as any).is_verified).length;
+
+  // EVR: Partner visit summary
+  const partnerVisitMap = new Map<string, { name: string; address: string; count: number }>();
+  visits.filter((v) => v.partner_id && (v as any).partners?.name).forEach((v) => {
+    const pid = v.partner_id!;
+    const existing = partnerVisitMap.get(pid);
+    if (existing) {
+      existing.count++;
+    } else {
+      partnerVisitMap.set(pid, {
+        name: (v as any).partners.name,
+        address: v.address || "—",
+        count: 1,
+      });
+    }
+  });
+  const partnerVisitList = Array.from(partnerVisitMap.values()).sort((a, b) => b.count - a.count);
+
+  // EVR: Client visit summary
+  const clientVisitMap = new Map<string, { name: string; address: string; count: number }>();
+  visits.filter((v) => v.client_id && (v as any).clients?.name).forEach((v) => {
+    const cid = v.client_id!;
+    const existing = clientVisitMap.get(cid);
+    if (existing) {
+      existing.count++;
+    } else {
+      clientVisitMap.set(cid, {
+        name: (v as any).clients.name,
+        address: v.address || "—",
+        count: 1,
+      });
+    }
+  });
+  const clientVisitList = Array.from(clientVisitMap.values()).sort((a, b) => b.count - a.count);
 
   return (
     <div className="space-y-6">
@@ -127,6 +162,71 @@ const Reports = () => {
           )}
         </>
       )}
+
+      {/* EVR Report — Partner Visits */}
+      <Separator />
+      <h2 className="text-lg font-bold flex items-center gap-2">
+        <Building2 className="h-5 w-5 text-primary" />
+        EVR — Partner Visits
+      </h2>
+      <Card>
+        <CardContent className="p-0">
+          {partnerVisitList.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No partner visits in this period.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Partner</TableHead>
+                  <TableHead className="text-xs">Address</TableHead>
+                  <TableHead className="text-xs text-right">No. of Visits</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {partnerVisitList.map((p, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="text-sm font-medium py-2">{p.name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground py-2">{p.address}</TableCell>
+                    <TableCell className="text-sm font-bold text-right py-2">{p.count}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* EVR Report — Client Visits */}
+      <h2 className="text-lg font-bold flex items-center gap-2">
+        <Users className="h-5 w-5 text-primary" />
+        EVR — Client Visits
+      </h2>
+      <Card>
+        <CardContent className="p-0">
+          {clientVisitList.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No client visits in this period.</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">Client</TableHead>
+                  <TableHead className="text-xs">Address</TableHead>
+                  <TableHead className="text-xs text-right">No. of Visits</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {clientVisitList.map((c, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="text-sm font-medium py-2">{c.name}</TableCell>
+                    <TableCell className="text-sm text-muted-foreground py-2">{c.address}</TableCell>
+                    <TableCell className="text-sm font-bold text-right py-2">{c.count}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Visit Log */}
       <Card>

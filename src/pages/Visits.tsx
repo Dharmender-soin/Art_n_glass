@@ -222,9 +222,7 @@ const Visits = () => {
   };
 
   const isDateOpen = (dateKey: string) => {
-    if (dateKey in openDates) return openDates[dateKey];
-    const d = parseISO(dateKey);
-    return isToday(d) || isTomorrow(d);
+    return !!openDates[dateKey];
   };
 
   return (
@@ -282,11 +280,11 @@ const Visits = () => {
           {sortedDates.map((dateKey) => (
             <Collapsible key={dateKey} open={isDateOpen(dateKey)} onOpenChange={() => toggleDate(dateKey)}>
               <CollapsibleTrigger className="w-full">
-                <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer">
+                <div className={`flex items-center gap-3 px-4 py-3 rounded-xl border transition-all cursor-pointer ${isDateOpen(dateKey) ? 'bg-primary/10 border-primary/30 shadow-sm' : 'bg-card border-border hover:border-primary/20 hover:bg-muted/60'}`}>
                   {isDateOpen(dateKey) ? <ChevronDown className="h-4 w-4 text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
-                  <CalendarCheck className="h-4 w-4 text-primary" />
-                  <h2 className="text-sm font-bold text-primary">{getDateLabel(dateKey)}</h2>
-                  <Badge variant="secondary" className="text-[10px] ml-auto">{groupedByDate[dateKey].length} visits</Badge>
+                  <CalendarCheck className={`h-4 w-4 ${isDateOpen(dateKey) ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <h2 className={`text-sm font-semibold ${isDateOpen(dateKey) ? 'text-primary' : 'text-foreground'}`}>{getDateLabel(dateKey)}</h2>
+                  <Badge variant="outline" className="text-[10px] ml-auto font-medium">{groupedByDate[dateKey].length} visits</Badge>
                 </div>
               </CollapsibleTrigger>
               <CollapsibleContent>

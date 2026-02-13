@@ -39,16 +39,33 @@ const DailyVisitDashboard = () => {
     queryFn: async () => {
       let query = supabase
         .from("user_roles")
-        .select("user_id, role, showroom_id, profiles!inner(full_name)")
+        .select("user_id, role, showroom_id")
         .eq("role", "executive");
       
       if (filterShowroom && filterShowroom !== "all") {
         query = query.eq("showroom_id", filterShowroom);
       }
       
-      const { data, error } = await query;
-      if (error) throw error;
-      return data || [];
+      const { data: roles, error: rolesError } = await query;
+      if (rolesError) throw rolesError;
+
+      const userIds = [...new Set((roles || []).map((r) => r.user_id))];
+      if (userIds.length === 0) return [];
+
+      const { data: profiles, error: profilesError } = await supabase
+        .from("profiles")
+        .select("user_id, full_name")
+        .in("user_id", userIds);
+      if (profilesError) throw profilesError;
+
+      const profileMap = Object.fromEntries(
+        (profiles || []).map((p) => [p.user_id, p])
+      );
+
+      return (roles || []).map((r) => ({
+        ...r,
+        profiles: profileMap[r.user_id] || { full_name: "Unknown" },
+      }));
     },
   });
 

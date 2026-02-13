@@ -184,8 +184,9 @@ const Visits = () => {
 
   const canMarkDone = (visit: any) => {
     if (visit.status !== "planned") return false;
-    const isManager = role === "admin" || role === "manager";
-    return isManager || isToday(parseISO(visit.visit_date));
+    // Only allow marking done if visit date is today
+    if (!isToday(parseISO(visit.visit_date))) return false;
+    return true;
   };
 
   // Executives can plan today + tomorrow only

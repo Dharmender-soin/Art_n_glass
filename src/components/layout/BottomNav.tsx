@@ -1,20 +1,16 @@
 import { Link, useLocation } from "react-router-dom";
-import { useAuth } from "@/hooks/useAuth";
-import { Building2, Users, CalendarCheck, UserCircle, Shield, LayoutDashboard } from "lucide-react";
+import { Building2, Users, CalendarCheck, UserCircle, LayoutDashboard } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const BottomNav = () => {
   const { pathname } = useLocation();
-  const { role } = useAuth();
 
   const links = [
     { to: "/", label: "Home", icon: LayoutDashboard },
     { to: "/partners", label: "Partners", icon: Building2 },
     { to: "/clients", label: "Clients", icon: Users },
     { to: "/visits", label: "Visits", icon: CalendarCheck },
-    ...(role === "admin"
-      ? [{ to: "/admin", label: "Admin", icon: Shield }]
-      : [{ to: "/profile", label: "Profile", icon: UserCircle }]),
+    { to: "/profile", label: "Profile", icon: UserCircle },
   ];
 
   return (

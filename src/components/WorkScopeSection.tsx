@@ -11,15 +11,16 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { Plus, Trash2, Package, Layers, FileText, Hash } from "lucide-react";
+import { Plus, Trash2, Package, Layers, FileText, Hash, IndianRupee, CheckCircle, ShieldCheck } from "lucide-react";
 
 const WorkScopeSection = ({ clientId }: { clientId: string }) => {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [workTypeId, setWorkTypeId] = useState("");
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState("");
+  const [amountInLac, setAmountInLac] = useState("");
 
   const { data: masterTypes = [] } = useQuery({
     queryKey: ["master-work-types"],
@@ -50,6 +51,7 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
         work_type_id: workTypeId,
         description: description || null,
         quantity: quantity ? parseInt(quantity) : null,
+        amount_in_lac: amountInLac ? parseFloat(amountInLac) : null,
         created_by: user!.id,
       });
       if (error) throw error;
@@ -61,6 +63,7 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
       setWorkTypeId("");
       setDescription("");
       setQuantity("");
+      setAmountInLac("");
       setShowForm(false);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -78,7 +81,22 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
     },
   });
 
-  // Group master types by type_of_work
+  const verifyItem = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("work_scope_items").update({
+        is_verified: true,
+        verified_by: user!.id,
+        verified_at: new Date().toISOString(),
+      }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["work-scope", clientId] });
+      toast.success("Work scope verified!");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const groupedTypes = masterTypes.reduce((acc, t) => {
     if (!acc[t.type_of_work]) acc[t.type_of_work] = [];
     acc[t.type_of_work].push(t);
@@ -86,6 +104,10 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
   }, {} as Record<string, typeof masterTypes>);
 
   const selectedType = masterTypes.find((t) => t.id === workTypeId);
+  const isManager = role === "admin" || role === "manager";
+
+  const totalAmount = items.reduce((sum, item) => sum + ((item as any).amount_in_lac || 0), 0);
+  const verifiedCount = items.filter((item) => (item as any).is_verified).length;
 
   return (
     <div className="space-y-5 mt-4">
@@ -100,6 +122,21 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
           <Plus className="mr-1 h-3 w-3" />{showForm ? "Cancel" : "Add Item"}
         </Button>
       </div>
+
+      {/* Summary bar */}
+      {items.length > 0 && (
+        <div className="flex items-center gap-4 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+          <span className="flex items-center gap-1 font-medium">
+            <IndianRupee className="h-3.5 w-3.5 text-primary" />
+            Total: <span className="text-primary font-bold">{totalAmount.toFixed(2)} Lac</span>
+          </span>
+          <Separator orientation="vertical" className="h-4" />
+          <span className="flex items-center gap-1 text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5" />
+            Verified: {verifiedCount}/{items.length}
+          </span>
+        </div>
+      )}
 
       <Separator />
 
@@ -119,9 +156,7 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                       <div key={group}>
                         <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">{group}</div>
                         {types.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>
-                            {t.sub_work}
-                          </SelectItem>
+                          <SelectItem key={t.id} value={t.id}>{t.sub_work}</SelectItem>
                         ))}
                       </div>
                     ))}
@@ -144,6 +179,12 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                     <Hash className="h-3.5 w-3.5" />Quantity
                   </Label>
                   <Input type="number" placeholder="e.g. 10" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-1.5">
+                    <IndianRupee className="h-3.5 w-3.5" />Amount (in Lac)
+                  </Label>
+                  <Input type="number" step="0.01" placeholder="e.g. 2.50" value={amountInLac} onChange={(e) => setAmountInLac(e.target.value)} />
                 </div>
                 <div className="col-span-2 space-y-2">
                   <Label className="flex items-center gap-1.5">
@@ -172,13 +213,20 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
         <div className="space-y-2">
           {items.map((item) => {
             const wt = (item as any).master_work_types;
+            const verified = (item as any).is_verified;
+            const amt = (item as any).amount_in_lac;
             return (
-              <Card key={item.id} className="group hover:shadow-sm transition-shadow">
+              <Card key={item.id} className={`group hover:shadow-sm transition-shadow ${verified ? "border-[hsl(var(--status-converted))]/30" : ""}`}>
                 <CardContent className="p-3 flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="text-sm font-semibold">{wt?.sub_work || "Unknown"}</p>
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0">{wt?.type_of_work}</Badge>
+                      {verified && (
+                        <Badge className="bg-[hsl(var(--status-converted))] text-white text-[10px] px-1.5 py-0 border-0">
+                          <CheckCircle className="h-2.5 w-2.5 mr-0.5" />Verified
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 mt-1.5">
                       {item.quantity && (
@@ -186,19 +234,38 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                           <Hash className="h-3 w-3" />Qty: <span className="font-medium text-foreground">{item.quantity}</span>
                         </span>
                       )}
+                      {amt != null && amt > 0 && (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <IndianRupee className="h-3 w-3" />
+                          <span className="font-medium text-primary">{amt} Lac</span>
+                        </span>
+                      )}
                     </div>
                     {item.description && (
                       <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{item.description}</p>
                     )}
                   </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                    onClick={() => deleteItem.mutate(item.id)}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {isManager && !verified && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        title="Verify this item"
+                        onClick={() => verifyItem.mutate(item.id)}
+                        className="text-[hsl(var(--status-converted))]"
+                      >
+                        <ShieldCheck className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity"
+                      onClick={() => deleteItem.mutate(item.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             );

@@ -10,6 +10,7 @@ import {
   UserCircle,
   Shield,
   ClipboardList,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
@@ -17,7 +18,7 @@ import logo from "@/assets/logo.png";
 const AppSidebar = () => {
   const { pathname } = useLocation();
   const { role, signOut } = useAuth();
-  const isManagerOrAdmin = role === "admin" || role === "manager";
+  const isManagerOrAdmin = role === "admin" || role === "manager" || role === "md";
 
   const links = [
     { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -28,9 +29,10 @@ const AppSidebar = () => {
       ? [
           { to: "/reports", label: "Reports", icon: BarChart3 },
           { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
+          { to: "/verification", label: "Verification", icon: ShieldCheck },
         ]
       : []),
-    ...(role === "admin"
+    ...(role === "admin" || role === "md"
       ? [{ to: "/admin", label: "User Management", icon: Shield }]
       : []),
     { to: "/profile", label: "Profile", icon: UserCircle },

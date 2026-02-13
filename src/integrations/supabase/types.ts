@@ -283,8 +283,11 @@ export type Database = {
           id: string
           is_verified: boolean
           quantity: number | null
+          verification_remarks: string | null
+          verified_amount: number | null
           verified_at: string | null
           verified_by: string | null
+          work_status: Database["public"]["Enums"]["work_status"]
           work_type_id: string
         }
         Insert: {
@@ -296,8 +299,11 @@ export type Database = {
           id?: string
           is_verified?: boolean
           quantity?: number | null
+          verification_remarks?: string | null
+          verified_amount?: number | null
           verified_at?: string | null
           verified_by?: string | null
+          work_status?: Database["public"]["Enums"]["work_status"]
           work_type_id: string
         }
         Update: {
@@ -309,8 +315,11 @@ export type Database = {
           id?: string
           is_verified?: boolean
           quantity?: number | null
+          verification_remarks?: string | null
+          verified_amount?: number | null
           verified_at?: string | null
           verified_by?: string | null
+          work_status?: Database["public"]["Enums"]["work_status"]
           work_type_id?: string
         }
         Relationships: [
@@ -354,6 +363,7 @@ export type Database = {
       partner_type: "builder" | "architect"
       visit_status: "planned" | "done" | "cancelled"
       visit_with_type: "client" | "partner"
+      work_status: "pending" | "won" | "lost"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -486,6 +496,7 @@ export const Constants = {
       partner_type: ["builder", "architect"],
       visit_status: ["planned", "done", "cancelled"],
       visit_with_type: ["client", "partner"],
+      work_status: ["pending", "won", "lost"],
     },
   },
 } as const

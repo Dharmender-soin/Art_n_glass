@@ -30,7 +30,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [showroomId, setShowroomId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const rolePriority: Record<AppRole, number> = { admin: 3, manager: 2, executive: 1 };
+  const rolePriority: Record<AppRole, number> = { md: 4, admin: 3, manager: 2, executive: 1 };
 
   const fetchRole = async (userId: string) => {
     const { data, error } = await supabase

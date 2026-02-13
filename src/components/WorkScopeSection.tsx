@@ -104,7 +104,7 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
   }, {} as Record<string, typeof masterTypes>);
 
   const selectedType = masterTypes.find((t) => t.id === workTypeId);
-  const isManager = role === "admin" || role === "manager";
+  const isManager = role === "admin" || role === "manager" || role === "md";
 
   const totalAmount = items.reduce((sum, item) => sum + ((item as any).amount_in_lac || 0), 0);
   const verifiedCount = items.filter((item) => (item as any).is_verified).length;

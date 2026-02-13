@@ -54,7 +54,7 @@ const Admin = () => {
       );
       return roles.map((r) => ({ ...r, profile: profileMap[r.user_id] || null }));
     },
-    enabled: role === "admin",
+    enabled: role === "admin" || role === "md",
   });
 
   const updateRole = useMutation({
@@ -97,11 +97,12 @@ const Admin = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-  if (role !== "admin") {
-    return <p className="text-center text-muted-foreground py-8">Access denied. Admin only.</p>;
+  if (role !== "admin" && role !== "md") {
+    return <p className="text-center text-muted-foreground py-8">Access denied. Admin/MD only.</p>;
   }
 
   const roleColor: Record<string, string> = {
+    md: "bg-primary text-primary-foreground",
     admin: "bg-primary text-primary-foreground",
     manager: "bg-[hsl(var(--status-hot))] text-white",
     executive: "bg-[hsl(var(--status-new))] text-white",
@@ -139,10 +140,11 @@ const Admin = () => {
                 <Label>Role</Label>
                 <Select value={newUser.role} onValueChange={(v) => setNewUser({ ...newUser, role: v as AppRole })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    <SelectItem value="executive">Executive</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
+                   <SelectContent className="bg-popover">
+                    <SelectItem value="md">MD</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="executive">Executive</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -226,6 +228,7 @@ const Admin = () => {
                       >
                         <SelectTrigger className="w-[130px]"><SelectValue /></SelectTrigger>
                         <SelectContent className="bg-popover">
+                          <SelectItem value="md">MD</SelectItem>
                           <SelectItem value="admin">Admin</SelectItem>
                           <SelectItem value="manager">Manager</SelectItem>
                           <SelectItem value="executive">Executive</SelectItem>

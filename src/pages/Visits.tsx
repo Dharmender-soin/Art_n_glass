@@ -73,7 +73,7 @@ const Visits = () => {
   const { data: clients = [] } = useQuery({
     queryKey: ["clients-list"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("clients").select("id, name, address");
+      const { data, error } = await supabase.from("clients").select("id, name, address, city");
       if (error) throw error;
       return data;
     },
@@ -82,7 +82,7 @@ const Visits = () => {
   const { data: partners = [] } = useQuery({
     queryKey: ["partners-list"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("partners").select("id, name, address");
+      const { data, error } = await supabase.from("partners").select("id, name, address, city");
       if (error) throw error;
       return data;
     },
@@ -175,10 +175,10 @@ const Visits = () => {
   const handleSelectEntity = (id: string) => {
     if (form.visit_with_type === "client") {
       const c = clients.find((x) => x.id === id);
-      setForm({ ...form, client_id: id, address: c?.address || "" });
+      setForm({ ...form, client_id: id, address: c?.address || c?.city || "" });
     } else {
       const p = partners.find((x) => x.id === id);
-      setForm({ ...form, partner_id: id, address: p?.address || "" });
+      setForm({ ...form, partner_id: id, address: p?.address || p?.city || "" });
     }
   };
 

@@ -53,10 +53,10 @@ const DailyVisitDashboard = () => {
   });
 
   // Fetch visits for yesterday and today
-  const execIds = executives.map((e) => e.user_id);
-  const { data: visits = [], isLoading: visitsLoading } = useQuery({
-    queryKey: ["dashboard-visits", yesterday, today, execIds],
+  const { data: visits = [], isLoading } = useQuery({
+    queryKey: ["dashboard-visits", yesterday, today, filterShowroom],
     queryFn: async () => {
+      const execIds = executives.map((e) => e.user_id);
       if (execIds.length === 0) return [];
 
       const { data, error } = await supabase
@@ -68,10 +68,8 @@ const DailyVisitDashboard = () => {
       if (error) throw error;
       return data || [];
     },
-    enabled: execIds.length > 0,
+    enabled: executives.length > 0,
   });
-
-  const isLoading = visitsLoading || execIds.length === 0;
 
   // Compute stats
   const stats = useMemo(() => {

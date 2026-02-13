@@ -154,6 +154,7 @@ const Partners = () => {
                     <p className="text-sm font-medium">Quick Add Client</p>
                     <Input placeholder="Client Name" value={clientForm.name} onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })} required />
                     <Input placeholder="Mobile" value={clientForm.mobile} onChange={(e) => setClientForm({ ...clientForm, mobile: e.target.value })} required />
+                    <Input placeholder="Address" value={clientForm.address} onChange={(e) => setClientForm({ ...clientForm, address: e.target.value })} />
                     <Input placeholder="City" value={clientForm.city} onChange={(e) => setClientForm({ ...clientForm, city: e.target.value })} />
                     <div className="flex gap-2">
                       <Button size="sm" type="submit" disabled={createClientForPartner.isPending}>Save Client</Button>

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, subDays, parseISO } from "date-fns";
-import { CalendarCheck, Search, Users } from "lucide-react";
+import { CalendarCheck, Search, Users, CheckCircle2, Clock, AlertCircle, TrendingUp, MapPin } from "lucide-react";
 import { Navigate } from "react-router-dom";
 
 const DailyVisitDashboard = () => {
@@ -18,12 +18,10 @@ const DailyVisitDashboard = () => {
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [searchExec, setSearchExec] = useState("");
   const [filterShowroom, setFilterShowroom] = useState<string>(isManager && showroomId ? showroomId : "all");
-  const [filterStatus, setFilterStatus] = useState("all");
 
   const today = selectedDate;
   const yesterday = format(subDays(parseISO(selectedDate), 1), "yyyy-MM-dd");
 
-  // Fetch showrooms
   const { data: showrooms = [] } = useQuery({
     queryKey: ["showrooms"],
     queryFn: async () => {
@@ -33,7 +31,6 @@ const DailyVisitDashboard = () => {
     },
   });
 
-  // Fetch all user_roles with profiles
   const { data: executives = [] } = useQuery({
     queryKey: ["executives-for-dashboard", filterShowroom],
     queryFn: async () => {
@@ -41,27 +38,19 @@ const DailyVisitDashboard = () => {
         .from("user_roles")
         .select("user_id, role, showroom_id")
         .eq("role", "executive");
-      
       if (filterShowroom && filterShowroom !== "all") {
         query = query.eq("showroom_id", filterShowroom);
       }
-      
       const { data: roles, error: rolesError } = await query;
       if (rolesError) throw rolesError;
-
       const userIds = [...new Set((roles || []).map((r) => r.user_id))];
       if (userIds.length === 0) return [];
-
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("user_id, full_name")
         .in("user_id", userIds);
       if (profilesError) throw profilesError;
-
-      const profileMap = Object.fromEntries(
-        (profiles || []).map((p) => [p.user_id, p])
-      );
-
+      const profileMap = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
       return (roles || []).map((r) => ({
         ...r,
         profiles: profileMap[r.user_id] || { full_name: "Unknown" },
@@ -69,16 +58,14 @@ const DailyVisitDashboard = () => {
     },
   });
 
-  // Fetch visits for yesterday and today
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["dashboard-visits", yesterday, today, filterShowroom],
     queryFn: async () => {
       const execIds = executives.map((e) => e.user_id);
       if (execIds.length === 0) return [];
-
       const { data, error } = await supabase
         .from("visits")
-        .select("*, clients(name, address, city), partners(name, address, city)")
+        .select("*, clients(name), partners(name)")
         .in("created_by", execIds)
         .in("visit_date", [yesterday, today])
         .order("visit_date", { ascending: true });
@@ -88,7 +75,6 @@ const DailyVisitDashboard = () => {
     enabled: executives.length > 0,
   });
 
-  // Compute stats
   const stats = useMemo(() => {
     const ydayVisits = visits.filter((v) => v.visit_date === yesterday);
     const todayVisits = visits.filter((v) => v.visit_date === today);
@@ -99,7 +85,6 @@ const DailyVisitDashboard = () => {
     return { ydayPlanned, ydayDone, todayPlanned, completionRate };
   }, [visits, yesterday, today]);
 
-  // Group visits per executive
   const execData = useMemo(() => {
     const filtered = searchExec
       ? executives.filter((e) =>
@@ -111,20 +96,14 @@ const DailyVisitDashboard = () => {
       const execVisits = visits.filter((v) => v.created_by === exec.user_id);
       const ydayAll = execVisits.filter((v) => v.visit_date === yesterday);
       const todayAll = execVisits.filter((v) => v.visit_date === today);
-
-      const ydayPlanned = ydayAll.length;
-      const ydayDone = ydayAll.filter((v) => v.status === "done").length;
-      const ydayPending = ydayAll.filter((v) => v.status === "planned").length;
-      const todayPlanned = todayAll.filter((v) => v.status === "planned" || v.status === "done").length;
-
       return {
         userId: exec.user_id,
         name: (exec as any).profiles?.full_name || "Unknown",
         showroomId: exec.showroom_id,
-        ydayPlanned,
-        ydayDone,
-        ydayPending,
-        todayPlanned,
+        ydayPlanned: ydayAll.length,
+        ydayDone: ydayAll.filter((v) => v.status === "done").length,
+        ydayPending: ydayAll.filter((v) => v.status === "planned").length,
+        todayPlanned: todayAll.filter((v) => v.status === "planned" || v.status === "done").length,
         ydayVisits: ydayAll,
         todayVisits: todayAll,
       };
@@ -132,24 +111,11 @@ const DailyVisitDashboard = () => {
   }, [executives, visits, yesterday, today, searchExec]);
 
   const getEntityName = (v: any) => v.clients?.name || v.partners?.name || "—";
-  const getEntityLocation = (v: any) => {
-    const c = v.clients || v.partners;
-    return c?.address || c?.city || v.address || "";
-  };
 
-  const statusBadgeColor = (status: string) => {
-    if (status === "done") return "bg-[hsl(var(--status-converted))] text-white";
-    if (status === "cancelled") return "bg-[hsl(var(--status-lost))] text-white";
-    return "bg-[hsl(var(--status-new))] text-white";
-  };
-
-  // Only admin/manager can access
-  if (!isAdmin && !isManager) {
-    return <Navigate to="/" replace />;
-  }
+  if (!isAdmin && !isManager) return <Navigate to="/" replace />;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Header */}
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
@@ -162,33 +128,17 @@ const DailyVisitDashboard = () => {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Input
-            type="date"
-            value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)}
-            className="w-[160px]"
-          />
+          <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-[160px]" />
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              className="pl-8 w-[180px]"
-              placeholder="Search employee..."
-              value={searchExec}
-              onChange={(e) => setSearchExec(e.target.value)}
-            />
+            <Input className="pl-8 w-[180px]" placeholder="Search employee..." value={searchExec} onChange={(e) => setSearchExec(e.target.value)} />
           </div>
           {isAdmin && (
             <Select value={filterShowroom} onValueChange={setFilterShowroom}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="All Showrooms" />
-              </SelectTrigger>
+              <SelectTrigger className="w-[160px]"><SelectValue placeholder="All Showrooms" /></SelectTrigger>
               <SelectContent className="bg-popover">
                 <SelectItem value="all">All Showrooms</SelectItem>
-                {showrooms.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
+                {showrooms.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
               </SelectContent>
             </Select>
           )}
@@ -197,180 +147,154 @@ const DailyVisitDashboard = () => {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase font-semibold">Yesterday Planned</p>
-            <p className="text-3xl font-bold">{stats.ydayPlanned}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase font-semibold">Yesterday Completed</p>
-            <p className="text-3xl font-bold">{stats.ydayDone}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase font-semibold">Today Planned</p>
-            <p className="text-3xl font-bold">{stats.todayPlanned}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground uppercase font-semibold">Completion Rate</p>
-            <p className="text-3xl font-bold">{stats.completionRate}%</p>
-            <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
-              <div
-                className="h-1.5 rounded-full bg-primary transition-all"
-                style={{ width: `${stats.completionRate}%` }}
-              />
+        <SummaryCard icon={<Clock className="h-5 w-5 text-blue-500" />} label="Yesterday Planned" value={stats.ydayPlanned} accent="border-l-blue-500" />
+        <SummaryCard icon={<CheckCircle2 className="h-5 w-5 text-emerald-500" />} label="Yesterday Done" value={stats.ydayDone} accent="border-l-emerald-500" />
+        <SummaryCard icon={<CalendarCheck className="h-5 w-5 text-primary" />} label="Today Planned" value={stats.todayPlanned} accent="border-l-primary" />
+        <Card className="border-l-4 border-l-amber-500">
+          <CardContent className="p-4 flex items-center gap-3">
+            <TrendingUp className="h-5 w-5 text-amber-500 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs text-muted-foreground font-medium uppercase">Completion</p>
+              <p className="text-2xl font-bold">{stats.completionRate}%</p>
+              <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
+                <div className="h-1.5 rounded-full bg-amber-500 transition-all" style={{ width: `${stats.completionRate}%` }} />
+              </div>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Executive Columns */}
+      {/* Executive Cards */}
       {isLoading ? (
         <p className="text-muted-foreground text-center py-8">Loading...</p>
       ) : execData.length === 0 ? (
         <p className="text-muted-foreground text-center py-8">No executives found.</p>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {execData.map((exec) => (
-            <Card key={exec.userId} className="overflow-hidden">
-              <div className="bg-primary/10 p-3 border-b">
-                <h3 className="font-bold text-sm flex items-center gap-1.5">
-                  <Users className="h-4 w-4 text-primary" />
-                  {exec.name}
-                </h3>
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  <Badge variant="outline" className="text-[10px] bg-[hsl(var(--status-new))]/10 text-[hsl(var(--status-new))]">
-                    Y'day Planned: {exec.ydayPlanned}
-                  </Badge>
-                  <Badge variant="outline" className="text-[10px] bg-[hsl(var(--status-converted))]/10 text-[hsl(var(--status-converted))]">
-                    Y'day Done: {exec.ydayDone}
-                  </Badge>
-                  {exec.ydayPending > 0 && (
-                    <Badge variant="outline" className="text-[10px] bg-[hsl(var(--status-hot))]/10 text-[hsl(var(--status-hot))]">
-                      Y'day Pending: {exec.ydayPending}
-                    </Badge>
-                  )}
-                  <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary">
-                    Today Planned: {exec.todayPlanned}
-                  </Badge>
+        <div className="space-y-4">
+          {execData.map((exec) => {
+            const showroom = showrooms.find((s) => s.id === exec.showroomId);
+            return (
+              <Card key={exec.userId} className="overflow-hidden">
+                {/* Executive Header */}
+                <div className="flex items-center justify-between gap-3 px-4 py-3 bg-muted/50 border-b">
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                      <Users className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-sm">{exec.name}</h3>
+                      {showroom && (
+                        <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+                          <MapPin className="h-3 w-3" />{showroom.name}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex gap-2 flex-wrap justify-end">
+                    <MiniStat label="Y'day" value={exec.ydayDone} total={exec.ydayPlanned} color="emerald" />
+                    {exec.ydayPending > 0 && <MiniStat label="Pending" value={exec.ydayPending} color="amber" />}
+                    <MiniStat label="Today" value={exec.todayPlanned} color="blue" />
+                  </div>
                 </div>
-              </div>
-              <CardContent className="p-3 space-y-3 max-h-[400px] overflow-y-auto">
-                {/* Yesterday Planned */}
-                {exec.ydayVisits.filter((v) => v.status === "planned").length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1 bg-[hsl(var(--status-new))]/10 px-2 py-0.5 rounded text-center">
-                      Planned (Yesterday)
-                    </p>
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-muted-foreground">
-                          <th className="text-left font-medium py-0.5">#</th>
-                          <th className="text-left font-medium py-0.5">Client / Location</th>
-                          <th className="text-left font-medium py-0.5">Purpose</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {exec.ydayVisits
-                          .filter((v) => v.status === "planned")
-                          .map((v, i) => (
-                            <tr key={v.id} className="border-t border-muted/30">
-                              <td className="py-1">{i + 1}</td>
-                              <td className="py-1">
-                                <span className="font-medium">{getEntityName(v)}</span>
-                                {getEntityLocation(v) && (
-                                  <span className="text-muted-foreground block text-[10px]">{getEntityLocation(v)}</span>
-                                )}
-                              </td>
-                              <td className="py-1">{v.purpose}</td>
-                            </tr>
-                          ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
 
-                {/* Yesterday Actual (Done) */}
-                {exec.ydayVisits.filter((v) => v.status === "done").length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1 bg-[hsl(var(--status-converted))]/10 px-2 py-0.5 rounded text-center">
-                      Actual (Yesterday)
-                    </p>
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-muted-foreground">
-                          <th className="text-left font-medium py-0.5">#</th>
-                          <th className="text-left font-medium py-0.5">Client / Location</th>
-                          <th className="text-left font-medium py-0.5">Remark</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {exec.ydayVisits
-                          .filter((v) => v.status === "done")
-                          .map((v, i) => (
-                            <tr key={v.id} className="border-t border-muted/30">
-                              <td className="py-1">{i + 1}</td>
-                              <td className="py-1">
-                                <span className="font-medium">{getEntityName(v)}</span>
-                                {getEntityLocation(v) && (
-                                  <span className="text-muted-foreground block text-[10px]">{getEntityLocation(v)}</span>
-                                )}
-                              </td>
-                              <td className="py-1">{v.remarks || "Done"}</td>
-                            </tr>
-                          ))}
-                      </tbody>
-                    </table>
+                {/* Visit Details — 3-column layout */}
+                <CardContent className="p-0">
+                  <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border">
+                    {/* Yesterday Planned */}
+                    <VisitColumn
+                      title="Yesterday — Planned"
+                      titleColor="text-blue-600"
+                      bgColor="bg-blue-50/50"
+                      visits={exec.ydayVisits.filter((v) => v.status === "planned")}
+                      getEntityName={getEntityName}
+                      showRemarks={false}
+                    />
+                    {/* Yesterday Done */}
+                    <VisitColumn
+                      title="Yesterday — Done"
+                      titleColor="text-emerald-600"
+                      bgColor="bg-emerald-50/50"
+                      visits={exec.ydayVisits.filter((v) => v.status === "done")}
+                      getEntityName={getEntityName}
+                      showRemarks={true}
+                    />
+                    {/* Today Planned */}
+                    <VisitColumn
+                      title="Today — Planned"
+                      titleColor="text-primary"
+                      bgColor="bg-primary/5"
+                      visits={exec.todayVisits}
+                      getEntityName={getEntityName}
+                      showRemarks={false}
+                    />
                   </div>
-                )}
-
-                {/* Today Planned */}
-                {exec.todayVisits.length > 0 && (
-                  <div>
-                    <p className="text-[10px] font-bold uppercase text-muted-foreground mb-1 bg-primary/10 px-2 py-0.5 rounded text-center">
-                      Planned (Today)
-                    </p>
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="text-muted-foreground">
-                          <th className="text-left font-medium py-0.5">#</th>
-                          <th className="text-left font-medium py-0.5">Client / Location</th>
-                          <th className="text-left font-medium py-0.5">Purpose</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {exec.todayVisits.map((v, i) => (
-                          <tr key={v.id} className="border-t border-muted/30">
-                            <td className="py-1">{i + 1}</td>
-                            <td className="py-1">
-                              <span className="font-medium">{getEntityName(v)}</span>
-                              {getEntityLocation(v) && (
-                                <span className="text-muted-foreground block text-[10px]">{getEntityLocation(v)}</span>
-                              )}
-                            </td>
-                            <td className="py-1">{v.purpose}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {exec.ydayVisits.length === 0 && exec.todayVisits.length === 0 && (
-                  <p className="text-xs text-muted-foreground text-center py-4">No visits</p>
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
   );
 };
+
+const SummaryCard = ({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: number; accent: string }) => (
+  <Card className={`border-l-4 ${accent}`}>
+    <CardContent className="p-4 flex items-center gap-3">
+      <div className="shrink-0">{icon}</div>
+      <div>
+        <p className="text-xs text-muted-foreground font-medium uppercase">{label}</p>
+        <p className="text-2xl font-bold">{value}</p>
+      </div>
+    </CardContent>
+  </Card>
+);
+
+const MiniStat = ({ label, value, total, color }: { label: string; value: number; total?: number; color: string }) => {
+  const colorMap: Record<string, string> = {
+    emerald: "bg-emerald-100 text-emerald-700",
+    amber: "bg-amber-100 text-amber-700",
+    blue: "bg-blue-100 text-blue-700",
+  };
+  return (
+    <span className={`text-xs font-medium px-2 py-1 rounded-full ${colorMap[color] || "bg-muted text-muted-foreground"}`}>
+      {label}: {total !== undefined ? `${value}/${total}` : value}
+    </span>
+  );
+};
+
+const VisitColumn = ({
+  title, titleColor, bgColor, visits, getEntityName, showRemarks,
+}: {
+  title: string; titleColor: string; bgColor: string;
+  visits: any[]; getEntityName: (v: any) => string; showRemarks: boolean;
+}) => (
+  <div className="min-h-[80px]">
+    <div className={`px-3 py-1.5 ${bgColor} border-b`}>
+      <p className={`text-xs font-semibold uppercase ${titleColor}`}>{title}</p>
+    </div>
+    {visits.length === 0 ? (
+      <p className="text-xs text-muted-foreground text-center py-4">No visits</p>
+    ) : (
+      <div className="divide-y divide-border">
+        {visits.map((v, i) => (
+          <div key={v.id} className="px-3 py-2 flex gap-2 text-xs">
+            <span className="text-muted-foreground font-medium w-4 shrink-0">{i + 1}</span>
+            <div className="flex-1 min-w-0">
+              <p className="font-medium truncate">{getEntityName(v)}</p>
+              <p className="text-muted-foreground truncate">{v.purpose}</p>
+              {showRemarks && v.remarks && (
+                <p className="text-emerald-600 truncate mt-0.5">✓ {v.remarks}</p>
+              )}
+            </div>
+            <Badge variant="outline" className="text-[10px] h-5 shrink-0 capitalize">
+              {v.visit_with_type}
+            </Badge>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+);
 
 export default DailyVisitDashboard;

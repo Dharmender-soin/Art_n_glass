@@ -78,6 +78,7 @@ const Admin = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["all-user-roles"] });
+      queryClient.invalidateQueries({ queryKey: ["showrooms"] });
       toast.success("User created successfully!");
       setNewUser({ email: "", password: "", full_name: "", role: "executive", showroom_id: "" });
       setCreateDialogOpen(false);

@@ -3,8 +3,6 @@ project_id = "gtzkpodcxceqmobkjonc"
 [functions.export-data]
 verify_jwt = false
 
-[functions.reset-users]
-verify_jwt = false
-
 [functions.create-user]
+verify_jwt = false
 verify_jwt = false

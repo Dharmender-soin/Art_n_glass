@@ -31,7 +31,7 @@ const Reports = () => {
   });
 
   // Work scope report for managers/admins
-  const isManager = role === "admin" || role === "manager";
+  const isManager = role === "admin" || role === "manager" || role === "md";
 
   const { data: workScopeItems = [] } = useQuery({
     queryKey: ["report-work-scope", dateFrom, dateTo],

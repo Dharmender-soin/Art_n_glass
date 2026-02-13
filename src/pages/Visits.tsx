@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, CalendarCheck, MapPin, Camera, Loader2 } from "lucide-react";
+import { Plus, CalendarCheck, MapPin, Camera, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import type { Database } from "@/integrations/supabase/types";
 
@@ -34,6 +35,7 @@ const Visits = () => {
   const [filterStatus, setFilterStatus] = useState("");
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState("");
+  const [openDates, setOpenDates] = useState<Record<string, boolean>>({});
 
   const tomorrow = format(addDays(new Date(), 1), "yyyy-MM-dd");
 
@@ -215,6 +217,16 @@ const Visits = () => {
     return format(d, "dd MMM yyyy, EEEE");
   };
 
+  const toggleDate = (dateKey: string) => {
+    setOpenDates((prev) => ({ ...prev, [dateKey]: !prev[dateKey] }));
+  };
+
+  const isDateOpen = (dateKey: string) => {
+    if (dateKey in openDates) return openDates[dateKey];
+    const d = parseISO(dateKey);
+    return isToday(d) || isTomorrow(d);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -268,48 +280,51 @@ const Visits = () => {
       ) : (
         <div className="space-y-5">
           {sortedDates.map((dateKey) => (
-            <div key={dateKey}>
-              <div className="flex items-center gap-2 mb-2">
-                <CalendarCheck className="h-4 w-4 text-primary" />
-                <h2 className="text-sm font-bold text-primary">
-                  {getDateLabel(dateKey)}
-                </h2>
-                <Badge variant="secondary" className="text-[10px]">{groupedByDate[dateKey].length}</Badge>
-              </div>
-              <div className="space-y-2">
-                {groupedByDate[dateKey].map((v) => (
-                  <Card key={v.id}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <div>
-                          <p className="font-semibold">{(v as any).clients?.name || (v as any).partners?.name || "—"}</p>
-                          <p className="text-xs text-muted-foreground capitalize">{v.visit_with_type}</p>
+            <Collapsible key={dateKey} open={isDateOpen(dateKey)} onOpenChange={() => toggleDate(dateKey)}>
+              <CollapsibleTrigger className="w-full">
+                <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer">
+                  {isDateOpen(dateKey) ? <ChevronDown className="h-4 w-4 text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
+                  <CalendarCheck className="h-4 w-4 text-primary" />
+                  <h2 className="text-sm font-bold text-primary">{getDateLabel(dateKey)}</h2>
+                  <Badge variant="secondary" className="text-[10px] ml-auto">{groupedByDate[dateKey].length} visits</Badge>
+                </div>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <div className="space-y-2 mt-2 ml-2">
+                  {groupedByDate[dateKey].map((v) => (
+                    <Card key={v.id}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <p className="font-semibold">{(v as any).clients?.name || (v as any).partners?.name || "—"}</p>
+                            <p className="text-xs text-muted-foreground capitalize">{v.visit_with_type}</p>
+                          </div>
+                          <Badge className={`${visitStatusColors[v.status]} capitalize text-xs border-0`}>{v.status}</Badge>
                         </div>
-                        <Badge className={`${visitStatusColors[v.status]} capitalize text-xs border-0`}>{v.status}</Badge>
-                      </div>
-                      <div className="space-y-1 text-sm text-muted-foreground">
-                        {v.address && <div className="flex items-center gap-1"><MapPin className="h-3 w-3" />{v.address}</div>}
-                        <p className="text-xs">Purpose: {v.purpose}</p>
-                        {v.remarks && <p className="text-xs italic">Remarks: {v.remarks}</p>}
-                      </div>
-                      {v.status === "planned" && (
-                        <div className="flex gap-2 mt-3">
-                          {canMarkDone(v) && (
-                            <Button size="sm" onClick={() => setDoneDialogId(v.id)}>Mark Done</Button>
-                          )}
-                          <Button size="sm" variant="outline" onClick={() => cancelVisit.mutate(v.id)}>Cancel</Button>
+                        <div className="space-y-1 text-sm text-muted-foreground">
+                          {v.address && <div className="flex items-center gap-1"><MapPin className="h-3 w-3" />{v.address}</div>}
+                          <p className="text-xs">Purpose: {v.purpose}</p>
+                          {v.remarks && <p className="text-xs italic">Remarks: {v.remarks}</p>}
                         </div>
-                      )}
-                      {(v as any)._signed_photo_url && (
-                        <div className="mt-2">
-                          <img src={(v as any)._signed_photo_url} alt="Visit photo" className="h-20 w-20 rounded-lg object-cover" />
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
+                        {v.status === "planned" && (
+                          <div className="flex gap-2 mt-3">
+                            {canMarkDone(v) && (
+                              <Button size="sm" onClick={() => setDoneDialogId(v.id)}>Mark Done</Button>
+                            )}
+                            <Button size="sm" variant="outline" onClick={() => cancelVisit.mutate(v.id)}>Cancel</Button>
+                          </div>
+                        )}
+                        {(v as any)._signed_photo_url && (
+                          <div className="mt-2">
+                            <img src={(v as any)._signed_photo_url} alt="Visit photo" className="h-20 w-20 rounded-lg object-cover" />
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
           ))}
         </div>
       )}

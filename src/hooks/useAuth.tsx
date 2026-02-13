@@ -30,27 +30,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [showroomId, setShowroomId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const rolePriority: Record<AppRole, number> = { admin: 3, manager: 2, executive: 1 };
+
   const fetchRole = async (userId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("user_roles")
       .select("role, showroom_id")
-      .eq("user_id", userId)
-      .maybeSingle();
+      .eq("user_id", userId);
 
-    if (data) {
-      setRole(data.role);
-      setShowroomId(data.showroom_id);
+    if (error) {
+      console.error("Error fetching role:", error);
+      return;
+    }
+
+    if (data && data.length > 0) {
+      // Pick highest priority role
+      const best = data.reduce((a, b) =>
+        (rolePriority[a.role] || 0) >= (rolePriority[b.role] || 0) ? a : b
+      );
+      setRole(best.role);
+      setShowroomId(best.showroom_id);
     } else {
       // Auto-assign executive role for new users
-      const { error } = await supabase.from("user_roles").insert({
+      await supabase.from("user_roles").insert({
         user_id: userId,
         role: "executive" as AppRole,
       });
-      if (!error) {
-        setRole("executive");
-      } else {
-        setRole("executive");
-      }
+      setRole("executive");
     }
   };
 

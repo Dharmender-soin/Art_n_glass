@@ -275,30 +275,42 @@ export type Database = {
       }
       work_scope_items: {
         Row: {
+          amount_in_lac: number | null
           client_id: string
           created_at: string
           created_by: string
           description: string | null
           id: string
+          is_verified: boolean
           quantity: number | null
+          verified_at: string | null
+          verified_by: string | null
           work_type_id: string
         }
         Insert: {
+          amount_in_lac?: number | null
           client_id: string
           created_at?: string
           created_by: string
           description?: string | null
           id?: string
+          is_verified?: boolean
           quantity?: number | null
+          verified_at?: string | null
+          verified_by?: string | null
           work_type_id: string
         }
         Update: {
+          amount_in_lac?: number | null
           client_id?: string
           created_at?: string
           created_by?: string
           description?: string | null
           id?: string
+          is_verified?: boolean
           quantity?: number | null
+          verified_at?: string | null
+          verified_by?: string | null
           work_type_id?: string
         }
         Relationships: [

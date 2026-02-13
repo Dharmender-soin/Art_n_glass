@@ -10,6 +10,7 @@ import {
   UserCircle,
   Shield,
   ClipboardList,
+  ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
@@ -28,6 +29,7 @@ const AppSidebar = () => {
       ? [
           { to: "/reports", label: "Reports", icon: BarChart3 },
           { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
+          { to: "/work-scope-verification", label: "Verify Scope", icon: ShieldCheck },
         ]
       : []),
     ...(role === "admin"

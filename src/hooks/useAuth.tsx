@@ -31,15 +31,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchRole = async (userId: string) => {
-    const { data } = await supabase
+    const { data: roles } = await supabase
       .from("user_roles")
       .select("role, showroom_id")
-      .eq("user_id", userId)
-      .maybeSingle();
+      .eq("user_id", userId);
 
-    if (data) {
-      setRole(data.role);
-      setShowroomId(data.showroom_id);
+    if (roles && roles.length > 0) {
+      // Prioritize: admin > manager > executive
+      const prioritized = roles.find(r => r.role === "admin")
+        || roles.find(r => r.role === "manager")
+        || roles[0];
+      setRole(prioritized.role);
+      setShowroomId(prioritized.showroom_id);
     } else {
       // Auto-assign executive role for new users
       const { error } = await supabase.from("user_roles").insert({

@@ -156,7 +156,7 @@ const Clients = () => {
                 </div>
                 <div className="space-y-1 text-sm text-muted-foreground">
                   <div className="flex items-center gap-1"><Phone className="h-3 w-3" />{c.mobile}</div>
-                  {c.city && <div className="flex items-center gap-1"><MapPin className="h-3 w-3" />{c.city}</div>}
+                  {(c.address || c.city) && <div className="flex items-center gap-1"><MapPin className="h-3 w-3" />{[c.address, c.city].filter(Boolean).join(", ")}</div>}
                   {(c as any).partners && <div className="flex items-center gap-1"><Briefcase className="h-3 w-3" />{(c as any).partners.name}</div>}
                 </div>
                 {(workScopeCounts as any)[c.id] && (

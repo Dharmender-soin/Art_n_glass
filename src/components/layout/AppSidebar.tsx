@@ -9,6 +9,7 @@ import {
   LogOut,
   UserCircle,
   Shield,
+  ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
@@ -24,7 +25,10 @@ const AppSidebar = () => {
     { to: "/clients", label: "Clients", icon: Users },
     { to: "/visits", label: "Visits", icon: CalendarCheck },
     ...(isManagerOrAdmin
-      ? [{ to: "/reports", label: "Reports", icon: BarChart3 }]
+      ? [
+          { to: "/reports", label: "Reports", icon: BarChart3 },
+          { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
+        ]
       : []),
     ...(role === "admin"
       ? [{ to: "/admin", label: "User Management", icon: Shield }]

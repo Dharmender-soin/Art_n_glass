@@ -57,7 +57,7 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
           isHovered && "[&_[data-sidebar=spacer]]:!w-[--sidebar-width-icon]"
         )}
       >
-        {!isMobile && <AppSidebar />}
+        <AppSidebar />
       </div>
 
       <SidebarInset>

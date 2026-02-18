@@ -1,137 +1,605 @@
-@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Libre+Caslon+Text:wght@400;700&display=swap");
-@import url("https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;700&display=swap");
+/* ═══════════════════════════════════════════════════════════════
+   Art-N-Glass — Premium Enterprise Design System
+   Brand: Red + White | Stripe/Linear-level polish
+   ═══════════════════════════════════════════════════════════════ */
+
+/* — Typography — */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────
+   1. DESIGN TOKENS — Light Mode (:root)
+   ───────────────────────────────────────────────────────── */
 @layer base {
   :root {
-    --background: 0 0% 96%;
-    --foreground: 0 0% 9%;
+    /* —— Brand Red Palette —— */
+    --primary: 0 72% 51%;
+    /* #DC2626 — Modern Red 600 */
+    --primary-foreground: 0 0% 100%;
 
-    --card: 0 0% 98%;
+    /* —— Surfaces —— */
+    --background: 0 0% 98%;
+    /* #FAFAFA */
+    --foreground: 0 0% 9%;
+    /* #171717 */
+
+    --card: 0 0% 100%;
+    /* #FFFFFF */
     --card-foreground: 0 0% 9%;
 
-    --popover: 0 0% 89%;
+    --popover: 0 0% 100%;
     --popover-foreground: 0 0% 9%;
 
-    --primary: 20 90% 48%;
-    --primary-foreground: 33 100% 96%;
+    /* —— Neutrals —— */
+    --secondary: 0 0% 96%;
+    /* #F5F5F5 */
+    --secondary-foreground: 0 0% 15%;
 
-    --secondary: 0 0% 32%;
-    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
 
-    --muted: 0 0% 63%;
-    --muted-foreground: 0 0% 9%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 0 0% 9%;
 
-    --accent: 47 100% 96%;
-    --accent-foreground: 37 92% 50%;
+    /* —— Semantic —— */
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
 
-    --destructive: 0 72% 50%;
-    --destructive-foreground: 0 85% 97%;
+    /* —— Borders & Input —— */
+    --border: 0 0% 90%;
+    /* #E5E5E5 */
+    --input: 0 0% 90%;
+    --ring: 0 72% 51%;
+    /* Brand Red focus ring */
 
-    --border: 0 0% 83%;
-    --input: 0 0% 83%;
-    --ring: 20 90% 48%;
-
+    /* —— Radius (8px base → 12px default) —— */
     --radius: 0.75rem;
 
-    --sidebar-background: 0 0% 8%;
-    --sidebar-foreground: 0 0% 9%;
-    --sidebar-primary: 20 90% 48%;
-    --sidebar-primary-foreground: 33 100% 96%;
-    --sidebar-accent: 0 0% 32%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 0 0% 83%;
-    --sidebar-ring: 20 90% 48%;
+    /* —— Sidebar (Red brand bg, white text) —— */
+    --sidebar-background: 0 72% 36%;
+    /* #B91C1C Red-700 */
+    --sidebar-foreground: 0 0% 100%;
+    /* White */
+    --sidebar-primary: 0 0% 100%;
+    /* White for active */
+    --sidebar-primary-foreground: 0 72% 36%;
+    --sidebar-accent: 0 72% 30%;
+    /* Darker red hover */
+    --sidebar-accent-foreground: 0 0% 100%;
+    /* White */
+    --sidebar-border: 0 72% 32%;
+    /* Subtle red border */
+    --sidebar-ring: 0 0% 100%;
 
-    --status-new: 210 80% 50%;
-    --status-hot: 25 95% 53%;
-    --status-converted: 142 72% 40%;
-    --status-lost: 0 72% 51%;
-    --chart-1: 27 95% 60%;
-    --chart-2: 43 96% 56%;
-    --chart-3: 47 95% 53%;
-    --chart-4: 24 94% 53%;
-    --chart-5: 0 0% 45%;
-    --sidebar: 0 0% 98%;
-    --font-sans: 'Roboto', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
-    --font-serif: 'Libre Caslon Text', ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
-    --font-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
-    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
-    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
-    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
-    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
-    --tracking-normal: 0em;
-    --spacing: 0.25rem;
+    /* —— Status Colors —— */
+    --status-success: 142 72% 42%;
+    --status-warning: 38 92% 50%;
+    --status-info: 217 91% 60%;
+    --status-danger: 0 84% 60%;
+
+    /* —— Chart Colors —— */
+    --chart-1: 0 72% 51%;
+    --chart-2: 0 0% 35%;
+    --chart-3: 38 92% 50%;
+    --chart-4: 142 72% 42%;
+    --chart-5: 217 91% 60%;
+
+    /* —— Shadows —— */
+    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.06), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.06), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+    --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.15);
+
+    /* —— Spacing (8px system) —— */
+    --space-1: 0.25rem;
+    /* 4 */
+    --space-2: 0.5rem;
+    /* 8 */
+    --space-3: 0.75rem;
+    /* 12 */
+    --space-4: 1rem;
+    /* 16 */
+    --space-5: 1.25rem;
+    /* 20 */
+    --space-6: 1.5rem;
+    /* 24 */
+    --space-8: 2rem;
+    /* 32 */
+    --space-10: 2.5rem;
+    /* 40 */
+    --space-12: 3rem;
+    /* 48 */
+
+    /* —— Transition —— */
+    --ease-default: cubic-bezier(0.4, 0, 0.2, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --duration-fast: 150ms;
+    --duration-base: 250ms;
+    --duration-slow: 400ms;
   }
 
+  /* ─────────────────────────────────────────────────────────
+     2. DESIGN TOKENS — Dark Mode
+     ───────────────────────────────────────────────────────── */
   .dark {
-    --background: 0 0% 9%;
-    --foreground: 0 0% 98%;
+    --primary: 0 72% 56%;
+    /* Slightly brighter red for dark bg */
+    --primary-foreground: 0 0% 100%;
 
-    --card: 0 0% 14%;
-    --card-foreground: 0 0% 98%;
+    --background: 0 0% 7%;
+    /* #121212 */
+    --foreground: 0 0% 93%;
+    /* #EDEDED */
 
-    --popover: 0 0% 25%;
-    --popover-foreground: 0 0% 98%;
+    --card: 0 0% 10%;
+    /* #1A1A1A */
+    --card-foreground: 0 0% 93%;
 
-    --primary: 27 95% 60%;
-    --primary-foreground: 12 81% 14%;
+    --popover: 0 0% 10%;
+    --popover-foreground: 0 0% 93%;
 
-    --secondary: 0 0% 45%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 0 0% 14%;
+    --secondary-foreground: 0 0% 93%;
 
-    --muted: 0 0% 45%;
-    --muted-foreground: 0 0% 98%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 55%;
 
-    --accent: 20 91% 14%;
-    --accent-foreground: 43 96% 56%;
+    --accent: 0 0% 14%;
+    --accent-foreground: 0 0% 93%;
 
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 85% 97%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 0 0% 32%;
-    --input: 0 0% 32%;
-    --ring: 27 95% 60%;
+    --border: 0 0% 18%;
+    --input: 0 0% 18%;
+    --ring: 0 72% 56%;
 
-    --sidebar-background: 0 0% 6%;
-    --sidebar-foreground: 0 0% 98%;
-    --sidebar-primary: 27 95% 60%;
-    --sidebar-primary-foreground: 12 81% 14%;
-    --sidebar-accent: 43 96% 56%;
-    --sidebar-accent-foreground: 20 91% 14%;
-    --sidebar-border: 0 0% 32%;
-    --sidebar-ring: 27 95% 60%;
-    --chart-1: 30 97% 72%;
-    --chart-2: 45 96% 64%;
-    --chart-3: 48 96% 76%;
-    --chart-4: 27 95% 60%;
-    --chart-5: 0 0% 45%;
-    --sidebar: 0 0% 14%;
-    --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-    --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 1px 2px -1px hsl(0 0% 0% / 0.1);
-    --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 2px 4px -1px hsl(0 0% 0% / 0.1);
-    --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 4px 6px -1px hsl(0 0% 0% / 0.1);
-    --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.1), 0 8px 10px -1px hsl(0 0% 0% / 0.1);
-    --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+    --sidebar-background: 0 72% 33%;
+    /* Slightly deeper red for dark mode */
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 0 72% 33%;
+    --sidebar-accent: 0 72% 28%;
+    /* Darker red hover */
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 72% 28%;
+    --sidebar-ring: 0 0% 100%;
+
+    --chart-1: 0 72% 56%;
+    --chart-2: 0 0% 55%;
+    --chart-3: 38 92% 55%;
+    --chart-4: 142 72% 50%;
+    --chart-5: 217 91% 65%;
+
+    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.15);
+    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.2), 0 1px 2px -1px rgba(0, 0, 0, 0.15);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -2px rgba(0, 0, 0, 0.15);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.25), 0 4px 6px -4px rgba(0, 0, 0, 0.15);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.15);
+    --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
   }
 }
 
+/* ─────────────────────────────────────────────────────────
+   3. BASE STYLES — Typography, Reset, Body
+   ───────────────────────────────────────────────────────── */
 @layer base {
   * {
     @apply border-border;
   }
 
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    scroll-behavior: smooth;
+  }
+
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    letter-spacing: -0.011em;
+    line-height: 1.6;
+  }
+
+  /* — Typography Scale (8px rhythm) — */
+  h1 {
+    @apply text-3xl font-bold tracking-tight;
+    letter-spacing: -0.025em;
+    line-height: 1.15;
+  }
+
+  h2 {
+    @apply text-2xl font-semibold tracking-tight;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+  }
+
+  h3 {
+    @apply text-xl font-semibold;
+    letter-spacing: -0.015em;
+    line-height: 1.3;
+  }
+
+  h4 {
+    @apply text-lg font-medium;
+    line-height: 1.4;
+  }
+
+  /* — Selection — */
+  ::selection {
+    background-color: hsl(0 72% 51% / 0.15);
+    color: inherit;
+  }
+
+  /* — Scrollbar — */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.2);
+    border-radius: 999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.35);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────
+   4. COMPONENT ENHANCEMENTS
+   ───────────────────────────────────────────────────────── */
+@layer components {
+
+  /* —— Card — Hover Lift —— */
+  .card-hover {
+    @apply transition-all duration-200;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+      border-color: hsl(var(--border));
+    }
+  }
+
+  /* —— KPI Card — Premium Style —— */
+  .kpi-card {
+    @apply relative overflow-hidden rounded-xl border bg-card p-6;
+    box-shadow: var(--shadow-sm);
+    transition: all var(--duration-base) var(--ease-default);
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-lg);
+    }
+
+    &::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: hsl(var(--primary));
+      opacity: 0;
+      transition: opacity var(--duration-fast) var(--ease-default);
+    }
+
+    &:hover::after {
+      opacity: 1;
+    }
+  }
+
+  /* —— KPI Icon Container —— */
+  .kpi-icon {
+    @apply flex items-center justify-center rounded-xl;
+    width: 48px;
+    height: 48px;
+    background: hsl(var(--primary) / 0.08);
+    transition: background var(--duration-base) var(--ease-default);
+  }
+
+  .kpi-card:hover .kpi-icon {
+    background: hsl(var(--primary) / 0.14);
+  }
+
+  /* —— Chart Container —— */
+  .chart-card {
+    @apply rounded-xl border bg-card overflow-hidden;
+    box-shadow: var(--shadow-sm);
+  }
+
+  .chart-card .recharts-cartesian-grid line {
+    stroke: hsl(var(--border));
+  }
+
+  /* —— Activity Row —— */
+  .activity-row {
+    @apply flex items-center gap-4 px-4 py-3 rounded-lg transition-colors duration-150;
+
+    &:hover {
+      background: hsl(var(--accent));
+    }
+  }
+
+  .activity-row+.activity-row {
+    border-top: 1px solid hsl(var(--border) / 0.5);
+  }
+
+  .activity-dot {
+    @apply w-2 h-2 rounded-full shrink-0;
+  }
+
+  /* —— Status Badge —— */
+  .badge-success {
+    @apply bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400;
+  }
+
+  .badge-warning {
+    @apply bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400;
+  }
+
+  .badge-info {
+    @apply bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400;
+  }
+
+  .badge-danger {
+    @apply bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400;
+  }
+
+  /* —— Table Enhancement —— */
+  .table-premium {
+    @apply w-full text-sm;
+
+    & th {
+      @apply text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground border-b-2 border-border;
+    }
+
+    & td {
+      @apply px-4 py-3.5 border-b border-border/50;
+    }
+
+    & tbody tr {
+      @apply transition-colors duration-150;
+
+      &:hover {
+        background: hsl(var(--accent) / 0.5);
+      }
+    }
+  }
+
+  /* —— Skeleton Loader —— */
+  .skeleton {
+    @apply rounded-md bg-muted animate-pulse;
+  }
+
+  .skeleton-text {
+    @apply h-4 w-3/4 skeleton;
+  }
+
+  .skeleton-title {
+    @apply h-6 w-1/2 skeleton;
+  }
+
+  .skeleton-circle {
+    @apply h-10 w-10 rounded-full skeleton;
+  }
+
+  .skeleton-card {
+    @apply h-24 w-full skeleton;
+  }
+
+  /* —— Focus Glow (Red accent) —— */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+    transition: box-shadow var(--duration-fast) var(--ease-default);
+  }
+
+  /* —— Glass Morphism —— */
+  .glass {
+    backdrop-filter: blur(12px) saturate(1.4);
+    -webkit-backdrop-filter: blur(12px) saturate(1.4);
+  }
+}
+
+/* ─────────────────────────────────────────────────────────
+   5. ANIMATIONS & KEYFRAMES
+   ───────────────────────────────────────────────────────── */
+@layer utilities {
+
+  /* — Fade In Up (page sections, cards) — */
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-fade-in-up {
+    animation: fadeInUp var(--duration-slow) var(--ease-default) forwards;
+  }
+
+  /* — Fade In (general) — */
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  .animate-fade-in {
+    animation: fadeIn var(--duration-base) var(--ease-default) forwards;
+  }
+
+  /* — Scale In (modals, popovers) — */
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.96);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .animate-scale-in {
+    animation: scaleIn var(--duration-base) var(--ease-spring) forwards;
+  }
+
+  /* — Slide Down (dropdowns, accordions) — */
+  @keyframes slideDown {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .animate-slide-down {
+    animation: slideDown var(--duration-base) var(--ease-default) forwards;
+  }
+
+  /* — Slide In Right (sidebar labels entering) — */
+  @keyframes slideInRight {
+    from {
+      opacity: 0;
+      transform: translateX(-8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .animate-slide-in-right {
+    animation: slideInRight var(--duration-base) var(--ease-default) forwards;
+  }
+
+  /* — Pulse Dot (status indicators) — */
+  @keyframes pulseDot {
+
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+
+    50% {
+      opacity: 0.6;
+      transform: scale(1.3);
+    }
+  }
+
+  .animate-pulse-dot {
+    animation: pulseDot 2s var(--ease-default) infinite;
+  }
+
+  /* — Skeleton Shimmer — */
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  .animate-shimmer {
+    background: linear-gradient(90deg,
+        hsl(var(--muted)) 25%,
+        hsl(var(--muted-foreground) / 0.06) 50%,
+        hsl(var(--muted)) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* — Button Press — */
+  .btn-press {
+    @apply transition-transform duration-100;
+
+    &:active {
+      transform: scale(0.97);
+    }
+  }
+
+  /* — Stagger Children — */
+  .stagger-children>* {
+    animation: fadeInUp var(--duration-slow) var(--ease-default) both;
+  }
+
+  .stagger-children>*:nth-child(1) {
+    animation-delay: 0ms;
+  }
+
+  .stagger-children>*:nth-child(2) {
+    animation-delay: 60ms;
+  }
+
+  .stagger-children>*:nth-child(3) {
+    animation-delay: 120ms;
+  }
+
+  .stagger-children>*:nth-child(4) {
+    animation-delay: 180ms;
+  }
+
+  .stagger-children>*:nth-child(5) {
+    animation-delay: 240ms;
+  }
+
+  .stagger-children>*:nth-child(6) {
+    animation-delay: 300ms;
+  }
+
+  .stagger-children>*:nth-child(7) {
+    animation-delay: 360ms;
+  }
+
+  .stagger-children>*:nth-child(8) {
+    animation-delay: 420ms;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────
+   6. REDUCED MOTION
+   ───────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

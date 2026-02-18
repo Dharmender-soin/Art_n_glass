@@ -14,22 +14,30 @@ const BottomNav = () => {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t bg-card py-2 shadow-[0_-2px_10px_rgba(0,0,0,0.08)]">
-      {links.map(({ to, label, icon: Icon }) => (
-        <Link
-          key={to}
-          to={to}
-          className={cn(
-            "flex flex-col items-center gap-0.5 px-3 py-1 text-xs transition-colors",
-            pathname === to
-              ? "text-primary font-semibold"
-              : "text-muted-foreground"
-          )}
-        >
-          <Icon className="h-5 w-5" />
-          {label}
-        </Link>
-      ))}
+    <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t bg-background/80 backdrop-blur-md py-1.5 safe-area-bottom">
+      {links.map(({ to, label, icon: Icon }) => {
+        const isActive = pathname === to;
+        return (
+          <Link
+            key={to}
+            to={to}
+            className={cn(
+              "flex flex-col items-center gap-0.5 px-3 py-1.5 text-[10px] font-medium transition-colors duration-200 rounded-lg",
+              isActive
+                ? "text-primary"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <div className="relative">
+              <Icon className={cn("h-5 w-5", isActive && "stroke-[2.5]")} />
+              {isActive && (
+                <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary" />
+              )}
+            </div>
+            {label}
+          </Link>
+        );
+      })}
     </nav>
   );
 };

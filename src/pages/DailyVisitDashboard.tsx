@@ -7,17 +7,22 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, subDays, parseISO } from "date-fns";
-import { CalendarCheck, Search, Users, CheckCircle2, Clock, AlertCircle, TrendingUp, MapPin } from "lucide-react";
+import { CalendarCheck, Search, Users, CheckCircle2, Clock, AlertCircle, TrendingUp, MapPin, Sparkles, LayoutGrid, List } from "lucide-react";
 import { Navigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 
 const DailyVisitDashboard = () => {
   const { role, showroomId } = useAuth();
   const isAdmin = role === "admin";
   const isManager = role === "manager";
+  const isMd = role === "md";
+  const hasAccess = isAdmin || isManager || isMd;
 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [searchExec, setSearchExec] = useState("");
-  const [filterShowroom, setFilterShowroom] = useState<string>(isManager && showroomId ? showroomId : "all");
+  const [filterShowroom, setFilterShowroom] = useState<string>((isManager && showroomId) ? showroomId : "all");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [visibleCount, setVisibleCount] = useState(20);
 
   const today = selectedDate;
   const yesterday = format(subDays(parseISO(selectedDate), 1), "yyyy-MM-dd");
@@ -88,8 +93,8 @@ const DailyVisitDashboard = () => {
   const execData = useMemo(() => {
     const filtered = searchExec
       ? executives.filter((e) =>
-          ((e as any).profiles?.full_name || "").toLowerCase().includes(searchExec.toLowerCase())
-        )
+        ((e as any).profiles?.full_name || "").toLowerCase().includes(searchExec.toLowerCase())
+      )
       : executives;
 
     return filtered.map((exec) => {
@@ -112,189 +117,366 @@ const DailyVisitDashboard = () => {
 
   const getEntityName = (v: any) => v.clients?.name || v.partners?.name || "—";
 
-  if (!isAdmin && !isManager) return <Navigate to="/" replace />;
+  if (!hasAccess) return <Navigate to="/" replace />;
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: {
+        staggerChildren: 0.1
+      }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0 }
+  };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6 min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50 p-6 -m-6 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between sticky top-0 z-20 bg-background/80 backdrop-blur-lg pb-4 border-b">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <CalendarCheck className="h-6 w-6 text-primary" />
-            Daily Visit Dashboard
+          <h1 className="text-3xl font-bold flex items-center gap-2 bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
+            <Sparkles className="h-6 w-6 text-primary" />
+            Daily Visit
           </h1>
-          <p className="text-sm text-muted-foreground">
-            Compare Yesterday (planned & actual) vs Today (planned)
+          <p className="text-sm text-muted-foreground mt-1">
+            Review and verify executive performance | {format(parseISO(selectedDate), "MMM dd, yyyy")}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-[160px]" />
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="pl-8 w-[180px]" placeholder="Search employee..." value={searchExec} onChange={(e) => setSearchExec(e.target.value)} />
+
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="bg-card/50 backdrop-blur-sm p-1 rounded-lg border shadow-sm flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9 w-[180px] bg-transparent border-none focus-visible:ring-0 h-9"
+                placeholder="Search executive..."
+                value={searchExec}
+                onChange={(e) => setSearchExec(e.target.value)}
+              />
+            </div>
+            <div className="h-4 w-px bg-border" />
+            <Input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="w-[140px] bg-transparent border-none focus-visible:ring-0 h-9"
+            />
           </div>
-          {isAdmin && (
+
+          {(isAdmin || isMd) && (
             <Select value={filterShowroom} onValueChange={setFilterShowroom}>
-              <SelectTrigger className="w-[160px]"><SelectValue placeholder="All Showrooms" /></SelectTrigger>
-              <SelectContent className="bg-popover">
+              <SelectTrigger className="w-[160px] bg-card/80 backdrop-blur-sm">
+                <SelectValue placeholder="All Showrooms" />
+              </SelectTrigger>
+              <SelectContent>
                 <SelectItem value="all">All Showrooms</SelectItem>
                 {showrooms.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
               </SelectContent>
             </Select>
           )}
+
+          <div className="flex bg-card/80 backdrop-blur-sm rounded-md border p-1">
+            <button
+              onClick={() => setViewMode("grid")}
+              className={`p-1.5 rounded-sm transition-all ${viewMode === 'grid' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted'}`}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`p-1.5 rounded-sm transition-all ${viewMode === 'list' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted'}`}
+            >
+              <List className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <SummaryCard icon={<Clock className="h-5 w-5 text-blue-500" />} label="Yesterday Planned" value={stats.ydayPlanned} accent="border-l-blue-500" />
-        <SummaryCard icon={<CheckCircle2 className="h-5 w-5 text-emerald-500" />} label="Yesterday Done" value={stats.ydayDone} accent="border-l-emerald-500" />
-        <SummaryCard icon={<CalendarCheck className="h-5 w-5 text-primary" />} label="Today Planned" value={stats.todayPlanned} accent="border-l-primary" />
-        <Card className="border-l-4 border-l-amber-500">
-          <CardContent className="p-4 flex items-center gap-3">
-            <TrendingUp className="h-5 w-5 text-amber-500 shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground font-medium uppercase">Completion</p>
-              <p className="text-2xl font-bold">{stats.completionRate}%</p>
-              <div className="mt-1 h-1.5 w-full rounded-full bg-muted">
-                <div className="h-1.5 rounded-full bg-amber-500 transition-all" style={{ width: `${stats.completionRate}%` }} />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Stats Overview */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatsCard
+          icon={<Clock className="h-5 w-5 text-blue-500" />}
+          label="Yesterday Planned"
+          value={stats.ydayPlanned}
+          color="blue"
+          delay={0}
+        />
+        <StatsCard
+          icon={<CheckCircle2 className="h-5 w-5 text-emerald-500" />}
+          label="Yesterday Done"
+          value={stats.ydayDone}
+          color="emerald"
+          delay={0.1}
+        />
+        <StatsCard
+          icon={<CalendarCheck className="h-5 w-5 text-purple-500" />}
+          label="Today Planned"
+          value={stats.todayPlanned}
+          color="purple"
+          delay={0.2}
+        />
+        <CompletionCard rate={stats.completionRate} delay={0.3} />
       </div>
 
-      {/* Executive Cards */}
+      {/* Main Content */}
       {isLoading ? (
-        <p className="text-muted-foreground text-center py-8">Loading...</p>
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <p className="text-muted-foreground animate-pulse">Loading dashboard elements...</p>
+        </div>
       ) : execData.length === 0 ? (
-        <p className="text-muted-foreground text-center py-8">No executives found.</p>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="flex flex-col items-center justify-center py-20 text-center space-y-4"
+        >
+          <div className="h-24 w-24 rounded-full bg-muted/50 flex items-center justify-center">
+            <Users className="h-10 w-10 text-muted-foreground" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold">No Executives Found</h3>
+            <p className="text-muted-foreground">Try adjusting your filters or search criteria.</p>
+          </div>
+        </motion.div>
       ) : (
-        <div className="space-y-4">
-          {execData.map((exec) => {
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+          className={viewMode === "grid" ? "grid grid-cols-1 xl:grid-cols-2 gap-6" : "space-y-4"}
+        >
+          {execData.slice(0, visibleCount).map((exec) => {
             const showroom = showrooms.find((s) => s.id === exec.showroomId);
             return (
-              <Card key={exec.userId} className="overflow-hidden">
-                {/* Executive Header */}
-                <div className="flex items-center justify-between gap-3 px-4 py-3 bg-muted/50 border-b">
-                  <div className="flex items-center gap-2">
-                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                      <Users className="h-4 w-4 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm">{exec.name}</h3>
-                      {showroom && (
-                        <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />{showroom.name}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex gap-2 flex-wrap justify-end">
-                    <MiniStat label="Y'day" value={exec.ydayDone} total={exec.ydayPlanned} color="emerald" />
-                    {exec.ydayPending > 0 && <MiniStat label="Pending" value={exec.ydayPending} color="amber" />}
-                    <MiniStat label="Today" value={exec.todayPlanned} color="blue" />
+              <motion.div key={exec.userId} variants={itemVariants}>
+                <ExecutiveCard
+                  exec={exec}
+                  showroomName={showroom?.name}
+                  getEntityName={getEntityName}
+                />
+              </motion.div>
+            );
+          })}
+          {visibleCount < execData.length && (
+            <motion.div
+              onViewportEnter={() => setVisibleCount(prev => Math.min(prev + 20, execData.length))}
+              className="col-span-full py-8 flex justify-center w-full"
+            >
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary/50" />
+            </motion.div>
+          )}
+        </motion.div>
+      )}
+    </div >
+  );
+};
+
+// --- Subcomponents ---
+
+const StatsCard = ({ icon, label, value, color, delay }: { icon: React.ReactNode, label: string, value: number, color: string, delay: number }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay, duration: 0.4 }}
+  >
+    <Card className="border-none shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden relative group bg-white/60 backdrop-blur-xl">
+      <div className={`absolute inset-0 bg-gradient-to-r from-${color}-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
+      <div className={`absolute left-0 top-0 bottom-0 w-1 bg-${color}-500 rounded-l-full`} />
+      <CardContent className="p-4 flex items-center gap-4 relative z-10">
+        <div className={`p-3 rounded-2xl bg-${color}-100/50 text-${color}-600 group-hover:scale-110 transition-transform duration-300`}>
+          {icon}
+        </div>
+        <div>
+          <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider text-[10px]">{label}</p>
+          <div className="flex items-baseline gap-1">
+            <span className="text-3xl font-bold tracking-tight">{value}</span>
+            <span className="text-xs text-muted-foreground font-medium">visits</span>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  </motion.div>
+);
+
+const CompletionCard = ({ rate, delay }: { rate: number, delay: number }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay, duration: 0.4 }}
+  >
+    <Card className="border-none shadow-md hover:shadow-lg transition-all duration-300 bg-gradient-to-br from-amber-500 to-orange-600 text-white overflow-hidden relative">
+      <div className="absolute top-0 right-0 p-8 bg-white/10 rounded-full blur-2xl transform translate-x-1/2 -translate-y-1/2" />
+      <CardContent className="p-4 flex items-center gap-4 relative z-10">
+        <div className="p-3 rounded-2xl bg-white/20 text-white backdrop-blur-md">
+          <TrendingUp className="h-5 w-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-white/80">Success Rate</p>
+          <div className="flex items-end justify-between">
+            <p className="text-3xl font-bold">{rate}%</p>
+            <span className="text-xs text-white/80 mb-1">completed</span>
+          </div>
+          <div className="mt-2 h-1.5 w-full rounded-full bg-black/20 overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${rate}%` }}
+              transition={{ duration: 1, delay: 0.5, ease: "easeOut" }}
+              className="h-full bg-white rounded-full"
+            />
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  </motion.div>
+);
+
+const ExecutiveCard = ({ exec, showroomName, getEntityName }: { exec: any, showroomName?: string, getEntityName: (v: any) => string }) => {
+  return (
+    <Card className="group overflow-hidden border-none shadow-sm hover:shadow-xl transition-all duration-300 bg-white/70 backdrop-blur-md">
+      {/* Executive Header */}
+      <div className="relative p-4 border-b bg-gradient-to-r from-gray-50/50 to-white/50">
+        <div className="flex items-center justify-between gap-3 relative z-10">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-purple-600 p-[2px] shadow-sm">
+              <div className="h-full w-full rounded-full bg-white flex items-center justify-center overflow-hidden">
+                <Users className="h-5 w-5 text-primary" />
+              </div>
+            </div>
+            <div>
+              <h3 className="font-bold text-base text-gray-800">{exec.name}</h3>
+              {showroomName && (
+                <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                  <MapPin className="h-3 w-3" />
+                  <span>{showroomName}</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] uppercase text-muted-foreground font-semibold">Today</span>
+              <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                {exec.todayPlanned} Planned
+              </Badge>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <CardContent className="p-0">
+        <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+
+          <VisitColumn
+            title="Yesterday Planned"
+            subtitle="Previous target"
+            visits={exec.ydayVisits.filter((v: any) => v.status === "planned")}
+            type="pending"
+            getEntityName={getEntityName}
+          />
+
+          <VisitColumn
+            title="Yesterday Done"
+            subtitle="Completed tasks"
+            visits={exec.ydayVisits.filter((v: any) => v.status === "done")}
+            type="success"
+            getEntityName={getEntityName}
+            showRemarks
+          />
+
+          <VisitColumn
+            title="Today Planned"
+            subtitle="Upcoming schedule"
+            visits={exec.todayVisits}
+            type="info"
+            getEntityName={getEntityName}
+          />
+
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+const VisitColumn = ({ title, subtitle, visits, type, getEntityName, showRemarks }: {
+  title: string, subtitle: string, visits: any[], type: 'pending' | 'success' | 'info', getEntityName: (v: any) => string, showRemarks?: boolean
+}) => {
+  const styles = {
+    pending: { header: "text-amber-600", bg: "bg-amber-50/30", badge: "text-amber-600 bg-amber-100" },
+    success: { header: "text-emerald-600", bg: "bg-emerald-50/30", badge: "text-emerald-600 bg-emerald-100" },
+    info: { header: "text-blue-600", bg: "bg-blue-50/30", badge: "text-blue-600 bg-blue-100" },
+  };
+
+  const style = styles[type];
+
+  return (
+    <div className={`flex flex-col h-full ${style.bg} transition-colors duration-300 hover:bg-opacity-50`}>
+      <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+        <div>
+          <p className={`text-xs font-bold uppercase tracking-tight ${style.header}`}>{title}</p>
+          <p className="text-[10px] text-muted-foreground">{subtitle}</p>
+        </div>
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${style.badge}`}>
+          {visits.length}
+        </span>
+      </div>
+
+      <div className="flex-1 max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 p-2 space-y-2">
+        {visits.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center p-4 text-center opacity-40">
+            <div className="p-3 rounded-full bg-gray-100 mb-2">
+              <List className="h-4 w-4" />
+            </div>
+            <p className="text-xs font-medium">No visits found</p>
+          </div>
+        ) : (
+          <AnimatePresence>
+            {visits.map((v, i) => (
+              <motion.div
+                key={v.id}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="group relative bg-white rounded-lg p-3 shadow-sm border border-gray-100 hover:border-primary/20 hover:shadow-md transition-all duration-200 cursor-default"
+              >
+                <div className="absolute left-0 top-3 bottom-3 w-0.5 bg-gray-200 group-hover:bg-primary transition-colors rounded-r-full" />
+
+                <div className="flex justify-between items-start gap-2 pl-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-sm text-gray-800 truncate leading-tight group-hover:text-primary transition-colors">
+                      {getEntityName(v)}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{v.purpose}</p>
+
+                    {showRemarks && v.remarks && (
+                      <div className="mt-2 flex items-start gap-1.5 p-1.5 rounded bg-emerald-50/50 border border-emerald-100/50">
+                        <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0 mt-0.5" />
+                        <p className="text-[10px] text-emerald-700 leading-snug">{v.remarks}</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* Visit Details — 3-column layout */}
-                <CardContent className="p-0">
-                  <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-border">
-                    {/* Yesterday Planned */}
-                    <VisitColumn
-                      title="Yesterday — Planned"
-                      titleColor="text-blue-600"
-                      bgColor="bg-blue-50/50"
-                      visits={exec.ydayVisits.filter((v) => v.status === "planned")}
-                      getEntityName={getEntityName}
-                      showRemarks={false}
-                    />
-                    {/* Yesterday Done */}
-                    <VisitColumn
-                      title="Yesterday — Done"
-                      titleColor="text-emerald-600"
-                      bgColor="bg-emerald-50/50"
-                      visits={exec.ydayVisits.filter((v) => v.status === "done")}
-                      getEntityName={getEntityName}
-                      showRemarks={true}
-                    />
-                    {/* Today Planned */}
-                    <VisitColumn
-                      title="Today — Planned"
-                      titleColor="text-primary"
-                      bgColor="bg-primary/5"
-                      visits={exec.todayVisits}
-                      getEntityName={getEntityName}
-                      showRemarks={false}
-                    />
+                <div className="mt-2 flex items-center justify-between border-t pt-2 border-dashed border-gray-100">
+                  <div className="flex items-center gap-1">
+                    <Badge variant="outline" className="text-[10px] px-1.5 h-5 font-normal bg-gray-50 border-gray-200 text-gray-500 capitalize">
+                      {v.visit_with_type || 'Solo'}
+                    </Badge>
                   </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
+                  <span className="text-[10px] text-gray-400 font-mono">#{i + 1}</span>
+                </div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        )}
+      </div>
     </div>
   );
 };
-
-const SummaryCard = ({ icon, label, value, accent }: { icon: React.ReactNode; label: string; value: number; accent: string }) => (
-  <Card className={`border-l-4 ${accent}`}>
-    <CardContent className="p-4 flex items-center gap-3">
-      <div className="shrink-0">{icon}</div>
-      <div>
-        <p className="text-xs text-muted-foreground font-medium uppercase">{label}</p>
-        <p className="text-2xl font-bold">{value}</p>
-      </div>
-    </CardContent>
-  </Card>
-);
-
-const MiniStat = ({ label, value, total, color }: { label: string; value: number; total?: number; color: string }) => {
-  const colorMap: Record<string, string> = {
-    emerald: "bg-emerald-100 text-emerald-700",
-    amber: "bg-amber-100 text-amber-700",
-    blue: "bg-blue-100 text-blue-700",
-  };
-  return (
-    <span className={`text-xs font-medium px-2 py-1 rounded-full ${colorMap[color] || "bg-muted text-muted-foreground"}`}>
-      {label}: {total !== undefined ? `${value}/${total}` : value}
-    </span>
-  );
-};
-
-const VisitColumn = ({
-  title, titleColor, bgColor, visits, getEntityName, showRemarks,
-}: {
-  title: string; titleColor: string; bgColor: string;
-  visits: any[]; getEntityName: (v: any) => string; showRemarks: boolean;
-}) => (
-  <div className="min-h-[80px]">
-    <div className={`px-3 py-1.5 ${bgColor} border-b`}>
-      <p className={`text-xs font-semibold uppercase ${titleColor}`}>{title}</p>
-    </div>
-    {visits.length === 0 ? (
-      <p className="text-xs text-muted-foreground text-center py-4">No visits</p>
-    ) : (
-      <div className="divide-y divide-border">
-        {visits.map((v, i) => (
-          <div key={v.id} className="px-3 py-2 flex gap-2 text-xs">
-            <span className="text-muted-foreground font-medium w-4 shrink-0">{i + 1}</span>
-            <div className="flex-1 min-w-0">
-              <p className="font-medium truncate">{getEntityName(v)}</p>
-              <p className="text-muted-foreground truncate">{v.purpose}</p>
-              {showRemarks && v.remarks && (
-                <p className="text-emerald-600 truncate mt-0.5">✓ {v.remarks}</p>
-              )}
-            </div>
-            <Badge variant="outline" className="text-[10px] h-5 shrink-0 capitalize">
-              {v.visit_with_type}
-            </Badge>
-          </div>
-        ))}
-      </div>
-    )}
-  </div>
-);
 
 export default DailyVisitDashboard;

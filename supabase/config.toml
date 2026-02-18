@@ -1,8 +1,7 @@
-project_id = "gtzkpodcxceqmobkjonc"
+project_id = "khuqshdbpmuolyarhuud"
 
 [functions.export-data]
 verify_jwt = false
 
 [functions.create-user]
-verify_jwt = false
 verify_jwt = false

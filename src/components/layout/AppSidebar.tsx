@@ -1,5 +1,17 @@
+import { motion } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarRail,
+  useSidebar,
+} from "@/components/ui/sidebar";
 import {
   Building2,
   Users,
@@ -11,13 +23,16 @@ import {
   Shield,
   ClipboardList,
   ShieldCheck,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import logo from "@/assets/logo.png";
+import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 
 const AppSidebar = () => {
   const { pathname } = useLocation();
   const { role, signOut } = useAuth();
+  const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
   const isManagerOrAdmin = role === "admin" || role === "manager" || role === "md";
 
   const links = [
@@ -27,55 +42,121 @@ const AppSidebar = () => {
     { to: "/visits", label: "Visits", icon: CalendarCheck },
     ...(isManagerOrAdmin
       ? [
-          { to: "/reports", label: "Reports", icon: BarChart3 },
-          { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
-          { to: "/verification", label: "Verification", icon: ShieldCheck },
-        ]
+        { to: "/reports", label: "Reports", icon: BarChart3 },
+        { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
+        { to: "/verification", label: "Verification", icon: ShieldCheck },
+      ]
       : []),
-    ...(role === "admin" || role === "md"
+    ...(role === "admin"
       ? [{ to: "/admin", label: "User Management", icon: Shield }]
       : []),
     { to: "/profile", label: "Profile", icon: UserCircle },
   ];
 
   return (
-    <aside className="flex h-screen w-64 flex-col bg-sidebar-background text-sidebar-foreground border-r border-sidebar-border">
-      <div className="flex h-16 items-center gap-3 px-4 border-b border-sidebar-border">
-        <img src={logo} alt="Art-N-Glass" className="h-10 w-auto" />
-        <div>
-          <h1 className="text-sm font-bold tracking-tight">Art-N-Glass</h1>
-          <p className="text-xs text-sidebar-foreground/60 capitalize">{role || "executive"}</p>
-        </div>
-      </div>
-
-      <nav className="flex-1 space-y-1 p-3">
-        {links.map(({ to, label, icon: Icon }) => (
-          <Link
-            key={to}
-            to={to}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
-              pathname === to
-                ? "bg-sidebar-accent text-sidebar-primary"
-                : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-            )}
+    <Sidebar collapsible="icon" className="border-r border-sidebar-border">
+      {/* — Header — */}
+      <SidebarHeader className="h-16 border-b border-sidebar-border">
+        <div className="flex items-center gap-3 px-3 h-full overflow-hidden">
+          <motion.div
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            whileHover={{ rotate: 360, scale: 1.1 }}
+            transition={{
+              type: "spring",
+              stiffness: 260,
+              damping: 20,
+              duration: 0.8
+            }}
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/20 shrink-0 cursor-pointer shadow-sm relative z-10"
           >
-            <Icon className="h-4 w-4" />
-            {label}
-          </Link>
-        ))}
-      </nav>
+            <img src={logo} alt="Art-N-Glass" className="h-6 w-auto object-contain" />
+          </motion.div>
+          {state === "expanded" && (
+            <div className="flex flex-col overflow-hidden animate-slide-in-right">
+              <span className="text-sm font-bold tracking-tight truncate">Art-N-Glass</span>
+              <span className="text-[11px] text-white/70 capitalize truncate">{role || "executive"}</span>
+            </div>
+          )}
+        </div>
+      </SidebarHeader>
 
-      <div className="border-t border-sidebar-border p-3">
-        <button
-          onClick={signOut}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-        >
-          <LogOut className="h-4 w-4" />
-          Sign Out
-        </button>
-      </div>
-    </aside>
+      {/* — Navigation — */}
+      <SidebarContent>
+        <SidebarMenu className="px-2 py-3 space-y-0.5">
+          {links.map(({ to, label, icon: Icon }) => {
+            const isActive = pathname === to;
+            return (
+              <SidebarMenuItem key={to}>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive}
+                  tooltip={label}
+                  onClick={() => isMobile && setOpenMobile(false)}
+                  className={`
+                    group/item relative rounded-lg transition-all duration-200
+                    hover:bg-sidebar-accent hover:text-sidebar-accent-foreground
+                    data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-primary
+                    data-[active=true]:font-medium
+                  `}
+                >
+                  <Link to={to}>
+                    {/* Active Indicator Bar */}
+                    {isActive && (
+                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-white" />
+                    )}
+                    <Icon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{label}</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            );
+          })}
+        </SidebarMenu>
+      </SidebarContent>
+
+      {/* — Footer — */}
+      <SidebarFooter className="border-t border-sidebar-border p-2">
+        <SidebarMenu className="space-y-0.5">
+          {/* Theme Toggle */}
+          <SidebarMenuItem>
+            <div className="flex items-center justify-between px-2 py-1.5">
+              {state === "expanded" && (
+                <span className="text-[11px] font-medium uppercase tracking-wider text-white/70">Theme</span>
+              )}
+              <ThemeSwitcher />
+            </div>
+          </SidebarMenuItem>
+
+          {/* Sign Out */}
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              onClick={signOut}
+              tooltip="Sign Out"
+              className="rounded-lg hover:bg-white/15 hover:text-white transition-colors duration-200"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Sign Out</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+
+          {/* Toggle Button for Desktop */}
+          {!isMobile && (
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={toggleSidebar}
+                tooltip={state === "expanded" ? "Collapse" : "Expand"}
+                className="rounded-lg hover:bg-sidebar-accent transition-colors duration-200"
+              >
+                {state === "expanded" ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+                <span>Collapse</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          )}
+        </SidebarMenu>
+      </SidebarFooter>
+      <SidebarRail />
+    </Sidebar>
   );
 };
 

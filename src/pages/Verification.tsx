@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -12,7 +12,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { ShieldCheck, IndianRupee, Package, CheckCircle, XCircle, Clock, Filter } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { ShieldCheck, IndianRupee, Package, CheckCircle, XCircle, Clock, Filter, Search, Sparkles, Building2, User } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 const Verification = () => {
   const { user, role } = useAuth();
@@ -22,6 +24,7 @@ const Verification = () => {
   const [verifiedAmount, setVerifiedAmount] = useState("");
   const [verificationRemarks, setVerificationRemarks] = useState("");
   const [workStatus, setWorkStatus] = useState<string>("pending");
+  const [visibleCount, setVisibleCount] = useState(20);
 
   const canAccess = role === "admin" || role === "manager" || role === "md";
 
@@ -61,6 +64,38 @@ const Verification = () => {
     },
   });
 
+  // Fetch profiles for executives
+  const userIds = useMemo(() => [...new Set(items.map((i: any) => i.created_by))], [items]);
+  const { data: profiles = [] } = useQuery({
+    queryKey: ["profiles-for-verification", userIds],
+    enabled: userIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("user_id, full_name")
+        .in("user_id", userIds);
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const profileMap = useMemo(() => {
+    return (profiles || []).reduce((acc: any, profile: any) => {
+      acc[profile.user_id] = profile;
+      return acc;
+    }, {});
+  }, [profiles]);
+
+  // Summary stats
+  const stats = useMemo(() => {
+    const totalAmount = items.reduce((s: number, i: any) => s + (i.amount_in_lac || 0), 0);
+    const verifiedAmount_ = items.reduce((s: number, i: any) => s + (i.verified_amount || 0), 0);
+    const wonCount = items.filter((i: any) => i.work_status === "won").length;
+    const lostCount = items.filter((i: any) => i.work_status === "lost").length;
+    const pendingCount = items.filter((i: any) => i.work_status === "pending").length;
+    return { totalAmount, verifiedAmount_, wonCount, lostCount, pendingCount, totalItems: items.length };
+  }, [items]);
+
   const verifyMutation = useMutation({
     mutationFn: async () => {
       if (!selectedItem) return;
@@ -99,242 +134,345 @@ const Verification = () => {
     setWorkStatus(item.work_status || "pending");
   };
 
-  if (!canAccess) {
-    return <p className="text-center text-muted-foreground py-8">Access denied.</p>;
-  }
+  const filteredItems = useMemo(() => {
+    return statusFilter === "all"
+      ? items
+      : items.filter((i: any) => i.work_status === statusFilter);
+  }, [items, statusFilter]);
 
-  const filteredItems = statusFilter === "all"
-    ? items
-    : items.filter((i: any) => i.work_status === statusFilter);
-
-  const statusIcon = (status: string) => {
-    switch (status) {
-      case "won": return <CheckCircle className="h-3.5 w-3.5 text-[hsl(var(--status-converted))]" />;
-      case "lost": return <XCircle className="h-3.5 w-3.5 text-[hsl(var(--status-lost))]" />;
-      default: return <Clock className="h-3.5 w-3.5 text-[hsl(var(--status-new))]" />;
-    }
-  };
-
-  const statusBadgeClass = (status: string) => {
-    switch (status) {
-      case "won": return "bg-[hsl(var(--status-converted))] text-white border-0";
-      case "lost": return "bg-[hsl(var(--status-lost))] text-white border-0";
-      default: return "bg-[hsl(var(--status-new))] text-white border-0";
-    }
-  };
-
-  // Summary stats
-  const totalAmount = items.reduce((s: number, i: any) => s + (i.amount_in_lac || 0), 0);
-  const verifiedAmount_ = items.reduce((s: number, i: any) => s + (i.verified_amount || 0), 0);
-  const wonCount = items.filter((i: any) => i.work_status === "won").length;
-  const lostCount = items.filter((i: any) => i.work_status === "lost").length;
-  const pendingCount = items.filter((i: any) => i.work_status === "pending").length;
-
-  // For MD: group by showroom
   const getShowroomForItem = (item: any) => {
     const userRole = userRoles.find((ur) => ur.user_id === item.created_by);
     if (!userRole?.showroom_id) return null;
     return showrooms.find((s) => s.id === userRole.showroom_id) || null;
   };
 
-  const renderItemCard = (item: any) => {
-    const wt = item.master_work_types;
-    const client = item.clients;
-    const amt = item.amount_in_lac;
-    const vAmt = item.verified_amount;
+  if (!canAccess) {
     return (
-      <Card key={item.id} className="hover:shadow-sm transition-shadow">
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap mb-1">
-                <p className="text-sm font-semibold">{client?.name || "—"}</p>
-                {client?.city && <Badge variant="outline" className="text-[10px]">{client.city}</Badge>}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {wt?.type_of_work} → <span className="font-medium text-foreground">{wt?.sub_work}</span>
-              </p>
-              <div className="flex items-center gap-3 mt-2 flex-wrap">
-                {amt != null && amt > 0 && (
-                  <span className="inline-flex items-center gap-1 text-xs">
-                    <IndianRupee className="h-3 w-3 text-muted-foreground" />
-                    Estimated: <span className="font-medium">₹{amt} Lac</span>
-                  </span>
-                )}
-                {vAmt != null && vAmt > 0 && (
-                  <span className="inline-flex items-center gap-1 text-xs">
-                    <IndianRupee className="h-3 w-3 text-primary" />
-                    Verified: <span className="font-bold text-primary">₹{vAmt} Lac</span>
-                  </span>
-                )}
-                {item.quantity && (
-                  <span className="text-xs text-muted-foreground">Qty: {item.quantity}</span>
-                )}
-              </div>
-              {item.verification_remarks && (
-                <p className="text-xs text-muted-foreground mt-1.5 italic">"{item.verification_remarks}"</p>
-              )}
-            </div>
-            <div className="flex flex-col items-end gap-2 shrink-0">
-              <Badge className={`text-[10px] capitalize ${statusBadgeClass(item.work_status)}`}>
-                {statusIcon(item.work_status)}
-                <span className="ml-1">{item.work_status}</span>
-              </Badge>
-              {item.is_verified && (
-                <Badge className="bg-[hsl(var(--status-converted))] text-white text-[10px] border-0">
-                  <ShieldCheck className="h-2.5 w-2.5 mr-0.5" />Verified
-                </Badge>
-              )}
-              <Button size="sm" variant="outline" onClick={() => openVerifyDialog(item)} className="text-xs">
-                {item.is_verified ? "Update" : "Verify"}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center">
+        <ShieldCheck className="h-16 w-16 text-muted-foreground/30 mb-4" />
+        <h2 className="text-xl font-semibold">Access Denied</h2>
+        <p className="text-muted-foreground">You do not have permission to view this page.</p>
+      </div>
     );
+  }
+
+  const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+      opacity: 1,
+      transition: { staggerChildren: 0.05 }
+    }
+  };
+
+  const itemVariants = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0 }
   };
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
-          <ShieldCheck className="h-6 w-6 text-primary" />
-          Work Scope Verification
-        </h1>
-        <p className="text-sm text-muted-foreground">Verify work scope items, update actual amounts and status</p>
+    <div className="space-y-6 min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50 p-6 -m-6 animate-in fade-in duration-500">
+      {/* Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between sticky top-0 z-20 bg-background/80 backdrop-blur-lg pb-4 border-b">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-2 bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
+            <ShieldCheck className="h-8 w-8 text-primary" />
+            Work Verification
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Verify scope, update amounts, and track status
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="bg-card/50 backdrop-blur-sm p-1 rounded-lg border shadow-sm flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground ml-2" />
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[160px] bg-transparent border-none focus-visible:ring-0 h-9">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="won">Won</SelectItem>
+                <SelectItem value="lost">Lost</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
       </div>
 
-      {/* Summary */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-        <Card><CardContent className="p-3 text-center"><Package className="h-5 w-5 mx-auto text-primary mb-1" /><p className="text-xl font-bold">{items.length}</p><p className="text-[10px] text-muted-foreground">Total Items</p></CardContent></Card>
-        <Card><CardContent className="p-3 text-center"><IndianRupee className="h-5 w-5 mx-auto text-primary mb-1" /><p className="text-xl font-bold">{totalAmount.toFixed(1)}</p><p className="text-[10px] text-muted-foreground">Est. (Lac)</p></CardContent></Card>
-        <Card><CardContent className="p-3 text-center"><CheckCircle className="h-5 w-5 mx-auto text-[hsl(var(--status-converted))] mb-1" /><p className="text-xl font-bold">{wonCount}</p><p className="text-[10px] text-muted-foreground">Won</p></CardContent></Card>
-        <Card><CardContent className="p-3 text-center"><XCircle className="h-5 w-5 mx-auto text-[hsl(var(--status-lost))] mb-1" /><p className="text-xl font-bold">{lostCount}</p><p className="text-[10px] text-muted-foreground">Lost</p></CardContent></Card>
-        <Card><CardContent className="p-3 text-center"><Clock className="h-5 w-5 mx-auto text-[hsl(var(--status-new))] mb-1" /><p className="text-xl font-bold">{pendingCount}</p><p className="text-[10px] text-muted-foreground">Pending</p></CardContent></Card>
+      {/* Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <StatsCard icon={<Package className="h-5 w-5 text-primary" />} label="Total Items" value={stats.totalItems} color="primary" delay={0} />
+        <StatsCard icon={<IndianRupee className="h-5 w-5 text-blue-500" />} label="Est. Amount (Lac)" value={stats.totalAmount.toFixed(1)} color="blue" delay={0.1} />
+        <StatsCard icon={<CheckCircle className="h-5 w-5 text-emerald-500" />} label="Won" value={stats.wonCount} color="emerald" delay={0.2} />
+        <StatsCard icon={<XCircle className="h-5 w-5 text-rose-500" />} label="Lost" value={stats.lostCount} color="rose" delay={0.3} />
+        <StatsCard icon={<Clock className="h-5 w-5 text-amber-500" />} label="Pending" value={stats.pendingCount} color="amber" delay={0.4} />
       </div>
 
-      {/* Filter */}
-      <div className="flex items-center gap-2">
-        <Filter className="h-4 w-4 text-muted-foreground" />
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-[150px]"><SelectValue /></SelectTrigger>
-          <SelectContent className="bg-popover">
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="pending">Pending</SelectItem>
-            <SelectItem value="won">Won</SelectItem>
-            <SelectItem value="lost">Lost</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <Separator className="bg-border/50" />
 
-      <Separator />
-
-      {/* Items — MD sees grouped by showroom */}
+      {/* Main Content */}
       {isLoading ? (
-        <p className="text-center text-muted-foreground py-8">Loading...</p>
-      ) : role === "md" && showrooms.length > 0 ? (
-        <div className="space-y-6">
-          {showrooms.map((showroom) => {
-            const showroomItems = filteredItems.filter((item: any) => {
-              const sr = getShowroomForItem(item);
-              return sr?.id === showroom.id;
-            });
-            if (showroomItems.length === 0) return null;
-            return (
-              <div key={showroom.id}>
-                <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
-                  🏢 {showroom.name} — {showroom.city}
-                  <Badge variant="secondary" className="text-xs">{showroomItems.length} items</Badge>
-                </h2>
-                <div className="space-y-2">
-                  {showroomItems.map(renderItemCard)}
-                </div>
-              </div>
-            );
-          })}
-          {/* Unassigned */}
-          {(() => {
-            const unassigned = filteredItems.filter((item: any) => !getShowroomForItem(item));
-            if (unassigned.length === 0) return null;
-            return (
-              <div>
-                <h2 className="text-lg font-bold mb-3">Unassigned Showroom</h2>
-                <div className="space-y-2">{unassigned.map(renderItemCard)}</div>
-              </div>
-            );
-          })()}
+        <div className="flex flex-col items-center justify-center py-20 gap-4">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <p className="text-muted-foreground animate-pulse">Loading verification items...</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {filteredItems.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <Package className="h-10 w-10 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">No work scope items found</p>
+        <motion.div
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+          className="space-y-8"
+        >
+          {role === "md" && showrooms.length > 0 ? (
+            // MD View: Grouped by Showroom -> Executive
+            <div className="space-y-8">
+              {showrooms.map((showroom) => {
+                const showroomItems = filteredItems.filter((item: any) => {
+                  const sr = getShowroomForItem(item);
+                  return sr?.id === showroom.id;
+                });
+                if (showroomItems.length === 0) return null;
+
+                // Group by Executive within Showroom
+                const execGroups = showroomItems.reduce((acc: any, item: any) => {
+                  const execId = item.created_by;
+                  if (!acc[execId]) acc[execId] = [];
+                  acc[execId].push(item);
+                  return acc;
+                }, {});
+
+                return (
+                  <motion.div key={showroom.id} variants={itemVariants} className="space-y-4">
+                    <div className="flex items-center gap-3 sticky top-20 z-10 bg-background/95 backdrop-blur py-2 px-4 rounded-lg shadow-sm border">
+                      <Building2 className="h-5 w-5 text-muted-foreground" />
+                      <h2 className="text-lg font-bold">{showroom.name}</h2>
+                      <Badge variant="secondary" className="ml-auto">{showroomItems.length} items</Badge>
+                    </div>
+
+                    <Accordion type="multiple" className="space-y-4">
+                      {Object.entries(execGroups).map(([execId, items]: [string, any]) => {
+                        const profile = profileMap[execId];
+                        return (
+                          <AccordionItem key={execId} value={execId} className="border rounded-lg bg-white/50 overflow-hidden px-2">
+                            <AccordionTrigger className="hover:no-underline py-3 px-2">
+                              <div className="flex items-center gap-3 w-full">
+                                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                  <User className="h-4 w-4" />
+                                </div>
+                                <div className="text-left">
+                                  <p className="font-semibold text-sm">{profile?.full_name || "Unknown Executive"}</p>
+                                  <p className="text-xs text-muted-foreground">{items.length} items</p>
+                                </div>
+                                <Badge variant="outline" className="ml-auto mr-2">
+                                  {items.length}
+                                </Badge>
+                              </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="pt-2 pb-4 px-2">
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                {items.map((item: any) => (
+                                  <VerificationCard
+                                    key={item.id}
+                                    item={item}
+                                    onVerify={() => openVerifyDialog(item)}
+                                  />
+                                ))}
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        );
+                      })}
+                    </Accordion>
+                  </motion.div>
+                );
+              })}
+
+              {/* Unassigned Showroom */}
+              {(() => {
+                const unassigned = filteredItems.filter((item: any) => !getShowroomForItem(item));
+                if (unassigned.length === 0) return null;
+
+                // Group by Executive within Unassigned
+                const execGroups = unassigned.reduce((acc: any, item: any) => {
+                  const execId = item.created_by;
+                  if (!acc[execId]) acc[execId] = [];
+                  acc[execId].push(item);
+                  return acc;
+                }, {});
+
+                return (
+                  <motion.div variants={itemVariants} className="space-y-4">
+                    <h2 className="text-lg font-bold px-4">Unassigned Showroom</h2>
+                    <Accordion type="multiple" className="space-y-4">
+                      {Object.entries(execGroups).map(([execId, items]: [string, any]) => {
+                        const profile = profileMap[execId];
+                        return (
+                          <AccordionItem key={execId} value={execId} className="border rounded-lg bg-white/50 overflow-hidden px-2">
+                            <AccordionTrigger className="hover:no-underline py-3 px-2">
+                              <div className="flex items-center gap-3 w-full">
+                                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                  <User className="h-4 w-4" />
+                                </div>
+                                <div className="text-left">
+                                  <p className="font-semibold text-sm">{profile?.full_name || "Unknown Executive"}</p>
+                                  <p className="text-xs text-muted-foreground">{items.length} items</p>
+                                </div>
+                                <Badge variant="outline" className="ml-auto mr-2">
+                                  {items.length}
+                                </Badge>
+                              </div>
+                            </AccordionTrigger>
+                            <AccordionContent className="pt-2 pb-4 px-2">
+                              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                                {items.map((item: any) => (
+                                  <VerificationCard
+                                    key={item.id}
+                                    item={item}
+                                    onVerify={() => openVerifyDialog(item)}
+                                  />
+                                ))}
+                              </div>
+                            </AccordionContent>
+                          </AccordionItem>
+                        );
+                      })}
+                    </Accordion>
+                  </motion.div>
+                );
+              })()}
             </div>
           ) : (
-            filteredItems.map(renderItemCard)
+            // Standard View (Manager/Admin): Grouped by Executive
+            <>
+              {filteredItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-20 text-center opacity-60">
+                  <Package className="h-16 w-16 text-muted-foreground mb-4" />
+                  <h3 className="text-lg font-medium">No items found</h3>
+                  <p className="text-muted-foreground">Try changing the status filter.</p>
+                </div>
+              ) : (
+                <Accordion type="multiple" className="space-y-4" defaultValue={[]}>
+                  {(() => {
+                    const execGroups = filteredItems.reduce((acc: any, item: any) => {
+                      const execId = item.created_by;
+                      if (!acc[execId]) acc[execId] = [];
+                      acc[execId].push(item);
+                      return acc;
+                    }, {});
+
+                    return Object.entries(execGroups).map(([execId, items]: [string, any]) => {
+                      const profile = profileMap[execId];
+                      return (
+                        <AccordionItem key={execId} value={execId} className="border rounded-lg bg-white/50 overflow-hidden px-2">
+                          <AccordionTrigger className="hover:no-underline py-3 px-2">
+                            <div className="flex items-center gap-3 w-full">
+                              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                <User className="h-4 w-4" />
+                              </div>
+                              <div className="text-left">
+                                <p className="font-semibold text-sm">{profile?.full_name || "Unknown Executive"}</p>
+                                <p className="text-xs text-muted-foreground">{items.length} items</p>
+                              </div>
+                              <Badge variant="outline" className="ml-auto mr-2">
+                                {items.length}
+                              </Badge>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="pt-2 pb-4 px-2">
+                            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                              {items.map((item: any) => (
+                                <VerificationCard
+                                  key={item.id}
+                                  item={item}
+                                  onVerify={() => openVerifyDialog(item)}
+                                />
+                              ))}
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      );
+                    });
+                  })()}
+                </Accordion>
+              )}
+            </>
           )}
-        </div>
+        </motion.div>
       )}
 
-      {/* Verify/Update Dialog */}
+      {/* Dialog */}
       <Dialog open={!!selectedItem} onOpenChange={(open) => { if (!open) { setSelectedItem(null); resetForm(); } }}>
-        <DialogContent className="bg-popover">
+        <DialogContent className="sm:max-w-md bg-white data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] duration-200">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Sparkles className="h-5 w-5 text-primary" />
               {selectedItem?.is_verified ? "Update Verification" : "Verify Work Scope"}
             </DialogTitle>
           </DialogHeader>
+
           {selectedItem && (
-            <div className="space-y-4">
-              <div className="rounded-lg bg-muted/50 p-3">
-                <p className="text-sm font-medium">{selectedItem.clients?.name || "—"}</p>
-                <p className="text-xs text-muted-foreground">
-                  {selectedItem.master_work_types?.type_of_work} → {selectedItem.master_work_types?.sub_work}
+            <div className="space-y-5 py-2">
+              <div className="rounded-xl bg-muted/30 p-4 border border-border/50">
+                <div className="flex justify-between items-start mb-2">
+                  <p className="font-semibold text-base text-foreground">{selectedItem.clients?.name || "—"}</p>
+                  {selectedItem.clients?.city && <Badge variant="outline" className="text-[10px] bg-background">{selectedItem.clients.city}</Badge>}
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  {selectedItem.master_work_types?.type_of_work} <span className="text-muted-foreground/40 mx-1">/</span> <span className="text-foreground/80 font-medium">{selectedItem.master_work_types?.sub_work}</span>
                 </p>
                 {selectedItem.amount_in_lac && (
-                  <p className="text-xs mt-1">Estimated: <span className="font-medium">₹{selectedItem.amount_in_lac} Lac</span></p>
+                  <div className="mt-3 flex items-center gap-2 text-sm bg-background/50 p-2 rounded-lg inline-flex border border-border/50">
+                    <IndianRupee className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span>Estimated: <span className="font-semibold text-foreground">₹{selectedItem.amount_in_lac} Lac</span></span>
+                  </div>
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label className="flex items-center gap-1.5">
-                  <IndianRupee className="h-3.5 w-3.5" />Verified Amount (in Lac)
-                </Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  placeholder="Actual project amount"
-                  value={verifiedAmount}
-                  onChange={(e) => setVerifiedAmount(e.target.value)}
-                />
-              </div>
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-muted-foreground uppercase">Actual Amount (Lac)</Label>
+                    <div className="relative">
+                      <IndianRupee className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        className="pl-8"
+                        placeholder="0.00"
+                        value={verifiedAmount}
+                        onChange={(e) => setVerifiedAmount(e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-muted-foreground uppercase">Status</Label>
+                    <Select value={workStatus} onValueChange={setWorkStatus}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="won">Won</SelectItem>
+                        <SelectItem value="lost">Lost</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-              <div className="space-y-2">
-                <Label>Status</Label>
-                <Select value={workStatus} onValueChange={setWorkStatus}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="won">Won</SelectItem>
-                    <SelectItem value="lost">Lost</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Remarks</Label>
-                <Textarea
-                  placeholder="Add verification remarks..."
-                  value={verificationRemarks}
-                  onChange={(e) => setVerificationRemarks(e.target.value)}
-                  rows={3}
-                />
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase">Remarks</Label>
+                  <Textarea
+                    placeholder="Add any verification notes..."
+                    value={verificationRemarks}
+                    onChange={(e) => setVerificationRemarks(e.target.value)}
+                    rows={3}
+                    className="resize-none"
+                  />
+                </div>
               </div>
 
               <Button
-                className="w-full"
+                className="w-full h-11 text-base font-medium shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-shadow"
                 onClick={() => verifyMutation.mutate()}
                 disabled={verifyMutation.isPending}
               >
@@ -345,6 +483,110 @@ const Verification = () => {
         </DialogContent>
       </Dialog>
     </div>
+  );
+};
+
+// --- Subcomponents ---
+
+const StatsCard = ({ icon, label, value, color, delay }: { icon: React.ReactNode, label: string, value: number | string, color: string, delay: number }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 20 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ delay, duration: 0.4 }}
+  >
+    <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group bg-white/60 backdrop-blur-xl">
+      <div className={`absolute inset-0 bg-gradient-to-br from-${color}-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
+      <div className={`absolute left-0 bottom-0 top-0 w-1 bg-${color}-500/50 rounded-r-full`} />
+      <CardContent className="p-3 text-center relative z-10">
+        <div className={`mx-auto w-8 h-8 rounded-full bg-${color}-100 flex items-center justify-center mb-2 group-hover:scale-110 transition-transform`}>
+          {icon}
+        </div>
+        <p className="text-lg font-bold tracking-tight">{value}</p>
+        <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-medium">{label}</p>
+      </CardContent>
+    </Card>
+  </motion.div>
+);
+
+const VerificationCard = ({ item, onVerify }: { item: any, onVerify: () => void }) => {
+  const statusColors = {
+    won: "text-emerald-600 bg-emerald-50 border-emerald-100",
+    lost: "text-rose-600 bg-rose-50 border-rose-100",
+    pending: "text-amber-600 bg-amber-50 border-amber-100"
+  };
+
+  const statusIcon = {
+    won: <CheckCircle className="h-3 w-3" />,
+    lost: <XCircle className="h-3 w-3" />,
+    pending: <Clock className="h-3 w-3" />
+  };
+
+  const status = item.work_status as keyof typeof statusColors || "pending";
+
+  return (
+    <Card className="border-none shadow-sm hover:shadow-xl transition-all duration-300 bg-white/70 backdrop-blur-md overflow-hidden group h-full flex flex-col">
+      <div className="p-4 flex-1">
+        <div className="flex justify-between items-start gap-4 mb-3">
+          <div className="min-w-0">
+            <h3 className="font-semibold text-gray-900 truncate pr-2">{item.clients?.name || "—"}</h3>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
+              <Building2 className="h-3 w-3" />
+              {item.clients?.city || "Unknown City"}
+            </div>
+          </div>
+          <Badge variant="outline" className={`shrink-0 capitalize gap-1 ${statusColors[status]} border shadow-sm`}>
+            {statusIcon[status]} {status}
+          </Badge>
+        </div>
+
+        <div className="space-y-3">
+          <div className="bg-gray-50/80 p-2.5 rounded-lg border border-gray-100 group-hover:border-primary/20 transition-colors">
+            <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Scope of Work</p>
+            <div className="text-sm font-medium text-gray-800">
+              {item.master_work_types?.type_of_work}
+            </div>
+            <div className="text-xs text-gray-500 mt-0.5">
+              {item.master_work_types?.sub_work}
+              {item.quantity && <span className="ml-1">• Qty: {item.quantity}</span>}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <div className="p-2 rounded-lg bg-gray-50/50">
+              <p className="text-[10px] text-muted-foreground uppercase">Estimated</p>
+              <p className="font-semibold text-sm">₹{item.amount_in_lac || 0} L</p>
+            </div>
+            <div className={`p-2 rounded-lg ${item.verified_amount ? "bg-primary/5" : "bg-gray-50/50"}`}>
+              <p className="text-[10px] text-muted-foreground uppercase">Verified</p>
+              <p className={`font-semibold text-sm ${item.verified_amount ? "text-primary" : "text-gray-400"}`}>
+                {item.verified_amount ? `₹${item.verified_amount} L` : "—"}
+              </p>
+            </div>
+          </div>
+
+          {item.verification_remarks && (
+            <div className="text-xs italic text-muted-foreground px-2 py-1 border-l-2 border-primary/20">
+              "{item.verification_remarks}"
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="p-3 bg-gray-50/50 border-t flex items-center justify-between gap-3">
+        {item.is_verified ? (
+          <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium px-2">
+            <ShieldCheck className="h-4 w-4" /> Verified
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-amber-600 text-xs font-medium px-2">
+            <Clock className="h-4 w-4" /> Pending Verification
+          </div>
+        )}
+        <Button size="sm" onClick={onVerify} className={item.is_verified ? "h-8 text-xs bg-white text-primary border border-primary/20 hover:bg-primary/5 shadow-sm" : "h-8 text-xs shadow-sm bg-primary text-primary-foreground hover:bg-primary/90"}>
+          {item.is_verified ? "Update" : "Verify Now"}
+        </Button>
+      </div>
+    </Card>
   );
 };
 

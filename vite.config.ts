@@ -18,4 +18,17 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom', 'react-router-dom'],
+          ui: ['@radix-ui/react-slot', '@radix-ui/react-dialog', '@radix-ui/react-dropdown-menu', 'lucide-react'],
+          charts: ['recharts'],
+          utils: ['date-fns', 'clsx', 'tailwind-merge']
+        }
+      }
+    },
+    chunkSizeWarningLimit: 1000,
+  }
 }));

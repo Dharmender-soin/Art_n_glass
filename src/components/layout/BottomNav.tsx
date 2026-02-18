@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Building2, Users, CalendarCheck, UserCircle, LayoutDashboard, BarChart3, ClipboardList } from "lucide-react";
+import { Building2, Users, CalendarCheck, UserCircle, LayoutDashboard, BarChart3, ClipboardList, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -15,7 +15,8 @@ const BottomNav = () => {
     { to: "/visits", label: "Visits", icon: CalendarCheck },
     ...(isManagerOrAdmin ? [
       { to: "/reports", label: "Reports", icon: BarChart3 },
-      { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList } // Added Daily Visits
+      { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
+      { to: "/verification", label: "Verify", icon: ShieldCheck } // Added Verification
     ] : []),
     { to: "/profile", label: "Profile", icon: UserCircle },
   ];

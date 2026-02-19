@@ -6,8 +6,8 @@ import { useAuth } from "@/hooks/useAuth";
 const BottomNav = () => {
   const { pathname } = useLocation();
   const { role } = useAuth();
-  // DEBUG FORCE: Always explicitly true to test deployment
-  const isManagerOrAdmin = role === "admin" || role === "manager" || role === "md" || true;
+
+  const isManagerOrAdmin = role === "admin" || role === "manager" || role === "md";
 
   const links = [
     { to: "/", label: "Home", icon: LayoutDashboard },
@@ -24,11 +24,6 @@ const BottomNav = () => {
 
   return (
     <>
-      {/* DEBUG: Temporary Role Indicator */}
-      <div className="fixed bottom-20 left-4 bg-red-600 text-white px-2 py-1 rounded z-[100] text-xs font-bold shadow-md">
-        DEBUG: {role || "no-role"}
-      </div>
-
       <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t bg-background/80 backdrop-blur-md py-1.5 safe-area-bottom">
         {links.map(({ to, label, icon: Icon }) => {
           const isActive = pathname === to;

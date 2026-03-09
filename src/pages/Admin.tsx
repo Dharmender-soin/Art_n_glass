@@ -10,11 +10,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Shield, MapPin, Users, UserPlus, Eye, EyeOff, Key, Trash2, Building, Plus, Search } from "lucide-react";
+import { Shield, MapPin, Users, UserPlus, Eye, EyeOff, Key, Trash2, Building, Plus, Search, Tag, Power, PowerOff, Pencil } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
+type VisitWithType = Database["public"]["Enums"]["visit_with_type"];
+
 
 const Admin = () => {
   const { role } = useAuth();
@@ -28,6 +31,17 @@ const Admin = () => {
   const [newShowroom, setNewShowroom] = useState({ name: "", city: "" });
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [createPurposeOpen, setCreatePurposeOpen] = useState(false);
+  const [newPurpose, setNewPurpose] = useState({ purpose_name: "", entity_type: "client" as VisitWithType });
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [editProfileUser, setEditProfileUser] = useState<any>(null);
+  const [editProfileForm, setEditProfileForm] = useState({ full_name: "", phone: "", conveyance_type: "", conveyance_rate: "" });
+  const [showResetPwd, setShowResetPwd] = useState(false);
+  // Alert dialog state
+  const [alertDialog, setAlertDialog] = useState<{ open: boolean; title: string; description: string; onConfirm: () => void; }>({ open: false, title: "", description: "", onConfirm: () => {} });
+  const openAlert = (title: string, description: string, onConfirm: () => void) => setAlertDialog({ open: true, title, description, onConfirm });
+  const closeAlert = () => setAlertDialog(prev => ({ ...prev, open: false }));
+
 
 
 
@@ -69,6 +83,55 @@ const Admin = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["showrooms"] });
       toast.success("Showroom deleted!");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+
+  // Fetch Purposes
+  const { data: purposes = [] } = useQuery({
+    queryKey: ["purpose-masters"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("purpose_masters").select("*").order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const createPurpose = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("purpose_masters").insert([newPurpose]);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purpose-masters"] });
+      toast.success("Purpose added!");
+      setNewPurpose({ purpose_name: "", entity_type: "client" });
+      setCreatePurposeOpen(false);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const togglePurpose = useMutation({
+    mutationFn: async ({ id, is_active }: { id: string, is_active: boolean }) => {
+      const { error } = await supabase.from("purpose_masters").update({ is_active: !is_active }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purpose-masters"] });
+      toast.success("Purpose status toggled!");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deletePurpose = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("purpose_masters").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["purpose-masters"] });
+      toast.success("Purpose deleted!");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -229,6 +292,36 @@ const Admin = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+
+
+
+
+
+
+  // Mutation: Update Profile (name, phone, conveyance)
+  const updateProfile = useMutation({
+    mutationFn: async () => {
+      if (!editProfileUser) return;
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: editProfileForm.full_name,
+          phone: editProfileForm.phone || null,
+          conveyance_type: editProfileForm.conveyance_type || null,
+          conveyance_rate: editProfileForm.conveyance_rate ? Number(editProfileForm.conveyance_rate) : null,
+        })
+        .eq("user_id", editProfileUser.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["all-users-details"] });
+      toast.success("Profile updated successfully!");
+      setEditProfileOpen(false);
+      setEditProfileUser(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   // Filter Users
   const filteredUsers = users.filter((u: any) =>
     u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -247,7 +340,8 @@ const Admin = () => {
   };
 
   return (
-    <div className="space-y-6 pb-10">
+    <>
+      <div className="space-y-6 pb-10">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
@@ -302,15 +396,75 @@ const Admin = () => {
                   variant="ghost"
                   size="icon"
                   className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive"
-                  onClick={() => {
-                    if (confirm("Delete this showroom?")) deleteShowroom.mutate(s.id);
-                  }}
+                  onClick={() => openAlert(
+                    "Delete Showroom",
+                    `Are you sure you want to delete "${s.name}"? This cannot be undone.`,
+                    () => deleteShowroom.mutate(s.id)
+                  )}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
               </Card>
             );
           })}
+        </div>
+      </section>
+
+      <div className="border-t my-8" />
+
+
+      {/* Master Data: Purposes */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Tag className="h-5 w-5" /> Visit Purposes
+          </h2>
+          <Dialog open={createPurposeOpen} onOpenChange={setCreatePurposeOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm"><Plus className="mr-1 h-4 w-4" /> Add Purpose</Button>
+            </DialogTrigger>
+            <DialogContent className="bg-popover">
+              <DialogHeader><DialogTitle>Add New Purpose</DialogTitle></DialogHeader>
+              <form onSubmit={(e) => { e.preventDefault(); createPurpose.mutate(); }} className="space-y-3">
+                <div className="space-y-1"><Label>Purpose Name</Label><Input value={newPurpose.purpose_name} onChange={(e) => setNewPurpose({ ...newPurpose, purpose_name: e.target.value })} required placeholder="e.g. Follow-up meeting" /></div>
+                <div className="space-y-1">
+                  <Label>Entity Type</Label>
+                  <Select value={newPurpose.entity_type} onValueChange={(v: any) => setNewPurpose({ ...newPurpose, entity_type: v })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent className="bg-popover">
+                      <SelectItem value="client">Client</SelectItem>
+                      <SelectItem value="partner">Partner</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button type="submit" className="w-full" disabled={createPurpose.isPending}>Create</Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {purposes.map((p) => (
+            <Card key={p.id} className={`relative group overflow-hidden transition-all shadow-sm border ${p.is_active ? 'border-primary/20' : 'opacity-70 border-border'}`}>
+              <CardContent className="p-4 flex flex-col justify-between h-full">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-semibold text-base">{p.purpose_name}</p>
+                    <p className="text-xs text-muted-foreground capitalize mt-0.5">Type: {p.entity_type}</p>
+                  </div>
+                  <div className="flex gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button variant="ghost" size="icon" className={`h-7 w-7 ${p.is_active ? 'text-orange-500 hover:bg-orange-500/10' : 'text-green-500 hover:bg-green-500/10'}`} onClick={() => togglePurpose.mutate({ id: p.id, is_active: p.is_active || false })} title={p.is_active ? 'Deactivate' : 'Activate'}>
+                        {p.is_active ? <PowerOff className="h-3.5 w-3.5" /> : <Power className="h-3.5 w-3.5" />}
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => openAlert("Delete Purpose", `Delete "${p.purpose_name}"? This cannot be undone.`, () => deletePurpose.mutate(p.id))}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {purposes.length === 0 && <p className="text-muted-foreground text-sm">No purposes defined. Add one to get started.</p>}
         </div>
       </section>
 
@@ -463,16 +617,35 @@ const Admin = () => {
                           <Key className="h-4 w-4" />
                         </Button>
 
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-muted-foreground hover:text-blue-500"
+                            title="Edit Profile"
+                            onClick={() => {
+                              setEditProfileUser(u);
+                              setEditProfileForm({
+                                full_name: u.full_name || "",
+                                phone: u.phone || "",
+                                conveyance_type: u.conveyance_type || "",
+                                conveyance_rate: u.conveyance_rate ? String(u.conveyance_rate) : "",
+                              });
+                              setEditProfileOpen(true);
+                            }}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+
                         <Button
                           variant="ghost"
                           size="sm"
                           className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                           title="Delete User"
-                          onClick={() => {
-                            if (confirm(`Are you sure you want to delete ${u.full_name}? This action cannot be undone.`)) {
-                              deleteUser.mutate(u.id);
-                            }
-                          }}
+                          onClick={() => openAlert(
+                            "Delete User",
+                            `Delete ${u.full_name}? This action cannot be undone and will remove all their data.`,
+                            () => deleteUser.mutate(u.id)
+                          )}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -496,13 +669,18 @@ const Admin = () => {
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label>New Password</Label>
-              <Input
-                type="text"
-                value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="Enter new password"
-                minLength={6}
-              />
+              <div className="relative">
+                <Input
+                  type={showResetPwd ? "text" : "password"}
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="Enter new password"
+                  minLength={6}
+                />
+                <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground" onClick={() => setShowResetPwd(v => !v)}>
+                  {showResetPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
               <p className="text-xs text-muted-foreground">Must be at least 6 characters.</p>
             </div>
           </div>
@@ -514,7 +692,76 @@ const Admin = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div >
+
+      {/* Edit Profile Dialog */}
+      <Dialog open={editProfileOpen} onOpenChange={(open) => { setEditProfileOpen(open); if (!open) setEditProfileUser(null); }}>
+        <DialogContent className="bg-popover sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit Employee Profile</DialogTitle>
+            <CardDescription>Editing profile for <b>{editProfileUser?.full_name}</b></CardDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); updateProfile.mutate(); }} className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label>Full Name</Label>
+              <Input value={editProfileForm.full_name} onChange={(e) => setEditProfileForm({ ...editProfileForm, full_name: e.target.value })} required />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Phone</Label>
+              <Input value={editProfileForm.phone} onChange={(e) => setEditProfileForm({ ...editProfileForm, phone: e.target.value })} placeholder="+91 XXXXX XXXXX" />
+            </div>
+            <div className="border-t pt-4">
+              <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider mb-3">Conveyance Settings</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Vehicle Type</Label>
+                  <Select value={editProfileForm.conveyance_type || "none"} onValueChange={(v) => setEditProfileForm({ ...editProfileForm, conveyance_type: v === "none" ? "" : v, conveyance_rate: v === "car" ? "8" : v === "bike" ? "4" : editProfileForm.conveyance_rate })}>
+                    <SelectTrigger><SelectValue placeholder="Select type..." /></SelectTrigger>
+                    <SelectContent className="bg-popover">
+                      <SelectItem value="none">No Vehicle</SelectItem>
+                      <SelectItem value="car">🚗 Car (₹8/km default)</SelectItem>
+                      <SelectItem value="bike">🏍 Bike (₹4/km default)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Rate (₹ per km)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.5"
+                    value={editProfileForm.conveyance_rate}
+                    onChange={(e) => setEditProfileForm({ ...editProfileForm, conveyance_rate: e.target.value })}
+                    placeholder="e.g. 8"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">Selecting a vehicle auto-fills the default rate. You can override it.</p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setEditProfileOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={updateProfile.isPending}>
+                {updateProfile.isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </div>
+
+      {/* Global Alert Dialog */}
+      <AlertDialog open={alertDialog.open} onOpenChange={(open) => !open && closeAlert()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{alertDialog.title}</AlertDialogTitle>
+            <AlertDialogDescription>{alertDialog.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90" onClick={() => { alertDialog.onConfirm(); closeAlert(); }}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };
 

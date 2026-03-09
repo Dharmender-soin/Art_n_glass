@@ -373,8 +373,8 @@ const ExecutiveCard = ({ exec, showroomName, getEntityName }: { exec: any, showr
         <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-100">
 
           <VisitColumn
-            title="Yesterday Planned"
-            subtitle="Previous target"
+            title="Missed / Overdue"
+            subtitle="Pending from yesterday"
             visits={exec.ydayVisits.filter((v: any) => v.status === "planned")}
             type="pending"
             getEntityName={getEntityName}

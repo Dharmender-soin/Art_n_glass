@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ShieldCheck, IndianRupee, Package, CheckCircle, XCircle, Clock, Filter, Search, Sparkles, Building2, User } from "lucide-react";
+import { ShieldCheck, IndianRupee, Package, CheckCircle, XCircle, Clock, Filter, Search, Sparkles, Building2, User, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const Verification = () => {
@@ -124,14 +124,14 @@ const Verification = () => {
   const resetForm = () => {
     setVerifiedAmount("");
     setVerificationRemarks("");
-    setWorkStatus("pending");
+    setWorkStatus("submitted");
   };
 
   const openVerifyDialog = (item: any) => {
     setSelectedItem(item);
     setVerifiedAmount(item.verified_amount?.toString() || item.amount_in_lac?.toString() || "");
     setVerificationRemarks(item.verification_remarks || "");
-    setWorkStatus(item.work_status || "pending");
+    setWorkStatus(item.work_status || "submitted");
   };
 
   const filteredItems = useMemo(() => {
@@ -170,7 +170,7 @@ const Verification = () => {
   };
 
   return (
-    <div className="space-y-6 min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50 p-6 -m-6 animate-in fade-in duration-500">
+    <div className="space-y-6 min-h-screen bg-background p-6 -m-6 animate-in fade-in duration-500">
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between sticky top-0 z-20 bg-background/80 backdrop-blur-lg pb-4 border-b">
         <div>
@@ -192,9 +192,12 @@ const Verification = () => {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="submitted">Submitted</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="won">Won</SelectItem>
                 <SelectItem value="lost">Lost</SelectItem>
+                <SelectItem value="rejected">Rejected</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -255,7 +258,7 @@ const Verification = () => {
                       {Object.entries(execGroups).map(([execId, items]: [string, any]) => {
                         const profile = profileMap[execId];
                         return (
-                          <AccordionItem key={execId} value={execId} className="border rounded-lg bg-white/50 overflow-hidden px-2">
+                          <AccordionItem key={execId} value={execId} className="border rounded-lg bg-card overflow-hidden px-2">
                             <AccordionTrigger className="hover:no-underline py-3 px-2">
                               <div className="flex items-center gap-3 w-full">
                                 <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
@@ -309,7 +312,7 @@ const Verification = () => {
                       {Object.entries(execGroups).map(([execId, items]: [string, any]) => {
                         const profile = profileMap[execId];
                         return (
-                          <AccordionItem key={execId} value={execId} className="border rounded-lg bg-white/50 overflow-hidden px-2">
+                          <AccordionItem key={execId} value={execId} className="border rounded-lg bg-card overflow-hidden px-2">
                             <AccordionTrigger className="hover:no-underline py-3 px-2">
                               <div className="flex items-center gap-3 w-full">
                                 <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
@@ -365,7 +368,7 @@ const Verification = () => {
                     return Object.entries(execGroups).map(([execId, items]: [string, any]) => {
                       const profile = profileMap[execId];
                       return (
-                        <AccordionItem key={execId} value={execId} className="border rounded-lg bg-white/50 overflow-hidden px-2">
+                          <AccordionItem key={execId} value={execId} className="border rounded-lg bg-card overflow-hidden px-2">
                           <AccordionTrigger className="hover:no-underline py-3 px-2">
                             <div className="flex items-center gap-3 w-full">
                               <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary">
@@ -404,7 +407,7 @@ const Verification = () => {
 
       {/* Dialog */}
       <Dialog open={!!selectedItem} onOpenChange={(open) => { if (!open) { setSelectedItem(null); resetForm(); } }}>
-        <DialogContent className="sm:max-w-md bg-white data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] duration-200">
+        <DialogContent className="sm:max-w-md bg-popover">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-xl">
               <Sparkles className="h-5 w-5 text-primary" />
@@ -451,9 +454,12 @@ const Verification = () => {
                     <Select value={workStatus} onValueChange={setWorkStatus}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="draft">Draft</SelectItem>
+                        <SelectItem value="submitted">Submitted</SelectItem>
                         <SelectItem value="pending">Pending</SelectItem>
                         <SelectItem value="won">Won</SelectItem>
                         <SelectItem value="lost">Lost</SelectItem>
+                        <SelectItem value="rejected">Rejected</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -494,7 +500,7 @@ const StatsCard = ({ icon, label, value, color, delay }: { icon: React.ReactNode
     animate={{ opacity: 1, y: 0 }}
     transition={{ delay, duration: 0.4 }}
   >
-    <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group bg-white/60 backdrop-blur-xl">
+    <Card className="border-none shadow-sm hover:shadow-md transition-all duration-300 relative overflow-hidden group bg-card">
       <div className={`absolute inset-0 bg-gradient-to-br from-${color}-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
       <div className={`absolute left-0 bottom-0 top-0 w-1 bg-${color}-500/50 rounded-r-full`} />
       <CardContent className="p-3 text-center relative z-10">
@@ -512,23 +518,29 @@ const VerificationCard = ({ item, onVerify }: { item: any, onVerify: () => void 
   const statusColors = {
     won: "text-emerald-600 bg-emerald-50 border-emerald-100",
     lost: "text-rose-600 bg-rose-50 border-rose-100",
-    pending: "text-amber-600 bg-amber-50 border-amber-100"
+    pending: "text-amber-600 bg-amber-50 border-amber-100",
+    draft: "text-gray-600 bg-gray-50 border-gray-100",
+    submitted: "text-blue-600 bg-blue-50 border-blue-100",
+    rejected: "text-red-600 bg-red-50 border-red-100"
   };
 
   const statusIcon = {
     won: <CheckCircle className="h-3 w-3" />,
     lost: <XCircle className="h-3 w-3" />,
-    pending: <Clock className="h-3 w-3" />
+    pending: <Clock className="h-3 w-3" />,
+    draft: <FileText className="h-3 w-3" />,
+    submitted: <Package className="h-3 w-3" />,
+    rejected: <XCircle className="h-3 w-3" />
   };
 
-  const status = item.work_status as keyof typeof statusColors || "pending";
+  const status = item.work_status as keyof typeof statusColors || "submitted";
 
   return (
-    <Card className="border-none shadow-sm hover:shadow-xl transition-all duration-300 bg-white/70 backdrop-blur-md overflow-hidden group h-full flex flex-col">
+    <Card className="border-none shadow-sm hover:shadow-xl transition-all duration-300 bg-card overflow-hidden group h-full flex flex-col">
       <div className="p-4 flex-1">
         <div className="flex justify-between items-start gap-4 mb-3">
           <div className="min-w-0">
-            <h3 className="font-semibold text-gray-900 truncate pr-2">{item.clients?.name || "—"}</h3>
+            <h3 className="font-semibold text-foreground truncate pr-2">{item.clients?.name || "—"}</h3>
             <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
               <Building2 className="h-3 w-3" />
               {item.clients?.city || "Unknown City"}
@@ -540,19 +552,19 @@ const VerificationCard = ({ item, onVerify }: { item: any, onVerify: () => void 
         </div>
 
         <div className="space-y-3">
-          <div className="bg-gray-50/80 p-2.5 rounded-lg border border-gray-100 group-hover:border-primary/20 transition-colors">
+          <div className="bg-muted/50 p-2.5 rounded-lg border border-border group-hover:border-primary/20 transition-colors">
             <p className="text-xs text-muted-foreground mb-1 uppercase tracking-wider font-semibold">Scope of Work</p>
-            <div className="text-sm font-medium text-gray-800">
+            <div className="text-sm font-medium text-foreground">
               {item.master_work_types?.type_of_work}
             </div>
-            <div className="text-xs text-gray-500 mt-0.5">
+            <div className="text-xs text-muted-foreground mt-0.5">
               {item.master_work_types?.sub_work}
               {item.quantity && <span className="ml-1">• Qty: {item.quantity}</span>}
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <div className="p-2 rounded-lg bg-gray-50/50">
+            <div className="p-2 rounded-lg bg-muted/40">
               <p className="text-[10px] text-muted-foreground uppercase">Estimated</p>
               <p className="font-semibold text-sm">₹{item.amount_in_lac || 0} L</p>
             </div>
@@ -572,7 +584,7 @@ const VerificationCard = ({ item, onVerify }: { item: any, onVerify: () => void 
         </div>
       </div>
 
-      <div className="p-3 bg-gray-50/50 border-t flex items-center justify-between gap-3">
+      <div className="p-3 bg-muted/30 border-t flex items-center justify-between gap-3">
         {item.is_verified ? (
           <div className="flex items-center gap-1.5 text-emerald-600 text-xs font-medium px-2">
             <ShieldCheck className="h-4 w-4" /> Verified

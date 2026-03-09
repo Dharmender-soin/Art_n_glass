@@ -52,6 +52,7 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
         description: description || null,
         quantity: quantity ? parseInt(quantity) : null,
         amount_in_lac: amountInLac ? parseFloat(amountInLac) : null,
+        work_status: "submitted",
         created_by: user!.id,
       });
       if (error) throw error;

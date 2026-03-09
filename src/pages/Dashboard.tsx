@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ExecutiveHome } from "@/components/dashboard/ExecutiveHome";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Building2, Users, CalendarCheck, Briefcase, Activity, TrendingUp, ArrowUpRight,
@@ -67,31 +68,30 @@ const itemVariants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.35 } },
 };
 
-// ─── Stat Card ──────────────────────────────────────
 const StatCard = ({ label, value, icon: Icon, color, bg, trend, sub }: {
   label: string; value: string | number; icon: any; color: string; bg: string;
   trend?: string; sub?: string;
 }) => (
   <motion.div variants={itemVariants} whileHover={{ y: -4 }} transition={{ type: "spring", stiffness: 300 }}>
-    <Card className="border-none shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative h-full">
+    <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative h-full">
       <div className={`absolute top-0 right-0 p-3 opacity-10 ${color}`}>
         <Icon className="h-16 w-16 -mr-4 -mt-4 transform rotate-12" />
       </div>
       <CardContent className="p-5 relative z-10">
-        <div className={`w-9 h-9 rounded-lg ${bg} ${color} flex items-center justify-center mb-3`}>
+        <div className={`w-9 h-9 rounded-lg ${bg} ${color} flex items-center justify-center mb-3 border border-[#F5F5F7]/5 shadow-inner`}>
           <Icon className="h-4 w-4" />
         </div>
         <div className="space-y-0.5">
           <div className="flex items-baseline gap-2">
-            <p className="text-2xl font-bold tracking-tight">{value}</p>
+            <p className="text-2xl font-bold tracking-tight text-[#F5F5F7] font-mono">{value}</p>
             {trend && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#2E7D32]">
                 <ArrowUpRight className="h-2.5 w-2.5" />{trend}
               </span>
             )}
           </div>
-          <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          {sub && <p className="text-[10px] text-muted-foreground/70 mt-1">{sub}</p>}
+          <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE]">{label}</p>
+          {sub && <p className="text-[10px] text-[#8E939D] mt-1 font-medium">{sub}</p>}
         </div>
       </CardContent>
     </Card>
@@ -107,9 +107,9 @@ const RankBadge = ({ rank }: { rank: number }) => {
 };
 
 // ═══════════════════════════════════════════════════
-// ─── Main Dashboard Component ─────────────────────
+// ─── Analytics Dashboard Component ────────────────
 // ═══════════════════════════════════════════════════
-const Dashboard = () => {
+const AnalyticsDashboard = () => {
   const { user, role, showroomId: myShowroomId } = useAuth();
 
   const isMd = role === "md";
@@ -445,12 +445,13 @@ const Dashboard = () => {
   // ─── RENDER ─────────────────────────────────────
   // ═══════════════════════════════════════════════════
   return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="show"
-      className="space-y-6 pb-20"
-    >
+    <div className="-m-4 md:-m-6 lg:-m-8 -mb-20 md:-mb-8 min-h-[calc(100vh-3.5rem)] bg-[#0A0B0E] text-[#F5F5F7] font-sans pb-24 selection:bg-[#A6192E]/30 relative overflow-x-hidden">
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="show"
+        className="space-y-6 pt-6 px-4 md:px-6 lg:px-8"
+      >
       {/* ── Header ── */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
         <motion.div variants={itemVariants} className="space-y-1">
@@ -507,11 +508,11 @@ const Dashboard = () => {
       {/* ── Main Content Tabs ── */}
       <Tabs defaultValue="overview" className="space-y-4">
         <motion.div variants={itemVariants}>
-          <TabsList className="bg-muted/50 p-1 h-auto flex-wrap">
-            <TabsTrigger value="overview" className="text-xs gap-1.5"><BarChart3 className="h-3.5 w-3.5" />Overview</TabsTrigger>
-            <TabsTrigger value="top-visited" className="text-xs gap-1.5"><Star className="h-3.5 w-3.5" />Top Visited</TabsTrigger>
-            {canSeeShowroom && <TabsTrigger value="team" className="text-xs gap-1.5"><Award className="h-3.5 w-3.5" />Team Performance</TabsTrigger>}
-            {canSeeAll && <TabsTrigger value="comparison" className="text-xs gap-1.5"><GitCompare className="h-3.5 w-3.5" />Compare Showrooms</TabsTrigger>}
+          <TabsList className="bg-[#12141A] border border-[#F5F5F7]/5 p-1 h-auto flex-wrap rounded-xl">
+            <TabsTrigger value="overview" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><BarChart3 className="h-3.5 w-3.5" />Overview</TabsTrigger>
+            <TabsTrigger value="top-visited" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><Star className="h-3.5 w-3.5" />Top Visited</TabsTrigger>
+            {canSeeShowroom && <TabsTrigger value="team" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><Award className="h-3.5 w-3.5" />Team Performance</TabsTrigger>}
+            {canSeeAll && <TabsTrigger value="comparison" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><GitCompare className="h-3.5 w-3.5" />Compare Showrooms</TabsTrigger>}
           </TabsList>
         </motion.div>
 
@@ -520,23 +521,23 @@ const Dashboard = () => {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
             {/* Bar Chart */}
             <motion.div variants={itemVariants} className="col-span-full lg:col-span-4">
-              <Card className="h-full">
+              <Card className="h-full bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
                 <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <TrendingUp className="h-4 w-4 text-primary" />Visit Trends
+                  <CardTitle className="flex items-center gap-2 text-base text-[#F5F5F7]">
+                    <TrendingUp className="h-4 w-4 text-[#A6192E]" />Visit Trends
                   </CardTitle>
-                  <CardDescription>Daily visits — last 7 days</CardDescription>
+                  <CardDescription className="text-[#A1A5AE]">Daily visits — last 7 days</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="h-[260px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart data={barData} barCategoryGap="20%">
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
-                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} allowDecimals={false} />
-                        <Tooltip cursor={{ fill: "hsl(var(--accent))" }} contentStyle={{ borderRadius: "10px", border: "1px solid hsl(var(--border))", boxShadow: "var(--shadow-lg)", background: "hsl(var(--card))", fontSize: "13px" }} />
-                        <Bar dataKey="visits" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} maxBarSize={36} name="Total" />
-                        <Bar dataKey="done" fill="hsl(142, 72%, 42%)" radius={[6, 6, 0, 0]} maxBarSize={36} name="Completed" />
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1A1D24" />
+                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#A1A5AE" }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11, fill: "#A1A5AE" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                        <Tooltip cursor={{ fill: "#1A1D24" }} contentStyle={{ borderRadius: "10px", border: "1px solid rgba(245,245,247,0.05)", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)", background: "#12141A", color: "#F5F5F7", fontSize: "13px" }} />
+                        <Bar dataKey="visits" fill="#1A1D24" radius={[6, 6, 0, 0]} maxBarSize={36} name="Total" />
+                        <Bar dataKey="done" fill="#2E7D32" radius={[6, 6, 0, 0]} maxBarSize={36} name="Completed" />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -547,9 +548,9 @@ const Dashboard = () => {
             {/* Right Side - Donut Charts */}
             <motion.div variants={itemVariants} className="col-span-full lg:col-span-3 space-y-4">
               {/* Visit Status Pie */}
-              <Card>
+              <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Visit Status</CardTitle>
+                  <CardTitle className="text-base text-[#F5F5F7]">Visit Status</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-[180px] w-full">
@@ -558,18 +559,18 @@ const Dashboard = () => {
                         <Pie data={visitPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="value" strokeWidth={0}>
                           {visitPieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                         </Pie>
-                        <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))", fontSize: "12px" }} />
-                        <Legend verticalAlign="bottom" height={28} iconType="circle" iconSize={7} formatter={(v: string) => <span style={{ color: "hsl(var(--foreground))", fontSize: "11px" }}>{v}</span>} />
+                        <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid rgba(245,245,247,0.05)", background: "#1A1D24", color: "#F5F5F7", fontSize: "12px" }} itemStyle={{ color: "#F5F5F7" }} />
+                        <Legend verticalAlign="bottom" height={28} iconType="circle" iconSize={7} formatter={(v: string) => <span style={{ color: "#A1A5AE", fontSize: "11px" }}>{v}</span>} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
                 </CardContent>
               </Card>
-
+              
               {/* Order Status Pie */}
-              <Card>
+              <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Order Status</CardTitle>
+                  <CardTitle className="text-base text-[#F5F5F7]">Order Status</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="h-[180px] w-full">
@@ -578,8 +579,8 @@ const Dashboard = () => {
                         <Pie data={orderPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="value" strokeWidth={0}>
                           {orderPieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                         </Pie>
-                        <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))", fontSize: "12px" }} />
-                        <Legend verticalAlign="bottom" height={28} iconType="circle" iconSize={7} formatter={(v: string) => <span style={{ color: "hsl(var(--foreground))", fontSize: "11px" }}>{v}</span>} />
+                        <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid rgba(245,245,247,0.05)", background: "#1A1D24", color: "#F5F5F7", fontSize: "12px" }} itemStyle={{ color: "#F5F5F7" }} />
+                        <Legend verticalAlign="bottom" height={28} iconType="circle" iconSize={7} formatter={(v: string) => <span style={{ color: "#A1A5AE", fontSize: "11px" }}>{v}</span>} />
                       </PieChart>
                     </ResponsiveContainer>
                   </div>
@@ -590,33 +591,33 @@ const Dashboard = () => {
 
           {/* Recent Activity */}
           <motion.div variants={itemVariants}>
-            <Card>
+            <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Activity className="h-4 w-4 text-primary" />Recent Activity
+                <CardTitle className="flex items-center gap-2 text-base text-[#F5F5F7]">
+                  <Activity className="h-4 w-4 text-[#A6192E]" />Recent Activity
                 </CardTitle>
-                <CardDescription>Latest updates</CardDescription>
+                <CardDescription className="text-[#A1A5AE]">Latest updates</CardDescription>
               </CardHeader>
               <CardContent>
                 {recentActivity.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
-                      <Activity className="h-5 w-5 text-muted-foreground" />
+                    <div className="h-12 w-12 rounded-full bg-[#1A1D24] flex items-center justify-center mb-3">
+                      <Activity className="h-5 w-5 text-[#8E939D]" />
                     </div>
-                    <p className="text-sm text-muted-foreground">No recent activity found.</p>
+                    <p className="text-sm text-[#A1A5AE]">No recent activity found.</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-0">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     {recentActivity.map((a, i) => (
-                      <div key={i} className="flex items-center gap-3 px-3 py-3 rounded-lg transition-colors duration-150 hover:bg-accent/50">
+                      <div key={i} className="flex items-center gap-3 px-4 py-3 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 transition-colors duration-150 hover:bg-[#F5F5F7]/10">
                         <div className={`w-2 h-2 rounded-full shrink-0 ${statusColor[a.status] || "bg-gray-400"}`} />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium leading-tight truncate">{a.desc}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{a.time}</p>
+                          <p className="text-sm font-semibold text-[#F5F5F7] leading-tight truncate">{a.desc}</p>
+                          <p className="text-xs text-[#8E939D] mt-0.5">{a.time}</p>
                         </div>
-                        <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full shrink-0 ${a.status === "done" ? "bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400" :
-                            a.status === "planned" ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400" :
-                              "bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400"
+                        <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded shrink-0 ${a.status === "done" ? "bg-[#2E7D32]/20 text-[#2E7D32]" :
+                          a.status === "planned" ? "bg-[#2B6CB0]/20 text-[#3182CE]" :
+                            "bg-[#C21833]/20 text-[#C21833]"
                           }`}>
                           {a.statusLabel}
                         </span>
@@ -634,30 +635,30 @@ const Dashboard = () => {
           <motion.div variants={containerVariants} className="grid gap-4 md:grid-cols-2">
             {/* Top Partners */}
             <motion.div variants={itemVariants}>
-              <Card className="h-full">
+              <Card className="h-full bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Building2 className="h-4 w-4 text-purple-500" />Top Visited Partners
+                    <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
+                      <Building2 className="h-4 w-4 text-[#C21833]" />Top Visited Partners
                     </CardTitle>
-                    <Badge variant="outline" className="font-mono text-xs">{topPartners.length}</Badge>
+                    <Badge variant="outline" className="font-mono text-xs border-[#F5F5F7]/10 text-[#A1A5AE] bg-[#1A1D24]">{topPartners.length}</Badge>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <ScrollArea className="h-[400px]">
                     {topPartners.length === 0 ? (
-                      <p className="text-center text-sm text-muted-foreground py-10">No partner visits found.</p>
+                      <p className="text-center text-sm text-[#A1A5AE] py-10">No partner visits found.</p>
                     ) : (
                       <div className="space-y-2">
                         {topPartners.map((p, i) => (
-                          <div key={i} className="flex items-center gap-3 p-3 rounded-xl hover:bg-accent/50 transition-colors">
+                          <div key={i} className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#F5F5F7]/5 transition-colors border border-transparent hover:border-[#F5F5F7]/10">
                             <RankBadge rank={i + 1} />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold truncate">{p.name}</p>
+                              <p className="text-sm font-semibold truncate text-[#F5F5F7]">{p.name}</p>
                             </div>
                             <div className="text-right">
-                              <p className="text-lg font-bold text-primary">{p.count}</p>
-                              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">visits</p>
+                              <p className="text-lg font-bold text-[#F5F5F7] font-mono">{p.count}</p>
+                              <p className="text-[9px] text-[#8E939D] uppercase tracking-wider font-semibold">visits</p>
                             </div>
                           </div>
                         ))}
@@ -670,30 +671,30 @@ const Dashboard = () => {
 
             {/* Top Clients */}
             <motion.div variants={itemVariants}>
-              <Card className="h-full">
+              <Card className="h-full bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <Users className="h-4 w-4 text-blue-500" />Top Visited Clients
+                    <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
+                      <Users className="h-4 w-4 text-[#A6192E]" />Top Visited Clients
                     </CardTitle>
-                    <Badge variant="outline" className="font-mono text-xs">{topClients.length}</Badge>
+                    <Badge variant="outline" className="font-mono text-xs border-[#F5F5F7]/10 text-[#A1A5AE] bg-[#1A1D24]">{topClients.length}</Badge>
                   </div>
                 </CardHeader>
                 <CardContent>
                   <ScrollArea className="h-[400px]">
                     {topClients.length === 0 ? (
-                      <p className="text-center text-sm text-muted-foreground py-10">No client visits found.</p>
+                      <p className="text-center text-sm text-[#A1A5AE] py-10">No client visits found.</p>
                     ) : (
                       <div className="space-y-2">
                         {topClients.map((c, i) => (
-                          <div key={i} className="flex items-center gap-3 p-3 rounded-xl hover:bg-accent/50 transition-colors">
+                          <div key={i} className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#F5F5F7]/5 transition-colors border border-transparent hover:border-[#F5F5F7]/10">
                             <RankBadge rank={i + 1} />
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold truncate">{c.name}</p>
+                              <p className="text-sm font-semibold truncate text-[#F5F5F7]">{c.name}</p>
                             </div>
                             <div className="text-right">
-                              <p className="text-lg font-bold text-primary">{c.count}</p>
-                              <p className="text-[10px] text-muted-foreground uppercase tracking-wider">visits</p>
+                              <p className="text-lg font-bold text-[#F5F5F7] font-mono">{c.count}</p>
+                              <p className="text-[9px] text-[#8E939D] uppercase tracking-wider font-semibold">visits</p>
                             </div>
                           </div>
                         ))}
@@ -707,29 +708,29 @@ const Dashboard = () => {
 
           {/* New Additions This Month */}
           <motion.div variants={itemVariants}>
-            <Card>
+            <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
               <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2">
-                  <UserPlus className="h-4 w-4 text-emerald-500" />New Additions This Month
+                <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
+                  <UserPlus className="h-4 w-4 text-[#A6192E]" />New Additions This Month
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-4 bg-emerald-500/5 rounded-xl border border-emerald-500/10">
-                    <p className="text-3xl font-bold text-emerald-600">{metrics.newClientsThisMonth}</p>
-                    <p className="text-xs text-muted-foreground mt-1">New Clients</p>
+                  <div className="text-center p-4 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 shadow-inner">
+                    <p className="text-3xl font-bold font-mono text-[#F5F5F7]">{metrics.newClientsThisMonth}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE] mt-1">New Clients</p>
                   </div>
-                  <div className="text-center p-4 bg-purple-500/5 rounded-xl border border-purple-500/10">
-                    <p className="text-3xl font-bold text-purple-600">{metrics.newPartnersThisMonth}</p>
-                    <p className="text-xs text-muted-foreground mt-1">New Partners</p>
+                  <div className="text-center p-4 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 shadow-inner">
+                    <p className="text-3xl font-bold font-mono text-[#F5F5F7]">{metrics.newPartnersThisMonth}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE] mt-1">New Partners</p>
                   </div>
-                  <div className="text-center p-4 bg-blue-500/5 rounded-xl border border-blue-500/10">
-                    <p className="text-3xl font-bold text-blue-600">{metrics.ordersWon}</p>
-                    <p className="text-xs text-muted-foreground mt-1">Orders Won</p>
+                  <div className="text-center p-4 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 shadow-inner">
+                    <p className="text-3xl font-bold font-mono text-[#2E7D32]">{metrics.ordersWon}</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE] mt-1">Orders Won</p>
                   </div>
-                  <div className="text-center p-4 bg-amber-500/5 rounded-xl border border-amber-500/10">
-                    <p className="text-3xl font-bold text-amber-600">₹{metrics.wonOrderValue.toFixed(1)}L</p>
-                    <p className="text-xs text-muted-foreground mt-1">Revenue Won</p>
+                  <div className="text-center p-4 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 shadow-inner">
+                    <p className="text-3xl font-bold font-mono text-[#D4AF37]">₹{metrics.wonOrderValue.toFixed(1)}L</p>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE] mt-1">Revenue Won</p>
                   </div>
                 </div>
               </CardContent>
@@ -741,23 +742,23 @@ const Dashboard = () => {
         {canSeeShowroom && (
           <TabsContent value="team" className="space-y-4 mt-0">
             <motion.div variants={itemVariants}>
-              <Card className="overflow-hidden">
-                <CardHeader className="bg-muted/30 border-b">
+              <Card className="overflow-hidden bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
+                <CardHeader className="bg-[#1A1D24] border-b border-[#F5F5F7]/5">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <Trophy className="h-4 w-4 text-amber-500" />Employee Performance Leaderboard
+                      <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
+                        <Trophy className="h-4 w-4 text-[#D4AF37]" />Employee Performance Leaderboard
                       </CardTitle>
-                      <CardDescription>Ranked by completed visits</CardDescription>
+                      <CardDescription className="text-[#A1A5AE]">Ranked by completed visits</CardDescription>
                     </div>
-                    <Badge variant="secondary" className="font-mono text-xs">{execPerformance.length} Executives</Badge>
+                    <Badge variant="secondary" className="font-mono text-xs bg-[#12141A] text-[#F5F5F7] border-[#F5F5F7]/10">{execPerformance.length} Executives</Badge>
                   </div>
                 </CardHeader>
                 <CardContent className="p-0">
                   <ScrollArea className="h-[600px]">
                     <div className="p-4 space-y-2">
                       {execPerformance.length === 0 ? (
-                        <p className="text-center text-sm text-muted-foreground py-10">No executive data found.</p>
+                        <p className="text-center text-sm text-[#A1A5AE] py-10">No executive data found.</p>
                       ) : (
                         execPerformance.map((exec, i) => (
                           <motion.div
@@ -765,37 +766,37 @@ const Dashboard = () => {
                             initial={{ opacity: 0, x: -20 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: i * 0.04 }}
-                            className={`flex items-center gap-4 p-4 rounded-xl border transition-all hover:shadow-md ${i === 0 ? "bg-gradient-to-r from-yellow-50/80 to-amber-50/40 border-yellow-200/50 dark:from-yellow-900/10 dark:to-transparent dark:border-yellow-800/30" :
-                                i === 1 ? "bg-gradient-to-r from-gray-50/80 to-slate-50/40 border-gray-200/50 dark:from-gray-900/10 dark:to-transparent dark:border-gray-800/30" :
-                                  i === 2 ? "bg-gradient-to-r from-orange-50/80 to-amber-50/40 border-orange-200/50 dark:from-orange-900/10 dark:to-transparent dark:border-orange-800/30" :
-                                    "bg-card"
+                            className={`flex items-center gap-4 p-4 rounded-xl border transition-all hover:shadow-md ${i === 0 ? "bg-gradient-to-r from-[#D4AF37]/10 to-transparent border-[#D4AF37]/30" :
+                              i === 1 ? "bg-gradient-to-r from-[#F5F5F7]/10 to-transparent border-[#F5F5F7]/20" :
+                                i === 2 ? "bg-gradient-to-r from-[#B08D57]/10 to-transparent border-[#B08D57]/30" :
+                                  "bg-[#1A1D24] border-[#F5F5F7]/5"
                               }`}
                           >
                             <RankBadge rank={i + 1} />
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-sm truncate">{exec.name}</p>
-                              {canSeeAll && <p className="text-[10px] text-muted-foreground">{exec.showroomName}</p>}
+                              <p className="font-semibold text-sm truncate text-[#F5F5F7]">{exec.name}</p>
+                              {canSeeAll && <p className="text-[10px] text-[#8E939D]">{exec.showroomName}</p>}
                             </div>
                             <div className="grid grid-cols-5 gap-3 text-center">
                               <div>
-                                <p className="text-sm font-bold">{exec.completedVisits}</p>
-                                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Done</p>
+                                <p className="text-sm font-bold text-[#F5F5F7] font-mono">{exec.completedVisits}</p>
+                                <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Done</p>
                               </div>
                               <div>
-                                <p className="text-sm font-bold">{exec.completionRate}%</p>
-                                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Rate</p>
+                                <p className="text-sm font-bold text-[#F5F5F7] font-mono">{exec.completionRate}%</p>
+                                <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Rate</p>
                               </div>
                               <div>
-                                <p className="text-sm font-bold">{exec.clientsAdded}</p>
-                                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Clients</p>
+                                <p className="text-sm font-bold text-[#F5F5F7] font-mono">{exec.clientsAdded}</p>
+                                <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Clients</p>
                               </div>
                               <div>
-                                <p className="text-sm font-bold">{exec.ordersWon}</p>
-                                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Won</p>
+                                <p className="text-sm font-bold text-[#F5F5F7] font-mono">{exec.ordersWon}</p>
+                                <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Won</p>
                               </div>
                               <div>
-                                <p className="text-sm font-bold text-primary">₹{exec.orderValue.toFixed(1)}L</p>
-                                <p className="text-[9px] text-muted-foreground uppercase tracking-wider">Value</p>
+                                <p className="text-sm font-bold text-[#2E7D32] font-mono">₹{exec.orderValue.toFixed(1)}L</p>
+                                <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Value</p>
                               </div>
                             </div>
                           </motion.div>
@@ -815,25 +816,25 @@ const Dashboard = () => {
             {/* Radar Comparison Chart */}
             {showroomComparison.length > 0 && (
               <motion.div variants={itemVariants}>
-                <Card>
+                <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
                   <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <GitCompare className="h-4 w-4 text-primary" />Showroom Comparison
+                    <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
+                      <GitCompare className="h-4 w-4 text-[#A6192E]" />Showroom Comparison
                     </CardTitle>
-                    <CardDescription>Normalized performance metrics across showrooms</CardDescription>
+                    <CardDescription className="text-[#A1A5AE]">Normalized performance metrics across showrooms</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="h-[350px] w-full">
                       <ResponsiveContainer width="100%" height="100%">
                         <RadarChart outerRadius="75%" data={radarData}>
-                          <PolarGrid stroke="hsl(var(--border))" />
-                          <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} />
+                          <PolarGrid stroke="#1A1D24" />
+                          <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: "#A1A5AE" }} />
                           <PolarRadiusAxis tick={false} axisLine={false} />
                           {showroomComparison.slice(0, 5).map((sr, i) => (
                             <Radar key={sr.showroomId} name={sr.showroomName} dataKey={sr.showroomName} stroke={radarColors[i]} fill={radarColors[i]} fillOpacity={0.15} strokeWidth={2} />
                           ))}
-                          <Legend iconType="circle" iconSize={8} formatter={(v: string) => <span style={{ color: "hsl(var(--foreground))", fontSize: "12px" }}>{v}</span>} />
-                          <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid hsl(var(--border))", background: "hsl(var(--card))", fontSize: "12px" }} />
+                          <Legend iconType="circle" iconSize={8} formatter={(v: string) => <span style={{ color: "#A1A5AE", fontSize: "12px" }}>{v}</span>} />
+                          <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid rgba(245,245,247,0.05)", background: "#1A1D24", color: "#F5F5F7", fontSize: "12px" }} itemStyle={{ color: "#F5F5F7" }} />
                         </RadarChart>
                       </ResponsiveContainer>
                     </div>
@@ -846,79 +847,79 @@ const Dashboard = () => {
             <motion.div variants={containerVariants} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {showroomComparison.map((sr, i) => (
                 <motion.div key={sr.showroomId} variants={itemVariants}>
-                  <Card className={`overflow-hidden h-full ${i === 0 ? "ring-2 ring-primary/20" : ""}`}>
-                    <CardHeader className="pb-3 bg-gradient-to-r from-muted/50 to-transparent">
+                  <Card className={`overflow-hidden h-full bg-[#12141A] border-[#F5F5F7]/5 shadow-sm ${i === 0 ? "ring-1 ring-[#D4AF37]/50" : ""}`}>
+                    <CardHeader className="pb-3 bg-[#1A1D24] border-b border-[#F5F5F7]/5">
                       <div className="flex items-center justify-between">
                         <div>
-                          <CardTitle className="text-base flex items-center gap-2">
-                            {i === 0 && <Crown className="h-4 w-4 text-amber-500" />}
+                          <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
+                            {i === 0 && <Crown className="h-4 w-4 text-[#D4AF37]" />}
                             {sr.showroomName}
                           </CardTitle>
-                          <CardDescription className="text-xs">{sr.showroomCity} · {sr.executiveCount} executives</CardDescription>
+                          <CardDescription className="text-xs text-[#8E939D]">{sr.showroomCity} · {sr.executiveCount} executives</CardDescription>
                         </div>
-                        {i === 0 && <Badge className="bg-amber-500/10 text-amber-600 border-amber-500/20 text-[10px]">Top Performer</Badge>}
+                        {i === 0 && <Badge className="bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20 text-[10px]">Top Performer</Badge>}
                       </div>
                     </CardHeader>
-                    <CardContent className="space-y-3">
+                    <CardContent className="space-y-3 pt-4">
                       {/* Visits */}
                       <div className="space-y-1.5">
-                        <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground flex items-center gap-1"><CalendarCheck className="h-3 w-3" />Visits</p>
+                        <p className="text-[10px] uppercase font-bold tracking-wider text-[#A1A5AE] flex items-center gap-1"><CalendarCheck className="h-3 w-3" />Visits</p>
                         <div className="grid grid-cols-3 gap-2 text-center">
-                          <div className="bg-green-500/5 rounded-lg p-2">
-                            <p className="text-sm font-bold text-green-600">{sr.completedVisits}</p>
-                            <p className="text-[9px] text-muted-foreground">Done</p>
+                          <div className="bg-[#1A1D24] rounded-lg p-2 border border-[#F5F5F7]/5 shadow-inner">
+                            <p className="text-sm font-bold text-[#F5F5F7] font-mono">{sr.completedVisits}</p>
+                            <p className="text-[9px] text-[#A1A5AE]">Done</p>
                           </div>
-                          <div className="bg-blue-500/5 rounded-lg p-2">
-                            <p className="text-sm font-bold text-blue-600">{sr.plannedVisits}</p>
-                            <p className="text-[9px] text-muted-foreground">Planned</p>
+                          <div className="bg-[#1A1D24] rounded-lg p-2 border border-[#F5F5F7]/5 shadow-inner">
+                            <p className="text-sm font-bold text-[#F5F5F7] font-mono">{sr.plannedVisits}</p>
+                            <p className="text-[9px] text-[#A1A5AE]">Planned</p>
                           </div>
-                          <div className="bg-muted rounded-lg p-2">
-                            <p className="text-sm font-bold">{sr.completionRate}%</p>
-                            <p className="text-[9px] text-muted-foreground">Rate</p>
+                          <div className="bg-[#2A2D35] rounded-lg p-2 border border-[#F5F5F7]/5">
+                            <p className="text-sm font-bold text-[#F5F5F7] font-mono">{sr.completionRate}%</p>
+                            <p className="text-[9px] text-[#A1A5AE]">Rate</p>
                           </div>
                         </div>
                       </div>
 
-                      <Separator />
+                      <div className="h-px w-full bg-[#1A1D24] my-2" />
 
                       {/* Clients & Partners */}
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Clients</p>
-                          <p className="text-lg font-bold">{sr.totalClients} <span className="text-xs text-emerald-500 font-normal">+{sr.newClientsThisMonth}</span></p>
+                          <p className="text-[10px] uppercase font-bold tracking-wider text-[#A1A5AE]">Clients</p>
+                          <p className="text-lg font-bold text-[#F5F5F7] font-mono">{sr.totalClients} <span className="text-xs text-[#2E7D32] font-normal">+{sr.newClientsThisMonth}</span></p>
                         </div>
                         <div>
-                          <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Partners</p>
-                          <p className="text-lg font-bold">{sr.totalPartners} <span className="text-xs text-purple-500 font-normal">+{sr.newPartnersThisMonth}</span></p>
+                          <p className="text-[10px] uppercase font-bold tracking-wider text-[#A1A5AE]">Partners</p>
+                          <p className="text-lg font-bold text-[#F5F5F7] font-mono">{sr.totalPartners} <span className="text-xs text-[#8E24AA] font-normal">+{sr.newPartnersThisMonth}</span></p>
                         </div>
                       </div>
 
-                      <Separator />
+                      <div className="h-px w-full bg-[#1A1D24] my-2" />
 
                       {/* Orders */}
                       <div className="space-y-1.5">
-                        <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground flex items-center gap-1"><ShoppingCart className="h-3 w-3" />Orders</p>
+                        <p className="text-[10px] uppercase font-bold tracking-wider text-[#A1A5AE] flex items-center gap-1"><ShoppingCart className="h-3 w-3" />Orders</p>
                         <div className="grid grid-cols-3 gap-2 text-center">
-                          <div className="bg-emerald-500/5 rounded-lg p-2">
-                            <p className="text-sm font-bold text-emerald-600">{sr.ordersWon}</p>
-                            <p className="text-[9px] text-muted-foreground">Won</p>
+                          <div className="bg-[#2E7D32]/10 rounded-lg p-2 border border-[#2E7D32]/20 shadow-inner">
+                            <p className="text-sm font-bold text-[#2E7D32] font-mono">{sr.ordersWon}</p>
+                            <p className="text-[9px] text-[#A1A5AE]">Won</p>
                           </div>
-                          <div className="bg-red-500/5 rounded-lg p-2">
-                            <p className="text-sm font-bold text-red-600">{sr.ordersLost}</p>
-                            <p className="text-[9px] text-muted-foreground">Lost</p>
+                          <div className="bg-[#C21833]/10 rounded-lg p-2 border border-[#C21833]/20 shadow-inner">
+                            <p className="text-sm font-bold text-[#C21833] font-mono">{sr.ordersLost}</p>
+                            <p className="text-[9px] text-[#A1A5AE]">Lost</p>
                           </div>
-                          <div className="bg-amber-500/5 rounded-lg p-2">
-                            <p className="text-sm font-bold text-amber-600">{sr.ordersPending}</p>
-                            <p className="text-[9px] text-muted-foreground">Pending</p>
+                          <div className="bg-[#D4AF37]/10 rounded-lg p-2 border border-[#D4AF37]/20 shadow-inner">
+                            <p className="text-sm font-bold text-[#D4AF37] font-mono">{sr.ordersPending}</p>
+                            <p className="text-[9px] text-[#A1A5AE]">Pending</p>
                           </div>
                         </div>
-                        <div className="flex justify-between items-center text-xs mt-2 pt-2 border-t border-dashed">
-                          <span className="text-muted-foreground">Total Value</span>
-                          <span className="font-bold">₹{sr.totalOrderValue.toFixed(1)}L</span>
+                        <div className="flex justify-between items-center text-xs mt-2 pt-2 border-t border-dashed border-[#1A1D24]">
+                          <span className="text-[#A1A5AE]">Total Value</span>
+                          <span className="font-bold text-[#F5F5F7] font-mono">₹{sr.totalOrderValue.toFixed(1)}L</span>
                         </div>
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-muted-foreground">Won Value</span>
-                          <span className="font-bold text-emerald-600">₹{sr.wonOrderValue.toFixed(1)}L</span>
+                        <div className="flex justify-between items-center text-xs mt-1">
+                          <span className="text-[#A1A5AE]">Won Value</span>
+                          <span className="font-bold text-[#2E7D32] font-mono">₹{sr.wonOrderValue.toFixed(1)}L</span>
                         </div>
                       </div>
                     </CardContent>
@@ -929,8 +930,15 @@ const Dashboard = () => {
           </TabsContent>
         )}
       </Tabs>
-    </motion.div>
+      </motion.div>
+    </div>
   );
+};
+
+const Dashboard = () => {
+  const { role } = useAuth();
+  if (role === "executive") return <ExecutiveHome />;
+  return <AnalyticsDashboard />;
 };
 
 export default Dashboard;

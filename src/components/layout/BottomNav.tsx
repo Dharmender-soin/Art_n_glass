@@ -24,7 +24,7 @@ const BottomNav = () => {
 
   return (
     <>
-      <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around border-t bg-background/80 backdrop-blur-md py-1.5 safe-area-bottom">
+      <nav className="fixed bottom-0 left-0 right-0 z-50 flex items-center justify-around bg-[#0A0B0E]/95 backdrop-blur-2xl border-t border-white/5 py-2 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] shadow-[0_-8px_30px_rgba(0,0,0,0.4)]">
         {links.map(({ to, label, icon: Icon }) => {
           const isActive = pathname === to;
           return (
@@ -32,19 +32,17 @@ const BottomNav = () => {
               key={to}
               to={to}
               className={cn(
-                "flex flex-col items-center gap-0.5 px-3 py-1.5 text-[10px] font-medium transition-colors duration-200 rounded-lg",
-                isActive
-                  ? "text-primary"
-                  : "text-muted-foreground hover:text-foreground"
+                "group relative flex flex-col items-center justify-center w-16 h-12 rounded-xl transition-all duration-300",
+                isActive ? "text-[#F5F5F7]" : "text-[#8E939D] hover:text-[#A1A5AE] hover:bg-white/5"
               )}
             >
-              <div className="relative">
-                <Icon className={cn("h-5 w-5", isActive && "stroke-[2.5]")} />
-                {isActive && (
-                  <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-primary" />
-                )}
+              {isActive && (
+                <div className="absolute inset-0 bg-gradient-to-t from-[#A6192E]/20 to-transparent rounded-xl border-b-2 border-[#C21833]" />
+              )}
+              <div className="relative flex flex-col items-center gap-1 z-10 pointer-events-none">
+                <Icon className={cn("h-5 w-5 transition-transform duration-300", isActive && "scale-110 text-[#F5F5F7]")} strokeWidth={isActive ? 2.5 : 2} />
+                <span className={cn("text-[9px] font-semibold tracking-wider transition-all duration-300", isActive ? "opacity-100" : "opacity-70")}>{label}</span>
               </div>
-              {label}
             </Link>
           );
         })}

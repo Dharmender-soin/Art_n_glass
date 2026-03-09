@@ -95,7 +95,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { email, password, full_name, role, showroom_id } = body;
+    const { email, password, full_name, role, showroom_id, conveyance_type, conveyance_rate } = body;
 
     if (!email || !password || !full_name || !role) {
       console.error("Missing required fields:", { email, hasPassword: !!password, full_name, role });
@@ -145,6 +145,8 @@ Deno.serve(async (req) => {
     const { error: profileError } = await adminClient.from("profiles").upsert({
       user_id: newUser.user.id,
       full_name,
+      conveyance_type: conveyance_type || 'bike',
+      conveyance_rate: conveyance_rate || 4
     }, { onConflict: "user_id" });
 
     if (profileError) {

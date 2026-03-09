@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      audit_logs: {
+        Row: {
+          action: string
+          changed_by: string | null
+          id: string
+          new_data: Json | null
+          old_data: Json | null
+          record_id: string
+          table_name: string
+          timestamp: string
+        }
+        Insert: {
+          action: string
+          changed_by?: string | null
+          id?: string
+          new_data?: Json | null
+          old_data?: Json | null
+          record_id: string
+          table_name: string
+          timestamp?: string
+        }
+        Update: {
+          action?: string
+          changed_by?: string | null
+          id?: string
+          new_data?: Json | null
+          old_data?: Json | null
+          record_id?: string
+          table_name?: string
+          timestamp?: string
+        }
+        Relationships: []
+      }
       clients: {
         Row: {
           address: string | null
@@ -63,6 +96,87 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      conveyance_records: {
+        Row: {
+          id: string
+          user_id: string
+          visit_id: string | null
+          date: string
+          from_location_name: string | null
+          from_lat: number | null
+          from_lng: number | null
+          to_location_name: string | null
+          to_lat: number | null
+          to_lng: number | null
+          distance_km: number | null
+          vehicle_type: string | null
+          rate_per_km: number | null
+          amount: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          visit_id?: string | null
+          date: string
+          from_location_name?: string | null
+          from_lat?: number | null
+          from_lng?: number | null
+          to_location_name?: string | null
+          to_lat?: number | null
+          to_lng?: number | null
+          distance_km?: number | null
+          vehicle_type?: string | null
+          rate_per_km?: number | null
+          amount?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          visit_id?: string | null
+          date?: string
+          from_location_name?: string | null
+          from_lat?: number | null
+          from_lng?: number | null
+          to_location_name?: string | null
+          to_lat?: number | null
+          to_lng?: number | null
+          distance_km?: number | null
+          vehicle_type?: string | null
+          rate_per_km?: number | null
+          amount?: number | null
+          created_at?: string
+        }
+        Relationships: []
+      }
+      daily_attendance: {
+        Row: {
+          id: string
+          user_id: string
+          date: string
+          check_in_lat: number | null
+          check_in_lng: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          date: string
+          check_in_lat?: number | null
+          check_in_lng?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          date?: string
+          check_in_lat?: number | null
+          check_in_lng?: number | null
+          created_at?: string
+        }
+        Relationships: []
       }
       master_work_types: {
         Row: {
@@ -121,8 +235,34 @@ export type Database = {
         }
         Relationships: []
       }
+      purpose_masters: {
+        Row: {
+          created_at: string
+          entity_type: Database["public"]["Enums"]["visit_with_type"]
+          id: string
+          is_active: boolean | null
+          purpose_name: string
+        }
+        Insert: {
+          created_at?: string
+          entity_type: Database["public"]["Enums"]["visit_with_type"]
+          id?: string
+          is_active?: boolean | null
+          purpose_name: string
+        }
+        Update: {
+          created_at?: string
+          entity_type?: Database["public"]["Enums"]["visit_with_type"]
+          id?: string
+          is_active?: boolean | null
+          purpose_name?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
+          conveyance_rate: number | null
+          conveyance_type: string | null
           created_at: string
           full_name: string
           id: string
@@ -131,6 +271,8 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          conveyance_rate?: number | null
+          conveyance_type?: string | null
           created_at?: string
           full_name?: string
           id?: string
@@ -139,6 +281,8 @@ export type Database = {
           user_id: string
         }
         Update: {
+          conveyance_rate?: number | null
+          conveyance_type?: string | null
           created_at?: string
           full_name?: string
           id?: string
@@ -213,9 +357,12 @@ export type Database = {
           id: string
           partner_id: string | null
           photo_url: string | null
+          planning_date: string | null
           purpose: string
+          purpose_id: string | null
           remarks: string | null
           status: Database["public"]["Enums"]["visit_status"]
+          tat_due_date: string | null
           updated_at: string
           visit_date: string
           visit_with_type: Database["public"]["Enums"]["visit_with_type"]
@@ -231,9 +378,12 @@ export type Database = {
           id?: string
           partner_id?: string | null
           photo_url?: string | null
+          planning_date?: string | null
           purpose: string
+          purpose_id?: string | null
           remarks?: string | null
           status?: Database["public"]["Enums"]["visit_status"]
+          tat_due_date?: string | null
           updated_at?: string
           visit_date: string
           visit_with_type: Database["public"]["Enums"]["visit_with_type"]
@@ -249,9 +399,12 @@ export type Database = {
           id?: string
           partner_id?: string | null
           photo_url?: string | null
+          planning_date?: string | null
           purpose?: string
+          purpose_id?: string | null
           remarks?: string | null
           status?: Database["public"]["Enums"]["visit_status"]
+          tat_due_date?: string | null
           updated_at?: string
           visit_date?: string
           visit_with_type?: Database["public"]["Enums"]["visit_with_type"]
@@ -269,6 +422,13 @@ export type Database = {
             columns: ["partner_id"]
             isOneToOne: false
             referencedRelation: "partners"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visits_purpose_id_fkey"
+            columns: ["purpose_id"]
+            isOneToOne: false
+            referencedRelation: "purpose_masters"
             referencedColumns: ["id"]
           },
         ]
@@ -361,9 +521,9 @@ export type Database = {
       app_role: "admin" | "manager" | "executive" | "md"
       client_status: "new" | "hot" | "converted" | "lost"
       partner_type: "builder" | "architect"
-      visit_status: "planned" | "done" | "cancelled"
+      visit_status: "planned" | "in_progress" | "done" | "missed" | "rescheduled" | "cancelled"
       visit_with_type: "client" | "partner"
-      work_status: "pending" | "won" | "lost"
+      work_status: "draft" | "submitted" | "pending" | "won" | "lost" | "rejected"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -377,116 +537,116 @@ type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
 
 export type Tables<
   DefaultSchemaTableNameOrOptions extends
-    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+  | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+  ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+    DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+  : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+    DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
       Row: infer R
     }
-    ? R
-    : never
+  ? R
+  : never
   : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])
-    ? (DefaultSchema["Tables"] &
-        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
-        Row: infer R
-      }
-      ? R
-      : never
-    : never
+    DefaultSchema["Views"])
+  ? (DefaultSchema["Tables"] &
+    DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+      Row: infer R
+    }
+  ? R
+  : never
+  : never
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof DefaultSchema["Tables"]
+  | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+  ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+  : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
-    }
-    ? I
-    : never
+    Insert: infer I
+  }
+  ? I
+  : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
-      }
-      ? I
-      : never
-    : never
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+    Insert: infer I
+  }
+  ? I
+  : never
+  : never
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema["Tables"]
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof DefaultSchema["Tables"]
+  | { schema: keyof DatabaseWithoutInternals },
   TableName extends DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+  ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+  : never = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
-    }
-    ? U
-    : never
+    Update: infer U
+  }
+  ? U
+  : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
-      }
-      ? U
-      : never
-    : never
+  ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+    Update: infer U
+  }
+  ? U
+  : never
+  : never
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema["Enums"]
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof DefaultSchema["Enums"]
+  | { schema: keyof DatabaseWithoutInternals },
   EnumName extends DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+  ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+  : never = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
   : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
-    : never
+  ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+  : never
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema["CompositeTypes"]
-    | { schema: keyof DatabaseWithoutInternals },
+  | keyof DefaultSchema["CompositeTypes"]
+  | { schema: keyof DatabaseWithoutInternals },
   CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
-    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+  ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+  : never = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
   : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
-    : never
+  ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+  : never
 
 export const Constants = {
   public: {
@@ -494,9 +654,9 @@ export const Constants = {
       app_role: ["admin", "manager", "executive", "md"],
       client_status: ["new", "hot", "converted", "lost"],
       partner_type: ["builder", "architect"],
-      visit_status: ["planned", "done", "cancelled"],
+      visit_status: ["planned", "in_progress", "done", "missed", "rescheduled", "cancelled"],
       visit_with_type: ["client", "partner"],
-      work_status: ["pending", "won", "lost"],
+      work_status: ["draft", "submitted", "pending", "won", "lost", "rejected"],
     },
   },
 } as const

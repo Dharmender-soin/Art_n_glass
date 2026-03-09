@@ -3,13 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { format, parseISO, startOfMonth } from "date-fns";
-import { CalendarCheck, Users, Building2, CheckCircle, Clock, Package, Filter, ArrowUpRight } from "lucide-react";
+import { CalendarCheck, Users, Building2, CheckCircle, Clock, Package, Filter, ArrowUpRight, Download, Navigation } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -17,6 +18,7 @@ const Reports = () => {
   const { role } = useAuth();
   const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [dateTo, setDateTo] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [filterExecutive, setFilterExecutive] = useState<string>("all");
 
   const { data: visits = [], isLoading: isLoadingVisits } = useQuery({
     queryKey: ["report-visits", dateFrom, dateTo],
@@ -59,6 +61,61 @@ const Reports = () => {
   const verifiedWorkAmount = workScopeItems.filter((i) => (i as any).is_verified).reduce((sum, i) => sum + ((i as any).amount_in_lac || 0), 0);
   const verifiedCount = workScopeItems.filter((i) => (i as any).is_verified).length;
 
+  const { data: conveyanceRecords = [] } = useQuery({
+    queryKey: ["report-conveyance", dateFrom, dateTo],
+    enabled: isManager,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("conveyance_records")
+        .select("*, profiles:user_id(full_name)")
+        .gte("date", dateFrom)
+        .lte("date", dateTo)
+        .order("date", { ascending: false })
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const totalConveyanceAmount = conveyanceRecords.reduce((sum, r) => sum + (r.amount || 0), 0);
+
+  // Fetch all executives for the filter dropdown
+  const { data: executivesList = [] } = useQuery({
+    queryKey: ["executives-list-reports"],
+    enabled: isManager,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("user_id, full_name")
+        .order("full_name");
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Filtered conveyance records
+  const filteredConveyance = filterExecutive === "all"
+    ? conveyanceRecords
+    : conveyanceRecords.filter((r) => r.user_id === filterExecutive);
+
+  const filteredTotalKm = filteredConveyance.reduce((s, r) => s + (r.distance_km || 0), 0);
+  const filteredTotalAmount = filteredConveyance.reduce((s, r) => s + (r.amount || 0), 0);
+
+  // Executive summary map (for the per-person breakdown)
+  const execSummaryMap = new Map<string, { name: string; km: number; amount: number; trips: number }>();
+  conveyanceRecords.forEach((r) => {
+    const name = (r as any).profiles?.full_name || "Unknown";
+    const existing = execSummaryMap.get(r.user_id);
+    if (existing) {
+      existing.km += (r.distance_km || 0);
+      existing.amount += (r.amount || 0);
+      existing.trips += 1;
+    } else {
+      execSummaryMap.set(r.user_id, { name, km: r.distance_km || 0, amount: r.amount || 0, trips: 1 });
+    }
+  });
+  const execSummaryList = Array.from(execSummaryMap.values()).sort((a, b) => b.amount - a.amount);
+
   // EVR Reports Processing
   const processVisits = (type: 'partner' | 'client') => {
     const map = new Map<string, { name: string; address: string; count: number }>();
@@ -83,6 +140,23 @@ const Reports = () => {
 
   const partnerVisitList = processVisits('partner');
   const clientVisitList = processVisits('client');
+
+  const exportToCSV = (data: any[], filename: string, isPartner: boolean) => {
+    const headers = [isPartner ? "Partner Name" : "Client Name", "Address", "Visit Count"];
+    const csvContent = [
+      headers.join(","),
+      ...data.map(row => `"${(row.name || '').replace(/"/g, '""')}","${(row.address || '').replace(/"/g, '""')}",${row.count}`)
+    ].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `${filename}_${format(new Date(), "yyyy-MM-dd")}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -310,7 +384,12 @@ const Reports = () => {
               <Building2 className="h-5 w-5 text-purple-500" />
               Partner Visits
             </h2>
-            <Badge variant="outline" className="font-mono">{partnerVisitList.length}</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="font-mono">{partnerVisitList.length}</Badge>
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => exportToCSV(partnerVisitList, "Partner_EVR", true)} title="Export to CSV">
+                <Download className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <Card className="overflow-hidden h-full border-none shadow-md">
             <CardContent className="p-0">
@@ -352,7 +431,12 @@ const Reports = () => {
               <Users className="h-5 w-5 text-blue-500" />
               Client Visits
             </h2>
-            <Badge variant="outline" className="font-mono">{clientVisitList.length}</Badge>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="font-mono">{clientVisitList.length}</Badge>
+              <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => exportToCSV(clientVisitList, "Client_EVR", false)} title="Export to CSV">
+                <Download className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
           <Card className="overflow-hidden h-full border-none shadow-md">
             <CardContent className="p-0">
@@ -387,6 +471,137 @@ const Reports = () => {
           </Card>
         </motion.div>
       </motion.div>
+
+      {/* Conveyance Audit Report */}
+      {isManager && (
+      <motion.div variants={containerVariants} className="space-y-6 mt-8">
+          {/* Header */}
+          <motion.div variants={itemVariants} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-1 bg-primary rounded-full" />
+              <h2 className="text-xl font-bold">Conveyance Audit Report</h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <select
+                value={filterExecutive}
+                onChange={(e) => setFilterExecutive(e.target.value)}
+                className="text-sm bg-card border border-border rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="all">All Executives</option>
+                {executivesList.map((ex) => (
+                  <option key={ex.user_id} value={ex.user_id}>{ex.full_name}</option>
+                ))}
+              </select>
+              <Badge variant="outline" className="px-3 py-1 bg-green-500/10 text-green-600 border-none whitespace-nowrap">
+                ₹{filteredTotalAmount.toFixed(2)} | {filteredTotalKm.toFixed(1)} km
+              </Badge>
+            </div>
+          </motion.div>
+
+          {/* Per-Executive Summary Cards (only when showing all) */}
+          {filterExecutive === "all" && execSummaryList.length > 0 && (
+            <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+              {execSummaryList.map((exec) => (
+                <button
+                  key={exec.name}
+                  onClick={() => {
+                    const found = executivesList.find((e) => (e as any).full_name === exec.name);
+                    if (found) setFilterExecutive(found.user_id);
+                  }}
+                  className="bg-card border border-border rounded-xl p-4 text-left hover:border-primary/40 hover:shadow-md transition-all group"
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <span className="text-sm font-bold text-primary">{exec.name.charAt(0)}</span>
+                    </div>
+                    <p className="font-semibold text-sm truncate group-hover:text-primary transition-colors">{exec.name}</p>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Trips</p>
+                      <p className="font-bold text-base font-mono">{exec.trips}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Distance</p>
+                      <p className="font-bold text-base font-mono">{exec.km.toFixed(1)}<span className="text-xs text-muted-foreground ml-0.5">km</span></p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold">Amount</p>
+                      <p className="font-bold text-base font-mono text-green-500">₹{exec.amount.toFixed(0)}</p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </motion.div>
+          )}
+
+          {/* Trip-by-trip table */}
+          <motion.div variants={itemVariants}>
+              <Card className="overflow-hidden border-none shadow-md">
+                <CardHeader className="bg-muted/30 border-b pb-4">
+                  <div className="flex items-center justify-between">
+                     <div className="space-y-1">
+                         <CardTitle className="text-lg flex items-center gap-2">
+                             <Navigation className="h-5 w-5 text-primary" />
+                             Trip by Trip Breakdown
+                             {filterExecutive !== "all" && (
+                               <Badge variant="secondary" className="ml-1 text-[10px]">
+                                 {executivesList.find(e => e.user_id === filterExecutive)?.full_name}
+                               </Badge>
+                             )}
+                         </CardTitle>
+                         <CardDescription>Auditable records of sequenced distance tracking</CardDescription>
+                     </div>
+                     <div className="flex gap-2 items-center">
+                       {filterExecutive !== "all" && (
+                         <Button size="sm" variant="ghost" onClick={() => setFilterExecutive("all")} className="text-xs h-7 px-2">Clear filter</Button>
+                       )}
+                       <Badge variant="secondary" className="font-mono text-xs">{filteredConveyance.length} Records</Badge>
+                     </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="p-0 bg-card/50">
+                   <ScrollArea className="h-[400px]">
+                      <Table>
+                        <TableHeader className="bg-muted/50 sticky top-0 z-10 backdrop-blur-sm">
+                            <TableRow>
+                               <TableHead>Date</TableHead>
+                               <TableHead>Executive</TableHead>
+                               <TableHead>Journey</TableHead>
+                               <TableHead>Mode / Rate</TableHead>
+                               <TableHead className="text-right">Distance</TableHead>
+                               <TableHead className="text-right">Amount</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {filteredConveyance.map((r) => (
+                               <TableRow key={r.id}>
+                                   <TableCell className="whitespace-nowrap font-medium text-xs">{format(parseISO(r.date), "dd MMM yyyy")}</TableCell>
+                                   <TableCell className="text-sm font-semibold text-primary/80">{(r as any).profiles?.full_name || "Unknown"}</TableCell>
+                                   <TableCell>
+                                       <div className="text-xs truncate max-w-[220px]"><span className="text-muted-foreground mr-1">From:</span> {r.from_location_name}</div>
+                                       <div className="text-xs truncate max-w-[220px] mt-1"><span className="text-muted-foreground mr-1">To:</span> {r.to_location_name}</div>
+                                   </TableCell>
+                                   <TableCell className="text-xs">
+                                       <Badge variant="outline" className="capitalize text-[10px] mb-1">{r.vehicle_type}</Badge>
+                                       <div className="text-muted-foreground">₹{r.rate_per_km}/km</div>
+                                   </TableCell>
+                                   <TableCell className="text-right font-mono text-sm">{r.distance_km} km</TableCell>
+                                   <TableCell className="text-right font-mono text-green-500 font-bold tracking-tight">₹{r.amount}</TableCell>
+                               </TableRow>
+                            ))}
+                            {filteredConveyance.length === 0 && (
+                                <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No conveyance records found for this selection.</TableCell></TableRow>
+                            )}
+                        </TableBody>
+                      </Table>
+                   </ScrollArea>
+                </CardContent>
+              </Card>
+          </motion.div>
+      </motion.div>
+      )}
+
     </motion.div>
   );
 };

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { usePurposes } from "@/hooks/usePurposes";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,17 +12,21 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, CalendarCheck, MapPin, Camera, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, CalendarCheck, MapPin, Camera, Loader2, ChevronDown, ChevronRight, Search } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import type { Database } from "@/integrations/supabase/types";
+import { calculateDistance } from "@/lib/utils";
 
 type VisitStatus = Database["public"]["Enums"]["visit_status"];
 type VisitWithType = Database["public"]["Enums"]["visit_with_type"];
 
 const visitStatusColors: Record<VisitStatus, string> = {
   planned: "bg-[hsl(var(--status-new))] text-white",
+  in_progress: "bg-blue-500 text-white",
   done: "bg-[hsl(var(--status-converted))] text-white",
+  missed: "bg-red-500 text-white",
+  rescheduled: "bg-orange-500 text-white",
   cancelled: "bg-[hsl(var(--status-lost))] text-white",
 };
 
@@ -33,9 +38,14 @@ const Visits = () => {
   const [remarks, setRemarks] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [filterStatus, setFilterStatus] = useState("");
+  const [search, setSearch] = useState("");
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState("");
   const [openDates, setOpenDates] = useState<Record<string, boolean>>({});
+  const [conveyanceModalInfo, setConveyanceModalInfo] = useState<{distance: number, amount: number, vehicle: string, from: string, to: string} | null>(null);
+  
+  const [editVisitId, setEditVisitId] = useState<string | null>(null);
+  const [editVisitDate, setEditVisitDate] = useState("");
 
   const tomorrow = format(addDays(new Date(), 1), "yyyy-MM-dd");
 
@@ -45,8 +55,10 @@ const Visits = () => {
     client_id: "",
     partner_id: "",
     address: "",
-    purpose: "",
+    purpose_id: "",
   });
+
+  const { data: purposes = [] } = usePurposes(form.visit_with_type);
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["visits"],
@@ -96,7 +108,8 @@ const Visits = () => {
         visit_date: form.visit_date,
         visit_with_type: form.visit_with_type,
         address: form.address,
-        purpose: form.purpose,
+        purpose_id: form.purpose_id,
+        purpose: purposes.find(p => p.id === form.purpose_id)?.purpose_name || "Meeting",
         created_by: user!.id,
       };
       if (form.visit_with_type === "client") insertData.client_id = form.client_id;
@@ -107,7 +120,7 @@ const Visits = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["visits"] });
       toast.success("Visit planned!");
-      setForm({ visit_date: format(new Date(), "yyyy-MM-dd"), visit_with_type: "client", client_id: "", partner_id: "", address: "", purpose: "" });
+      setForm({ visit_date: format(new Date(), "yyyy-MM-dd"), visit_with_type: "client", client_id: "", partner_id: "", address: "", purpose_id: "" });
       setDialogOpen(false);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -143,6 +156,41 @@ const Visits = () => {
         photoPath = path;
       }
 
+      const { data: profile } = await supabase.from("profiles").select("conveyance_type, conveyance_rate").eq("user_id", user!.id).single();
+
+      const today = format(new Date(), "yyyy-MM-dd");
+      const { data: lastVisit } = await supabase.from("visits")
+        .select("*")
+        .eq("created_by", user!.id)
+        .eq("visit_date", today)
+        .eq("status", "done")
+        .neq("id", visitId)
+        .order("done_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      let fromLat: number | null = null;
+      let fromLng: number | null = null;
+      let fromLocationName = "Unknown Location";
+
+      if (lastVisit && lastVisit.gps_latitude && lastVisit.gps_longitude) {
+         fromLat = lastVisit.gps_latitude;
+         fromLng = lastVisit.gps_longitude;
+         fromLocationName = lastVisit.address || "Previous Visit";
+      } else {
+         const { data: attendance } = await supabase.from("daily_attendance")
+           .select("*")
+           .eq("user_id", user!.id)
+           .eq("date", today)
+           .maybeSingle();
+         
+         if (attendance) {
+            fromLat = attendance.check_in_lat;
+            fromLng = attendance.check_in_lng;
+            fromLocationName = "Start Day Check-In";
+         }
+      }
+
       const { error } = await supabase.from("visits").update({
         status: "done" as VisitStatus,
         remarks,
@@ -152,13 +200,48 @@ const Visits = () => {
         done_at: new Date().toISOString(),
       }).eq("id", visitId);
       if (error) throw error;
+
+      let convResult = null;
+      if (fromLat && fromLng && profile?.conveyance_type) {
+         const distance = calculateDistance(fromLat, fromLng, gpsLat, gpsLng);
+         const amount = Number((distance * (profile.conveyance_rate || 0)).toFixed(2));
+         
+         const { data: currentVisit } = await supabase.from("visits").select("address").eq("id", visitId).single();
+         const toLocationName = currentVisit?.address || "Visit Location";
+
+         // Note: Assuming conveyance_type exists in Database Types, if it fails, it's bypassed in TS anyway if cast implicitly
+         const { error: convError } = await supabase.from("conveyance_records").insert({
+             user_id: user!.id,
+             visit_id: visitId,
+             date: today,
+             from_location_name: fromLocationName,
+             from_lat: fromLat,
+             from_lng: fromLng,
+             to_location_name: toLocationName,
+             to_lat: gpsLat,
+             to_lng: gpsLng,
+             distance_km: distance,
+             vehicle_type: profile.conveyance_type,
+             rate_per_km: profile.conveyance_rate || 0,
+             amount: amount
+         });
+         
+         if (!convError && distance > 0) {
+             convResult = { distance, amount, vehicle: profile.conveyance_type, from: fromLocationName, to: toLocationName };
+         }
+      }
+      return convResult;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["visits"] });
-      toast.success("Visit marked done!");
       setDoneDialogId(null);
       setRemarks("");
       setPhoto(null);
+      if (data) {
+          setConveyanceModalInfo(data);
+      } else {
+          toast.success("Visit marked done!");
+      }
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -172,6 +255,19 @@ const Visits = () => {
       queryClient.invalidateQueries({ queryKey: ["visits"] });
       toast.success("Visit cancelled");
     },
+  });
+
+  const updateVisitDate = useMutation({
+    mutationFn: async ({ id, newDate }: { id: string; newDate: string }) => {
+      const { error } = await supabase.from("visits").update({ visit_date: newDate }).eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["visits"] });
+      toast.success("Visit rescheduled");
+      setEditVisitId(null);
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const handleSelectEntity = (id: string) => {
@@ -198,7 +294,24 @@ const Visits = () => {
     return isToday(d) || isTomorrow(d);
   };
 
-  const filtered = visits.filter((v) => !filterStatus || filterStatus === "all" || v.status === filterStatus);
+  const filtered = visits.filter((v) => {
+    const matchStatus = !filterStatus || filterStatus === "all" || v.status === filterStatus;
+    const clientName = (v as any).clients?.name || "";
+    const partnerName = (v as any).partners?.name || "";
+    const address = v.address || "";
+    const remarks = v.remarks || "";
+    const purpose = v.purpose || "";
+    const searchLower = search.toLowerCase();
+    
+    const matchSearch = !search || 
+      clientName.toLowerCase().includes(searchLower) || 
+      partnerName.toLowerCase().includes(searchLower) ||
+      address.toLowerCase().includes(searchLower) ||
+      remarks.toLowerCase().includes(searchLower) ||
+      purpose.toLowerCase().includes(searchLower);
+      
+    return matchStatus && matchSearch;
+  });
 
   // Group visits by date
   const groupedByDate = filtered.reduce((acc, v) => {
@@ -239,7 +352,7 @@ const Visits = () => {
               <div className="space-y-1"><Label>Visit Date</Label><Input type="date" value={form.visit_date} onChange={(e) => setForm({ ...form, visit_date: e.target.value })} required /></div>
               <div className="space-y-1">
                 <Label>Visit With</Label>
-                <Select value={form.visit_with_type} onValueChange={(v) => setForm({ ...form, visit_with_type: v as VisitWithType, client_id: "", partner_id: "", address: "" })}>
+                <Select value={form.visit_with_type} onValueChange={(v) => setForm({ ...form, visit_with_type: v as VisitWithType, client_id: "", partner_id: "", address: "", purpose_id: "" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-popover"><SelectItem value="client">Client</SelectItem><SelectItem value="partner">Partner</SelectItem></SelectContent>
                 </Select>
@@ -256,20 +369,74 @@ const Visits = () => {
                 </Select>
               </div>
               <div className="space-y-1"><Label>Address</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Auto-filled from client/partner" /></div>
-              <div className="space-y-1"><Label>Purpose</Label><Input value={form.purpose} onChange={(e) => setForm({ ...form, purpose: e.target.value })} required /></div>
+              <div className="space-y-1">
+                <Label>Purpose</Label>
+                <Select value={form.purpose_id} onValueChange={(v) => setForm({ ...form, purpose_id: v })} required>
+                  <SelectTrigger><SelectValue placeholder="Select purpose..." /></SelectTrigger>
+                  <SelectContent className="bg-popover">
+                    {purposes.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>{p.purpose_name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <Button type="submit" className="w-full" disabled={createVisit.isPending}>Save Visit</Button>
             </form>
           </DialogContent>
         </Dialog>
       </div>
 
-      <Select value={filterStatus} onValueChange={setFilterStatus}>
-        <SelectTrigger className="w-[160px]"><SelectValue placeholder="All Status" /></SelectTrigger>
-        <SelectContent className="bg-popover">
-          <SelectItem value="all">All Status</SelectItem>
-          <SelectItem value="planned">Planned</SelectItem><SelectItem value="done">Done</SelectItem><SelectItem value="cancelled">Cancelled</SelectItem>
-        </SelectContent>
-      </Select>
+      <Dialog open={!!conveyanceModalInfo} onOpenChange={(open) => !open && setConveyanceModalInfo(null)}>
+        <DialogContent className="bg-popover sm:max-w-md">
+          <DialogHeader><DialogTitle className="flex items-center gap-2 text-primary"><MapPin className="h-5 w-5"/> Trip Summary</DialogTitle></DialogHeader>
+          {conveyanceModalInfo && (
+            <div className="space-y-4 py-2">
+               <div className="rounded-xl bg-muted/50 p-4 border border-border">
+                  <div className="flex justify-between items-center mb-3">
+                     <span className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">Mode</span>
+                     <Badge variant="outline" className="capitalize bg-background">{conveyanceModalInfo.vehicle}</Badge>
+                  </div>
+                  <div className="space-y-3 relative before:absolute before:inset-0 before:ml-[11px] before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-border before:to-transparent">
+                     <div className="relative flex items-center gap-3">
+                        <div className="h-6 w-6 rounded-full bg-background border-2 border-border flex items-center justify-center z-10"><div className="h-2 w-2 rounded-full bg-muted-foreground"/></div>
+                        <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{conveyanceModalInfo.from}</p><p className="text-[10px] text-muted-foreground uppercase">From</p></div>
+                     </div>
+                     <div className="relative flex items-center gap-3">
+                        <div className="h-6 w-6 rounded-full bg-primary/20 border-2 border-primary flex items-center justify-center z-10"><div className="h-2 w-2 rounded-full bg-primary"/></div>
+                        <div className="flex-1 min-w-0"><p className="text-sm font-medium truncate">{conveyanceModalInfo.to}</p><p className="text-[10px] text-muted-foreground uppercase">To</p></div>
+                     </div>
+                  </div>
+               </div>
+               
+               <div className="grid grid-cols-2 gap-3">
+                   <div className="bg-card border border-border rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                       <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">Distance</p>
+                       <p className="text-xl font-bold font-mono">{conveyanceModalInfo.distance} <span className="text-sm text-muted-foreground font-sans">km</span></p>
+                   </div>
+                   <div className="bg-card border border-border rounded-xl p-3 flex flex-col items-center justify-center text-center">
+                       <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mb-1">Generated</p>
+                       <p className="text-xl font-bold font-mono text-green-500">₹{conveyanceModalInfo.amount}</p>
+                   </div>
+               </div>
+            </div>
+          )}
+          <Button onClick={() => setConveyanceModalInfo(null)} className="w-full">Done</Button>
+        </DialogContent>
+      </Dialog>
+
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input className="pl-9" placeholder="Search visits, clients, address..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="w-[160px]"><SelectValue placeholder="All Status" /></SelectTrigger>
+          <SelectContent className="bg-popover">
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="planned">Planned</SelectItem><SelectItem value="done">Done</SelectItem><SelectItem value="cancelled">Cancelled</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       {isLoading ? (
         <p className="text-muted-foreground text-center py-8">Loading...</p>
@@ -309,6 +476,7 @@ const Visits = () => {
                             {canMarkDone(v) && (
                               <Button size="sm" onClick={() => setDoneDialogId(v.id)}>Mark Done</Button>
                             )}
+                            <Button size="sm" variant="outline" onClick={() => { setEditVisitId(v.id); setEditVisitDate(v.visit_date); }}>Reschedule</Button>
                             <Button size="sm" variant="outline" onClick={() => cancelVisit.mutate(v.id)}>Cancel</Button>
                           </div>
                         )}
@@ -326,6 +494,22 @@ const Visits = () => {
           ))}
         </div>
       )}
+
+      {/* Reschedule dialog */}
+      <Dialog open={!!editVisitId} onOpenChange={(open) => !open && setEditVisitId(null)}>
+        <DialogContent className="bg-popover sm:max-w-md">
+          <DialogHeader><DialogTitle>Reschedule Visit</DialogTitle></DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); if (!canPlanDate(editVisitDate)) { toast.error("You can only plan visits for today or tomorrow"); return; } if (editVisitId) updateVisitDate.mutate({ id: editVisitId, newDate: editVisitDate }); }} className="space-y-3 py-2">
+            <div className="space-y-1">
+              <Label>New Visit Date</Label>
+              <Input type="date" value={editVisitDate} onChange={(e) => setEditVisitDate(e.target.value)} required />
+            </div>
+            <Button type="submit" className="w-full" disabled={updateVisitDate.isPending}>
+              {updateVisitDate.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       {/* Done dialog — GPS mandatory */}
       <Dialog open={!!doneDialogId} onOpenChange={() => { setDoneDialogId(null); setGpsError(""); }}>

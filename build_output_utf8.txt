@@ -1,0 +1,74 @@
+﻿
+> art-n-glass@0.0.0 build
+> vite build
+
+[36mvite v5.4.19 [32mbuilding for production...[36m[39m
+transforming...
+node.exe : Browserslist: browsers data (caniuse-lite) 
+is 9 months old. Please run:
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program 
+Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: 
+(Browserslis    t: b...ld. Please run::String) [], 
+RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  npx update-browserslist-db@latest
+  Why you should do it regularly: 
+https://github.com/browserslist/update-db#readme
+[32mΓ£ô[39m 11 modules transformed.
+[31mx[39m Build failed in 1.67s
+[31merror during build:
+[31m[vite:esbuild] Transform failed with 2 errors:
+C:/Users/Admin/Downloads/Dharm-Personal/visit-wiz-pro/sr
+c/pages/Admin.tsx:748:6: ERROR: Unexpected closing 
+"div" tag does not match opening fragment tag
+C:/Users/Admin/Downloads/Dharm-Personal/visit-wiz-pro/sr
+c/pages/Admin.tsx:750:6: ERROR: Expected ")" but found 
+"{"[31m
+file: [36mC:/Users/Admin/Downloads/Dharm-Personal/visit
+-wiz-pro/src/pages/Admin.tsx:748:6[31m
+[33m
+[33mUnexpected closing "div" tag does not match 
+opening fragment tag[33m
+746|          </DialogContent>
+747|        </Dialog>
+748|      </div>
+   |        ^
+749|  
+750|        {/* Global Alert Dialog */}
+
+[33mExpected ")" but found "{"[33m
+748|      </div>
+749|  
+750|        {/* Global Alert Dialog */}
+   |        ^
+751|        <AlertDialog open={alertDialog.open} 
+onOpenChange={(open) => !open && closeAlert()}>
+752|          <AlertDialogContent>
+[31m
+    at failureErrorWithLog (C:\Users\Admin\Downloads\Dha
+rm-Personal\visit-wiz-pro\node_modules\esbuild\lib\main.
+js:1472:15)
+    at C:\Users\Admin\Downloads\Dharm-Personal\visit-wiz
+-pro\node_modules\esbuild\lib\main.js:755:50
+    at responseCallbacks.<computed> (C:\Users\Admin\Down
+loads\Dharm-Personal\visit-wiz-pro\node_modules\esbuild\
+lib\main.js:622:9)
+    at handleIncomingPacket (C:\Users\Admin\Downloads\Dh
+arm-Personal\visit-wiz-pro\node_modules\esbuild\lib\main
+.js:677:12)
+    at Socket.readFromStdout (C:\Users\Admin\Downloads\D
+harm-Personal\visit-wiz-pro\node_modules\esbuild\lib\mai
+n.js:600:7)
+    at Socket.emit (node:events:508:28)
+    at addChunk (node:internal/streams/readable:559:12)
+    at readableAddChunkPushByteMode 
+(node:internal/streams/readable:510:3)
+    at Readable.push 
+(node:internal/streams/readable:390:5)
+    at Pipe.onStreamRead 
+(node:internal/stream_base_commons:189:23)[39m

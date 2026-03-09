@@ -468,52 +468,54 @@ export const ExecutiveHome = () => {
     }
 
     return (
-        <div className="-m-4 md:-m-6 lg:-m-8 -mb-20 md:-mb-8 min-h-[calc(100vh-3.5rem)] bg-[#0A0B0E] text-[#F5F5F7] font-sans pb-24 selection:bg-[#A6192E]/30">
+        <div className="-m-4 md:-m-6 lg:-m-8 -mb-20 md:-mb-8 min-h-[calc(100vh-3.5rem)] bg-[#0A0B0E] text-[#F5F5F7] font-sans pb-24 selection:bg-[#A6192E]/30 overflow-x-hidden">
 
             {/* A. Sticky Header */}
-            <div className="sticky top-0 z-50 bg-[#0A0B0E]/80 backdrop-blur-xl border-b border-[#F5F5F7]/5 px-5 py-4 flex items-center justify-between shadow-sm">
-                <div className="flex items-center gap-3">
-                    <div className="relative">
-                        <div className="h-10 w-10 rounded-full bg-[#1A1D24] border border-[#A6192E]/30 flex items-center justify-center text-[#F5F5F7] font-semibold shadow-inner">
+            <div className="sticky top-0 z-50 bg-[#0A0B0E]/80 backdrop-blur-xl border-b border-[#F5F5F7]/5 px-3 sm:px-5 py-3 sm:py-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 shadow-sm">
+                <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-[140px]">
+                    <div className="relative shrink-0">
+                        <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-full bg-[#1A1D24] border border-[#A6192E]/30 flex items-center justify-center text-[#F5F5F7] font-semibold shadow-inner">
                             {fullName.charAt(0)}
                         </div>
-                        <div className="absolute bottom-0 right-0 w-3 h-3 bg-[#2E7D32] border-2 border-[#0E0F12] rounded-full" />
+                        <div className="absolute bottom-0 right-0 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-[#2E7D32] border-2 border-[#0E0F12] rounded-full" />
                     </div>
-                    <div>
-                        <h2 className="text-sm font-semibold text-[#F5F5F7] tracking-wide leading-tight">{fullName}</h2>
-                        <p className="text-[10px] text-[#A1A5AE] font-medium uppercase tracking-[0.15em] mt-0.5">{role}</p>
+                    <div className="flex-1 min-w-0">
+                        <h2 className="text-sm font-semibold text-[#F5F5F7] tracking-wide leading-tight truncate">{fullName}</h2>
+                        <p className="text-[10px] text-[#A1A5AE] font-medium uppercase tracking-[0.15em] mt-0.5 truncate">{role}</p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-4 bg-[#1A1D24]/60 rounded-full px-2 py-1 border border-[#F5F5F7]/5">
-                    <button onClick={handlePrevDay} className="p-1.5 text-[#A1A5AE] hover:text-[#F5F5F7] transition-colors">
-                        <ChevronLeft className="h-4 w-4" />
-                    </button>
-                    <span className="text-xs font-semibold tracking-widest uppercase w-20 text-center text-gray-200">{displayDate}</span>
-                    <button onClick={handleNextDay} className="p-1.5 text-[#A1A5AE] hover:text-[#F5F5F7] transition-colors">
-                        <ChevronRight className="h-4 w-4" />
-                    </button>
-                </div>
+                <div className="flex items-center justify-end gap-2 sm:gap-4 flex-shrink-0">
+                    <div className="flex items-center gap-1 sm:gap-2 bg-[#1A1D24]/60 rounded-full px-1.5 sm:px-2 py-1 border border-[#F5F5F7]/5">
+                        <button onClick={handlePrevDay} className="p-1 sm:p-1.5 text-[#A1A5AE] hover:text-[#F5F5F7] transition-colors">
+                            <ChevronLeft className="h-4 w-4" />
+                        </button>
+                        <span className="text-[10px] sm:text-xs font-semibold tracking-widest uppercase w-16 sm:w-20 text-center text-gray-200">{displayDate}</span>
+                        <button onClick={handleNextDay} className="p-1 sm:p-1.5 text-[#A1A5AE] hover:text-[#F5F5F7] transition-colors">
+                            <ChevronRight className="h-4 w-4" />
+                        </button>
+                    </div>
 
-                <div className="relative p-2 rounded-full hover:bg-[#F5F5F7]/5 transition-colors cursor-pointer">
-                    <Bell className="h-5 w-5 text-[#D1D5DB]" />
-                    {dailyKpis.overdueCount > 0 && (
-                        <div className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#C21833] rounded-full ring-2 ring-[#0E0F12]" />
-                    )}
+                    <div className="relative p-1.5 sm:p-2 rounded-full hover:bg-[#F5F5F7]/5 transition-colors cursor-pointer shrink-0">
+                        <Bell className="h-4 w-4 sm:h-5 sm:w-5 text-[#D1D5DB]" />
+                        {dailyKpis.overdueCount > 0 && (
+                            <div className="absolute top-1 sm:top-1.5 right-1 sm:right-1.5 w-2 h-2 bg-[#C21833] rounded-full ring-2 ring-[#0E0F12]" />
+                        )}
+                    </div>
                 </div>
             </div>
 
-            <div className="p-5 space-y-8">
+            <div className="p-3 sm:p-5 space-y-6 sm:space-y-8 w-full max-w-[100vw] overflow-x-hidden">
 
                 {/* NEW LEADERBOARD SECTION */}
-                <div className="bg-[#12141A] rounded-2xl p-5 border border-[#F5F5F7]/5 shadow-sm">
+                <div className="bg-[#12141A] rounded-2xl p-4 sm:p-5 border border-[#F5F5F7]/5 shadow-sm">
                      <h3 className="text-[#F5F5F7] text-sm font-semibold mb-5 flex items-center gap-2">
                          <Medal className="h-4 w-4 text-[#A6192E]" /> Showroom Leaderboard
                      </h3>
                      
-                     <div className="flex overflow-x-auto snap-x snap-mandatory gap-3 pb-4 -mx-5 px-5 sm:grid sm:grid-cols-3 sm:mx-0 sm:px-0 sm:pb-0 sm:overflow-visible no-scrollbar">
+                     <div className="flex overflow-x-auto snap-x snap-mandatory gap-3 pb-4 -mx-4 sm:-mx-5 px-4 sm:px-5 sm:grid sm:grid-cols-3 sm:mx-0 sm:px-0 sm:pb-0 sm:overflow-visible no-scrollbar">
                          {/* Visited Leaderboard */}
-                         <div className="w-[85vw] sm:w-auto shrink-0 snap-center bg-[#1A1D24] rounded-xl p-3 border border-[#F5F5F7]/5 flex flex-col justify-between">
+                         <div className="w-[85%] max-w-[280px] sm:w-auto shrink-0 snap-center bg-[#1A1D24] rounded-xl p-3 border border-[#F5F5F7]/5 flex flex-col justify-between">
                               <p className="text-[9px] text-[#A1A5AE] font-semibold uppercase tracking-wider mb-3 text-center">Top Visits</p>
                               <div className="space-y-2.5">
                                    {leaderboard.visits.map((exec, idx) => (
@@ -532,7 +534,7 @@ export const ExecutiveHome = () => {
                          </div>
 
                          {/* WOS Count Leaderboard */}
-                         <div className="w-[85vw] sm:w-auto shrink-0 snap-center bg-[#1A1D24] rounded-xl p-3 border border-[#F5F5F7]/5 flex flex-col justify-between">
+                         <div className="w-[85%] max-w-[280px] sm:w-auto shrink-0 snap-center bg-[#1A1D24] rounded-xl p-3 border border-[#F5F5F7]/5 flex flex-col justify-between">
                               <p className="text-[9px] text-[#A1A5AE] font-semibold uppercase tracking-wider mb-3 text-center">Top WOS</p>
                               <div className="space-y-2.5">
                                    {leaderboard.wosCount.map((exec, idx) => (
@@ -551,7 +553,7 @@ export const ExecutiveHome = () => {
                          </div>
                          
                          {/* WOS Won Leaderboard */}
-                         <div className="w-[85vw] sm:w-auto shrink-0 snap-center bg-[#1A1D24] rounded-xl p-3 border border-[#F5F5F7]/5 flex flex-col justify-between">
+                         <div className="w-[85%] max-w-[280px] sm:w-auto shrink-0 snap-center bg-[#1A1D24] rounded-xl p-3 border border-[#F5F5F7]/5 flex flex-col justify-between">
                               <p className="text-[9px] text-[#A1A5AE] font-semibold uppercase tracking-wider mb-3 text-center">Top WOS Won</p>
                               <div className="space-y-2.5">
                                    {leaderboard.wosWon.map((exec, idx) => (
@@ -572,7 +574,7 @@ export const ExecutiveHome = () => {
                 </div>
 
                 {/* KPI RINGS - THIS WEEK */}
-                <div className="bg-[#12141A] rounded-2xl p-5 border border-[#F5F5F7]/5 shadow-sm">
+                <div className="bg-[#12141A] rounded-2xl p-4 sm:p-5 border border-[#F5F5F7]/5 shadow-sm">
                     <h3 className="text-[10px] text-[#A1A5AE] font-semibold uppercase tracking-[0.15em] mb-4 flex items-center gap-2">
                         <div className="w-1 h-3 bg-[#A6192E] rounded-full" />
                         This Week
@@ -627,7 +629,7 @@ export const ExecutiveHome = () => {
                 </div>
 
                {/* KPI RINGS - THIS MONTH */}
-                <div className="bg-[#12141A] rounded-2xl p-5 border border-[#F5F5F7]/5 shadow-sm">
+                <div className="bg-[#12141A] rounded-2xl p-4 sm:p-5 border border-[#F5F5F7]/5 shadow-sm">
                     <h3 className="text-[10px] text-[#A1A5AE] font-semibold uppercase tracking-[0.15em] mb-4 flex items-center gap-2">
                         <div className="w-1 h-3 bg-[#A6192E] rounded-full" />
                         This Month
@@ -682,7 +684,7 @@ export const ExecutiveHome = () => {
                 </div>
 
                {/* KPI RINGS - TOTAL */}
-                <div className="bg-[#12141A] rounded-2xl p-5 border border-[#F5F5F7]/5 shadow-sm">
+                <div className="bg-[#12141A] rounded-2xl p-4 sm:p-5 border border-[#F5F5F7]/5 shadow-sm">
                     <h3 className="text-[10px] text-[#A1A5AE] font-semibold uppercase tracking-[0.15em] mb-4 flex items-center gap-2">
                         <div className="w-1 h-3 bg-[#A6192E] rounded-full" />
                         Total Overview
@@ -737,7 +739,7 @@ export const ExecutiveHome = () => {
                 </div>
 
                 {/* C. Trend Card */}
-                <div className="bg-[#12141A] rounded-2xl p-5 border border-[#F5F5F7]/5 shadow-sm mt-8">
+                <div className="bg-[#12141A] rounded-2xl p-4 sm:p-5 border border-[#F5F5F7]/5 shadow-sm mt-6 sm:mt-8">
                     <h3 className="text-[#F5F5F7] text-sm font-semibold mb-5 flex items-center gap-2">
                         <Activity className="h-4 w-4 text-[#A6192E]" /> Performance Trend
                     </h3>
@@ -769,8 +771,8 @@ export const ExecutiveHome = () => {
                 </div>
 
                 {/* E. My Day Action Area */}
-                <div className="mt-8">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+                <div className="mt-6 sm:mt-8">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4">
                         <h3 className="text-lg font-bold text-[#F5F5F7] tracking-tight m-0">My Day</h3>
                         {isToday(selectedDate) && !todayAttendance && (
                              <button 
@@ -807,19 +809,19 @@ export const ExecutiveHome = () => {
                         )}
                     </div>
 
-                    <div className="bg-gradient-to-br from-[#7A121F]/40 to-[#0E0F12] border border-[#7A121F]/30 rounded-2xl p-6 mb-5 relative overflow-hidden shadow-lg">
+                    <div className="bg-gradient-to-br from-[#7A121F]/40 to-[#0E0F12] border border-[#7A121F]/30 rounded-2xl p-5 sm:p-6 mb-5 relative overflow-hidden shadow-lg w-full">
                         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-white/5 via-transparent to-transparent pointer-events-none" />
                         <div className="relative z-10">
-                            <p className="text-xs text-[#D1D5DB] font-semibold uppercase tracking-widest mb-2">Daily Outlook</p>
-                            <h4 className="text-2xl font-bold text-[#F5F5F7] leading-tight mb-5">
+                            <p className="text-[10px] sm:text-xs text-[#D1D5DB] font-semibold uppercase tracking-widest mb-2">Daily Outlook</p>
+                            <h4 className="text-xl sm:text-2xl font-bold text-[#F5F5F7] leading-tight mb-4 sm:mb-5">
                                 You have <span className="text-[#F5F5F7] bg-[#C21833] px-2 py-0.5 rounded-md inline-block mx-1 shadow-sm">{dailyKpis.todayPlanned - dailyKpis.todayDone}</span> pending visits today.
                             </h4>
-                            <button onClick={() => navigate("/visits")} className="w-full bg-white text-[#A6192E] hover:bg-gray-100 font-bold py-3.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
+                            <button onClick={() => navigate("/visits")} className="w-full bg-white text-[#A6192E] hover:bg-gray-100 font-bold py-3 sm:py-3.5 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all active:scale-[0.98] text-sm sm:text-base">
                                 <Play className="h-4 w-4 fill-[#A6192E]" /> Start Next Visit
                             </button>
                         </div>
                         <div className="absolute -bottom-8 -right-8 opacity-[0.03] pointer-events-none">
-                            <Target className="h-48 w-48 text-[#F5F5F7]" />
+                            <Target className="h-40 w-40 sm:h-48 sm:w-48 text-[#F5F5F7]" />
                         </div>
                     </div>
 
@@ -859,7 +861,7 @@ export const ExecutiveHome = () => {
                     ) : (
                         <div className="space-y-2">
                             {/* Summary Bar */}
-                            <div className="bg-[#1A1D24] rounded-2xl p-4 border border-[#F5F5F7]/5 flex items-center justify-between mb-3 shadow-sm">
+                            <div className="bg-[#1A1D24] rounded-2xl p-3 sm:p-4 border border-[#F5F5F7]/5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 mb-3 shadow-sm">
                                 <div className="flex items-center gap-2">
                                     <div className="w-8 h-8 rounded-full bg-[#2E7D32]/15 flex items-center justify-center">
                                         <Navigation className="h-4 w-4 text-[#2E7D32]" />

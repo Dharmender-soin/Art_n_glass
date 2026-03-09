@@ -126,15 +126,19 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
 
       {/* Summary bar */}
       {items.length > 0 && (
-        <div className="flex items-center gap-4 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
-          <span className="flex items-center gap-1 font-medium">
-            <IndianRupee className="h-3.5 w-3.5 text-primary" />
-            Total: <span className="text-primary font-bold">{totalAmount.toFixed(2)} Lac</span>
+        <div className="flex justify-between items-center rounded-xl border border-red-100 bg-red-50/50 px-4 py-3 text-sm">
+          <span className="flex flex-col items-center">
+             <span className="flex items-center gap-1 text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">
+               <IndianRupee className="h-3 w-3" /> Total
+             </span>
+             <span className="text-red-500 font-bold text-base mt-0.5">{totalAmount.toFixed(2)} Lac</span>
           </span>
-          <Separator orientation="vertical" className="h-4" />
-          <span className="flex items-center gap-1 text-muted-foreground">
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Verified: {verifiedCount}/{items.length}
+          <Separator orientation="vertical" className="h-8 bg-red-100" />
+          <span className="flex flex-col items-center">
+             <span className="flex items-center gap-1 text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">
+               <ShieldCheck className="h-3 w-3" /> Verified
+             </span>
+             <span className="font-semibold text-muted-foreground text-base mt-0.5">{verifiedCount}/{items.length}</span>
           </span>
         </div>
       )}
@@ -143,15 +147,15 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
 
       {/* Add Form */}
       {showForm && (
-        <Card className="border-primary/20 bg-primary/5">
+        <Card className="border-red-100 bg-red-50/30 shadow-none">
           <CardContent className="p-4">
             <form onSubmit={(e) => { e.preventDefault(); addItem.mutate(); }} className="space-y-4">
               <div className="space-y-2">
-                <Label className="flex items-center gap-1.5">
-                  <Layers className="h-3.5 w-3.5" />Work Type
+                <Label className="flex items-center gap-1.5 font-semibold text-foreground/80">
+                  <Layers className="h-4 w-4" />Work Type
                 </Label>
                 <Select value={workTypeId} onValueChange={setWorkTypeId}>
-                  <SelectTrigger><SelectValue placeholder="Select work type..." /></SelectTrigger>
+                  <SelectTrigger className="bg-white"><SelectValue placeholder="Select work type..." /></SelectTrigger>
                   <SelectContent className="bg-popover max-h-[300px]">
                     {Object.entries(groupedTypes).map(([group, types]) => (
                       <div key={group}>
@@ -166,36 +170,34 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
               </div>
 
               {selectedType && (
-                <div className="rounded-md bg-muted/50 p-2.5 text-sm">
-                  <span className="text-muted-foreground">Category:</span>{" "}
-                  <span className="font-medium">{selectedType.type_of_work}</span>
-                  <span className="mx-1.5 text-muted-foreground">→</span>
-                  <span className="font-medium text-primary">{selectedType.sub_work}</span>
+                <div className="rounded-md bg-white border border-red-50 p-2 text-xs flex flex-wrap gap-1.5 items-center">
+                  <Badge variant="secondary" className="bg-red-50 text-red-600 hover:bg-red-100 py-0.5">{selectedType.type_of_work}</Badge>
+                  <span className="text-muted-foreground font-medium">{selectedType.sub_work}</span>
                 </div>
               )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-1.5">
-                    <Hash className="h-3.5 w-3.5" />Quantity
+                  <Label className="flex items-center gap-1.5 font-semibold text-foreground/80">
+                    <Hash className="h-4 w-4" />Quantity
                   </Label>
-                  <Input type="number" placeholder="e.g. 10" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                  <Input type="number" placeholder="e.g. 10" className="bg-white" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-1.5">
-                    <IndianRupee className="h-3.5 w-3.5" />Amount (in Lac)
+                  <Label className="flex items-center gap-1.5 font-semibold text-foreground/80">
+                    <IndianRupee className="h-4 w-4" />Amount <span className="text-[10px] font-normal text-muted-foreground">(in Lac)</span>
                   </Label>
-                  <Input type="number" step="0.01" placeholder="e.g. 2.50" value={amountInLac} onChange={(e) => setAmountInLac(e.target.value)} />
+                  <Input type="number" step="0.01" placeholder="e.g. 2.50" className="bg-white" value={amountInLac} onChange={(e) => setAmountInLac(e.target.value)} />
                 </div>
-                <div className="col-span-2 space-y-2">
-                  <Label className="flex items-center gap-1.5">
-                    <FileText className="h-3.5 w-3.5" />Notes
+                <div className="col-span-2 space-y-2 mt-1">
+                  <Label className="flex items-center gap-1.5 font-semibold text-foreground/80">
+                    <FileText className="h-4 w-4" />Notes
                   </Label>
-                  <Textarea placeholder="Additional details..." value={description} onChange={(e) => setDescription(e.target.value)} rows={2} />
+                  <Textarea placeholder="Additional details..." className="bg-white resize-none" value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
                 </div>
               </div>
 
-              <Button type="submit" size="sm" className="w-full" disabled={!workTypeId || addItem.isPending}>
+              <Button type="submit" size="default" className="w-full bg-red-400 hover:bg-red-500 text-white shadow-sm mt-3" disabled={!workTypeId || addItem.isPending}>
                 {addItem.isPending ? "Saving..." : "Add Work Scope Item"}
               </Button>
             </form>
@@ -217,28 +219,28 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
             const verified = (item as any).is_verified;
             const amt = (item as any).amount_in_lac;
             return (
-              <Card key={item.id} className={`group hover:shadow-sm transition-shadow ${verified ? "border-[hsl(var(--status-converted))]/30" : ""}`}>
-                <CardContent className="p-3 flex items-start justify-between gap-3">
+              <Card key={item.id} className={`group hover:shadow-sm transition-shadow rounded-2xl ${verified ? "border-[hsl(var(--status-converted))]/30" : ""}`}>
+                <CardContent className="p-3.5 flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="text-sm font-semibold">{wt?.sub_work || "Unknown"}</p>
-                      <Badge variant="outline" className="text-[10px] px-1.5 py-0">{wt?.type_of_work}</Badge>
+                    <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                      <p className="text-base font-bold text-foreground">{wt?.sub_work || "Unknown"}</p>
+                      <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-background">{wt?.type_of_work}</Badge>
                       {verified && (
                         <Badge className="bg-[hsl(var(--status-converted))] text-white text-[10px] px-1.5 py-0 border-0">
                           <CheckCircle className="h-2.5 w-2.5 mr-0.5" />Verified
                         </Badge>
                       )}
                     </div>
-                    <div className="flex items-center gap-3 mt-1.5">
+                    <div className="flex items-center gap-3">
                       {item.quantity && (
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          <Hash className="h-3 w-3" />Qty: <span className="font-medium text-foreground">{item.quantity}</span>
+                        <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+                          <Hash className="h-3.5 w-3.5" />Qty: <span className="font-semibold text-foreground/80">{item.quantity}</span>
                         </span>
                       )}
                       {amt != null && amt > 0 && (
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          <IndianRupee className="h-3 w-3" />
-                          <span className="font-medium text-primary">{amt} Lac</span>
+                        <span className="inline-flex items-center gap-1 text-sm text-red-500">
+                          <IndianRupee className="h-3.5 w-3.5" />
+                          <span className="font-semibold">{amt} Lac</span>
                         </span>
                       )}
                     </div>

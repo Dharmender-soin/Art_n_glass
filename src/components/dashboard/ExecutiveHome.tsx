@@ -324,29 +324,22 @@ export const ExecutiveHome = () => {
         
         const wosCount = filteredWos.length;
         
-        let estValue = 0;
-        let wonValue = 0;
-        
-        filteredWos.forEach((ws) => {
-            estValue += Number(ws.amount_in_lac || 0);
-            if (ws.work_status === 'won' || ws.verified_amount) {
-                wonValue += Number(ws.amount_in_lac || 0);
-            }
-        });
-
-        const wonPercent = estValue > 0 ? Math.round((wonValue / estValue) * 100) : 0;
-
         const wonItems: any[] = [];
         filteredWos.forEach(w => {
             if (w.work_status === 'won' || w.verified_amount) wonItems.push(w);
         });
 
+        const estValueCount = filteredWos.length; // Count of WOS items added
+        const wonValueCount = wonItems.length; // Count of WOS items won
+        
+        const wonPercent = estValueCount > 0 ? Math.round((wonValueCount / estValueCount) * 100) : 0;
+
         return { 
             plannedVisits, 
             doneVisits, 
             wosCount, 
-            estValue, 
-            wonValue, 
+            estValue: estValueCount, // Changed to count
+            wonValue: wonValueCount, // Changed to count
             wonPercent,
             rawVisits: filteredVisits,
             rawWos: filteredWos,
@@ -481,14 +474,14 @@ export const ExecutiveHome = () => {
                               <p className="text-[9px] text-exec-text-sec font-semibold uppercase tracking-wider mb-3 text-center">Top Visits</p>
                               <div className="space-y-2.5">
                                    {leaderboard.visits.map((exec, idx) => (
-                                        <div key={exec.user_id} className="flex items-center justify-between cursor-pointer hover:bg-exec-text/10 p-1 -mx-1 rounded transition-colors" onClick={() => setLeadPopup({ name: exec.full_name || 'Executive', visits: exec.visits, wosCount: exec.wosCount, wosWon: exec.wosWon, rankingLogic: 'Ranked by Total Visits Completed' })}>
-                                             <span className={`text-xs truncate max-w-[60px] ${exec.user_id === user?.id ? 'text-exec-text font-semibold' : 'text-exec-text-sec'}`}>
-                                                  {exec.full_name?.split(' ')[0]}
-                                             </span>
-                                             <div className="flex items-center gap-1.5">
-                                                <span className="text-xs font-mono text-[#D1D5DB]">{exec.visits}</span>
-                                                <div className={`w-1.5 h-1.5 rounded-full ${idx === 0 ? 'bg-[#D4AF37]' : idx === 1 ? 'bg-[#C0C0C0]' : idx === 2 ? 'bg-[#CD7F32]' : 'bg-gray-600'}`} />
+                                        <div key={exec.user_id} className={`flex items-center justify-between cursor-pointer hover:bg-exec-text/10 p-1.5 -mx-1.5 rounded transition-colors ${idx === 0 ? 'bg-exec-text/5 border border-exec-primary/20 shadow-sm' : ''}`} onClick={() => setLeadPopup({ name: exec.full_name || 'Executive', visits: exec.visits, wosCount: exec.wosCount, wosWon: exec.wosWon, rankingLogic: 'Ranked by Total Visits Completed' })}>
+                                             <div className="flex items-center gap-2">
+                                                  <span className="text-sm leading-none flex-shrink-0 w-5">{idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : ""}</span>
+                                                  <span className={`text-xs truncate max-w-[80px] ${idx === 0 ? 'text-exec-text font-bold' : exec.user_id === user?.id ? 'text-exec-text font-semibold' : 'text-exec-text-sec'}`}>
+                                                       {exec.full_name?.split(' ')[0]}
+                                                  </span>
                                              </div>
+                                             <span className={`text-xs font-mono ml-2 ${idx === 0 ? 'text-[#D4AF37] font-bold' : 'text-[#D1D5DB]'}`}>{exec.visits}</span>
                                         </div>
                                    ))}
                                    {leaderboard.visits.length === 0 && <p className="text-xs text-center text-exec-text-mut">No data</p>}
@@ -500,14 +493,14 @@ export const ExecutiveHome = () => {
                               <p className="text-[9px] text-exec-text-sec font-semibold uppercase tracking-wider mb-3 text-center">Top WOS</p>
                               <div className="space-y-2.5">
                                    {leaderboard.wosCount.map((exec, idx) => (
-                                        <div key={exec.user_id} className="flex items-center justify-between cursor-pointer hover:bg-exec-text/10 p-1 -mx-1 rounded transition-colors" onClick={() => setLeadPopup({ name: exec.full_name || 'Executive', visits: exec.visits, wosCount: exec.wosCount, wosWon: exec.wosWon, rankingLogic: 'Ranked by Total WOS Added' })}>
-                                             <span className={`text-xs truncate max-w-[60px] ${exec.user_id === user?.id ? 'text-exec-text font-semibold' : 'text-exec-text-sec'}`}>
-                                                  {exec.full_name?.split(' ')[0]}
-                                             </span>
-                                             <div className="flex items-center gap-1.5">
-                                                <span className="text-xs font-mono text-[#D1D5DB]">{exec.wosCount}</span>
-                                                <div className={`w-1.5 h-1.5 rounded-full ${idx === 0 ? 'bg-[#D4AF37]' : idx === 1 ? 'bg-[#C0C0C0]' : idx === 2 ? 'bg-[#CD7F32]' : 'bg-gray-600'}`} />
+                                        <div key={exec.user_id} className={`flex items-center justify-between cursor-pointer hover:bg-exec-text/10 p-1.5 -mx-1.5 rounded transition-colors ${idx === 0 ? 'bg-exec-text/5 border border-exec-primary/20 shadow-sm' : ''}`} onClick={() => setLeadPopup({ name: exec.full_name || 'Executive', visits: exec.visits, wosCount: exec.wosCount, wosWon: exec.wosWon, rankingLogic: 'Ranked by Total WOS Added' })}>
+                                             <div className="flex items-center gap-2">
+                                                  <span className="text-sm leading-none flex-shrink-0 w-5">{idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : ""}</span>
+                                                  <span className={`text-xs truncate max-w-[80px] ${idx === 0 ? 'text-exec-text font-bold' : exec.user_id === user?.id ? 'text-exec-text font-semibold' : 'text-exec-text-sec'}`}>
+                                                       {exec.full_name?.split(' ')[0]}
+                                                  </span>
                                              </div>
+                                             <span className={`text-xs font-mono ml-2 ${idx === 0 ? 'text-[#D4AF37] font-bold' : 'text-[#D1D5DB]'}`}>{exec.wosCount}</span>
                                         </div>
                                    ))}
                                    {leaderboard.wosCount.length === 0 && <p className="text-xs text-center text-exec-text-mut">No data</p>}
@@ -519,14 +512,14 @@ export const ExecutiveHome = () => {
                               <p className="text-[9px] text-exec-text-sec font-semibold uppercase tracking-wider mb-3 text-center">Top WOS Won</p>
                               <div className="space-y-2.5">
                                    {leaderboard.wosWon.map((exec, idx) => (
-                                        <div key={exec.user_id} className="flex items-center justify-between cursor-pointer hover:bg-exec-text/10 p-1 -mx-1 rounded transition-colors" onClick={() => setLeadPopup({ name: exec.full_name || 'Executive', visits: exec.visits, wosCount: exec.wosCount, wosWon: exec.wosWon, rankingLogic: 'Ranked by Verified WOS Value' })}>
-                                             <span className={`text-xs truncate max-w-[55px] ${exec.user_id === user?.id ? 'text-exec-text font-semibold' : 'text-exec-text-sec'}`}>
-                                                  {exec.full_name?.split(' ')[0]}
-                                             </span>
-                                             <div className="flex items-center gap-1.5">
-                                                <span className="text-[11px] font-mono text-[#D1D5DB]">{exec.wosWon.toFixed(1)}L</span>
-                                                <div className={`w-1.5 h-1.5 rounded-full ${idx === 0 ? 'bg-[#D4AF37]' : idx === 1 ? 'bg-[#C0C0C0]' : idx === 2 ? 'bg-[#CD7F32]' : 'bg-gray-600'}`} />
+                                        <div key={exec.user_id} className={`flex items-center justify-between cursor-pointer hover:bg-exec-text/10 p-1.5 -mx-1.5 rounded transition-colors ${idx === 0 ? 'bg-exec-text/5 border border-exec-primary/20 shadow-sm' : ''}`} onClick={() => setLeadPopup({ name: exec.full_name || 'Executive', visits: exec.visits, wosCount: exec.wosCount, wosWon: exec.wosWon, rankingLogic: 'Ranked by Verified WOS Value' })}>
+                                             <div className="flex items-center gap-2">
+                                                  <span className="text-sm leading-none flex-shrink-0 w-5">{idx === 0 ? "🥇" : idx === 1 ? "🥈" : idx === 2 ? "🥉" : ""}</span>
+                                                  <span className={`text-xs truncate max-w-[80px] ${idx === 0 ? 'text-exec-text font-bold' : exec.user_id === user?.id ? 'text-exec-text font-semibold' : 'text-exec-text-sec'}`}>
+                                                       {exec.full_name?.split(' ')[0]}
+                                                  </span>
                                              </div>
+                                             <span className={`text-[11px] font-mono ml-2 ${idx === 0 ? 'text-[#D4AF37] font-bold' : 'text-[#D1D5DB]'}`}>{exec.wosWon}</span>
                                         </div>
                                    ))}
                                    {leaderboard.wosWon.length === 0 && <p className="text-xs text-center text-exec-text-mut">No data</p>}
@@ -563,11 +556,11 @@ export const ExecutiveHome = () => {
                             label="WOS Count"
                             sublabel={`${weekKpis.wosCount} Added`}
                             color="#b91c1c"
-                            displayValue={weekKpis.estValue.toFixed(1)}
+                            displayValue={weekKpis.estValue}
                             delay={0.2}
                         onClick={() => setKpiPopup({
                                 title: "This Week - WOS Count",
-                                metrics: [{ label: "WOS Added", value: weekKpis.wosCount }, { label: "Estimated Total (L)", value: weekKpis.estValue.toFixed(1) }],
+                                metrics: [{ label: "WOS Added", value: weekKpis.wosCount }, { label: "Estimated Total", value: weekKpis.estValue }],
                                 list: weekKpis.rawWos,
                                 type: 'wos_count'
                             })}
@@ -576,13 +569,13 @@ export const ExecutiveHome = () => {
                             value={weekKpis.wonPercent}
                             max={100}
                             label="WOS Won"
-                            sublabel={`${weekKpis.wonValue.toFixed(1)}L Won`}
+                            sublabel={`${weekKpis.wonValue} Won`}
                             color="#b91c1c"
                             displayValue={`${weekKpis.wonPercent}%`}
                             delay={0.3}
                         onClick={() => setKpiPopup({
                                 title: "This Week - WOS Won",
-                                metrics: [{ label: "Won Deals", value: weekKpis.rawWosWon.length }, { label: "Secured Value (L)", value: weekKpis.wonValue.toFixed(1) }],
+                                metrics: [{ label: "Won Deals", value: weekKpis.rawWosWon.length }, { label: "Secured Count", value: weekKpis.wonValue }],
                                 list: weekKpis.rawWosWon,
                                 type: 'wos_won'
                             })}
@@ -618,11 +611,11 @@ export const ExecutiveHome = () => {
                             label="WOS Count"
                             sublabel={`${monthKpis.wosCount} Added`}
                             color="#b91c1c"
-                            displayValue={monthKpis.estValue.toFixed(1)}
+                            displayValue={monthKpis.estValue}
                             delay={0.5}
                         onClick={() => setKpiPopup({
                                 title: "This Month - WOS Count",
-                                metrics: [{ label: "WOS Added", value: monthKpis.wosCount }, { label: "Estimated Total (L)", value: monthKpis.estValue.toFixed(1) }],
+                                metrics: [{ label: "WOS Added", value: monthKpis.wosCount }, { label: "Estimated Total", value: monthKpis.estValue }],
                                 list: monthKpis.rawWos,
                                 type: 'wos_count'
                             })}
@@ -631,13 +624,13 @@ export const ExecutiveHome = () => {
                             value={monthKpis.wonPercent}
                             max={100}
                             label="WOS Won"
-                            sublabel={`${monthKpis.wonValue.toFixed(1)}L Won`}
+                            sublabel={`${monthKpis.wonValue} Won`}
                             color="#b91c1c"
                             displayValue={`${monthKpis.wonPercent}%`}
                             delay={0.6}
                         onClick={() => setKpiPopup({
                                 title: "This Month - WOS Won",
-                                metrics: [{ label: "Won Deals", value: monthKpis.rawWosWon.length }, { label: "Secured Value (L)", value: monthKpis.wonValue.toFixed(1) }],
+                                metrics: [{ label: "Won Deals", value: monthKpis.rawWosWon.length }, { label: "Secured Count", value: monthKpis.wonValue }],
                                 list: monthKpis.rawWosWon,
                                 type: 'wos_won'
                             })}
@@ -673,11 +666,11 @@ export const ExecutiveHome = () => {
                             label="WOS Count"
                             sublabel={`${totalKpis.wosCount} Added`}
                             color="#b91c1c"
-                            displayValue={totalKpis.estValue.toFixed(1)}
+                            displayValue={totalKpis.estValue}
                             delay={0.8}
                         onClick={() => setKpiPopup({
                                 title: "Overview - WOS Count",
-                                metrics: [{ label: "WOS Added", value: totalKpis.wosCount }, { label: "Estimated Total (L)", value: totalKpis.estValue.toFixed(1) }],
+                                metrics: [{ label: "WOS Added", value: totalKpis.wosCount }, { label: "Estimated Total", value: totalKpis.estValue }],
                                 list: totalKpis.rawWos,
                                 type: 'wos_count'
                             })}
@@ -686,13 +679,13 @@ export const ExecutiveHome = () => {
                             value={totalKpis.wonPercent}
                             max={100}
                             label="WOS Won"
-                            sublabel={`${totalKpis.wonValue.toFixed(1)}L Won`}
+                            sublabel={`${totalKpis.wonValue} Won`}
                             color="#b91c1c"
                             displayValue={`${totalKpis.wonPercent}%`}
                             delay={0.9}
                         onClick={() => setKpiPopup({
                                 title: "Overview - WOS Won",
-                                metrics: [{ label: "Won Deals", value: totalKpis.rawWosWon.length }, { label: "Secured Value (L)", value: totalKpis.wonValue.toFixed(1) }],
+                                metrics: [{ label: "Won Deals", value: totalKpis.rawWosWon.length }, { label: "Secured Count", value: totalKpis.wonValue }],
                                 list: totalKpis.rawWosWon,
                                 type: 'wos_won'
                             })}
@@ -916,7 +909,7 @@ export const ExecutiveHome = () => {
                                                 </div>
                                                 <div className="flex justify-between items-center text-[11px] text-exec-text-sec font-medium">
                                                     <span>Creation Date: {format(parseISO(item.created_at.split('T')[0]), "dd MMM")}</span>
-                                                    <span className="font-bold text-[#D1D5DB]">₹ {item.amount_in_lac}L</span>
+                                                    <span className="font-bold text-[#D1D5DB]">{item.amount_in_lac}</span>
                                                 </div>
                                             </>
                                         )}
@@ -954,7 +947,7 @@ export const ExecutiveHome = () => {
                         <div className="bg-gradient-to-r from-exec-card to-exec-card rounded-xl p-4 border border-exec-primary/30 flex justify-between items-center shadow-inner group relative overflow-hidden">
                             <div className="absolute inset-0 bg-gradient-to-r from-exec-primary/5 to-transparent pointer-events-none" />
                             <span className="text-exec-text-sec text-xs font-semibold uppercase tracking-wider relative z-10">WOS Value Won</span>
-                            <span className="text-exec-text text-xl font-bold font-mono tracking-tight text-exec-primary relative z-10">₹ {leadPopup?.wosWon.toFixed(1)}L</span>
+                            <span className="text-exec-text text-xl font-bold font-mono tracking-tight text-exec-primary relative z-10">{leadPopup?.wosWon}</span>
                         </div>
                     </div>
                 </DialogContent>
@@ -1118,7 +1111,7 @@ const VisitCard = ({ visit, onMarkDone, onCancel, index, navigate }: VisitCardPr
                 className="relative bg-exec-card p-5 rounded-2xl border border-exec-border z-10 w-full"
             >
                 <div className="flex justify-between items-start mb-2.5">
-                    <p className="text-exec-text-sec text-[10px] font-semibold tracking-widest uppercase">{format(parseISO(visit.visit_date), "hh:mm a")} <span className="mx-1 text-[#6B7280]">•</span> <span className={`text-${isDone ? 'emerald' : 'blue'}-400`}>{visit.status.replace("_", " ")}</span></p>
+                    <p className="text-exec-text-sec text-[10px] font-semibold tracking-widest uppercase">{format(parseISO(isDone && visit.done_at ? visit.done_at : visit.created_at), "hh:mm a")} <span className="mx-1 text-[#6B7280]">•</span> <span className={`text-${isDone ? 'emerald' : 'blue'}-400`}>{visit.status.replace("_", " ")}</span></p>
                     <div className={`w-2 h-2 rounded-full ${statusColor} shadow-sm`} />
                 </div>
                 <h3 className="text-exec-text font-semibold text-lg leading-tight mb-1 truncate">{visit.clients?.name || visit.partners?.name || "Meeting"}</h3>

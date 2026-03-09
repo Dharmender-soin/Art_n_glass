@@ -363,6 +363,8 @@ export type Database = {
           remarks: string | null
           status: Database["public"]["Enums"]["visit_status"]
           tat_due_date: string | null
+          travel_mode: string | null
+          pooled_with_user_id: string | null
           updated_at: string
           visit_date: string
           visit_with_type: Database["public"]["Enums"]["visit_with_type"]
@@ -384,6 +386,8 @@ export type Database = {
           remarks?: string | null
           status?: Database["public"]["Enums"]["visit_status"]
           tat_due_date?: string | null
+          travel_mode?: string | null
+          pooled_with_user_id?: string | null
           updated_at?: string
           visit_date: string
           visit_with_type: Database["public"]["Enums"]["visit_with_type"]
@@ -405,6 +409,8 @@ export type Database = {
           remarks?: string | null
           status?: Database["public"]["Enums"]["visit_status"]
           tat_due_date?: string | null
+          travel_mode?: string | null
+          pooled_with_user_id?: string | null
           updated_at?: string
           visit_date?: string
           visit_with_type?: Database["public"]["Enums"]["visit_with_type"]

@@ -21,6 +21,30 @@ type PartnerType = Database["public"]["Enums"]["partner_type"];
 
 const emptyForm = { type: "builder" as PartnerType, name: "", mobile: "", company_name: "", address: "", city: "" };
 
+// ─── Hoisted outside Partners so it never remounts on parent re-render ───────
+const PartnerForm = ({ values, onChange, onSubmit, isPending, submitLabel }: {
+  values: typeof emptyForm; onChange: (v: typeof emptyForm) => void;
+  onSubmit: () => void; isPending: boolean; submitLabel: string;
+}) => (
+  <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="space-y-3">
+    <div className="space-y-1">
+      <Label>Type</Label>
+      <Select value={values.type} onValueChange={(v) => onChange({ ...values, type: v as PartnerType })}>
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent className="bg-popover"><SelectItem value="builder">Builder</SelectItem><SelectItem value="architect">Architect</SelectItem></SelectContent>
+      </Select>
+    </div>
+    <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-1"><Label>Name</Label><Input value={values.name} onChange={(e) => onChange({ ...values, name: e.target.value })} required /></div>
+      <div className="space-y-1"><Label>Mobile</Label><Input value={values.mobile} onChange={(e) => onChange({ ...values, mobile: e.target.value })} required /></div>
+    </div>
+    <div className="space-y-1"><Label>Company</Label><Input value={values.company_name} onChange={(e) => onChange({ ...values, company_name: e.target.value })} /></div>
+    <div className="space-y-1"><Label>Address</Label><Input value={values.address} onChange={(e) => onChange({ ...values, address: e.target.value })} /></div>
+    <div className="space-y-1"><Label>City</Label><Input value={values.city} onChange={(e) => onChange({ ...values, city: e.target.value })} /></div>
+    <Button type="submit" className="w-full" disabled={isPending}>{isPending ? "Saving..." : submitLabel}</Button>
+  </form>
+);
+
 const Partners = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -123,29 +147,6 @@ const Partners = () => {
     const matchType = !filterType || filterType === "all" || p.type === filterType;
     return matchSearch && matchCity && matchType;
   });
-
-  const PartnerForm = ({ values, onChange, onSubmit, isPending, submitLabel }: {
-    values: typeof emptyForm; onChange: (v: typeof emptyForm) => void;
-    onSubmit: () => void; isPending: boolean; submitLabel: string;
-  }) => (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="space-y-3">
-      <div className="space-y-1">
-        <Label>Type</Label>
-        <Select value={values.type} onValueChange={(v) => onChange({ ...values, type: v as PartnerType })}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent className="bg-popover"><SelectItem value="builder">Builder</SelectItem><SelectItem value="architect">Architect</SelectItem></SelectContent>
-        </Select>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1"><Label>Name</Label><Input value={values.name} onChange={(e) => onChange({ ...values, name: e.target.value })} required /></div>
-        <div className="space-y-1"><Label>Mobile</Label><Input value={values.mobile} onChange={(e) => onChange({ ...values, mobile: e.target.value })} required /></div>
-      </div>
-      <div className="space-y-1"><Label>Company</Label><Input value={values.company_name} onChange={(e) => onChange({ ...values, company_name: e.target.value })} /></div>
-      <div className="space-y-1"><Label>Address</Label><Input value={values.address} onChange={(e) => onChange({ ...values, address: e.target.value })} /></div>
-      <div className="space-y-1"><Label>City</Label><Input value={values.city} onChange={(e) => onChange({ ...values, city: e.target.value })} /></div>
-      <Button type="submit" className="w-full" disabled={isPending}>{isPending ? "Saving..." : submitLabel}</Button>
-    </form>
-  );
 
   return (
     <div className="space-y-4">

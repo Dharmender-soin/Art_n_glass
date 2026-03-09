@@ -61,32 +61,33 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
       </div>
 
       <SidebarInset>
-        {/* — Top Bar — */}
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/80 backdrop-blur-md px-4 md:px-6">
-          {/* Mobile trigger */}
-          {isMobile && <SidebarTrigger className="-ml-1" />}
+        {/* — Top Bar — hidden on home page as ExecutiveHome has its own sticky header */}
+        {pathname !== "/" && (
+          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/80 backdrop-blur-md px-4 md:px-6">
+            {/* Mobile trigger */}
+            {isMobile && <SidebarTrigger className="-ml-1" />}
 
-          {/* Breadcrumb / Page Title */}
-          {/* Breadcrumb / Page Title - Hidden on pages with rich headers */}
-          {!["/verification"].includes(pathname) && (
-            <div className="flex items-center gap-2">
-              {!isMobile && (
-                <span className="text-xs text-muted-foreground hidden md:inline">
-                  Art-N-Glass
-                </span>
-              )}
-              {!isMobile && (
-                <span className="text-muted-foreground/40 hidden md:inline">/</span>
-              )}
-              <h1 className="text-sm font-semibold tracking-tight">{pageTitle}</h1>
+            {/* Breadcrumb / Page Title - Hidden on pages with rich headers */}
+            {!["/verification"].includes(pathname) && (
+              <div className="flex items-center gap-2">
+                {!isMobile && (
+                  <span className="text-xs text-muted-foreground hidden md:inline">
+                    Art-N-Glass
+                  </span>
+                )}
+                {!isMobile && (
+                  <span className="text-muted-foreground/40 hidden md:inline">/</span>
+                )}
+                <h1 className="text-sm font-semibold tracking-tight">{pageTitle}</h1>
+              </div>
+            )}
+
+            {/* Right side: mobile theme toggle */}
+            <div className="ml-auto flex items-center gap-2">
+              {isMobile && <ThemeSwitcher />}
             </div>
-          )}
-
-          {/* Right side: mobile theme toggle */}
-          <div className="ml-auto flex items-center gap-2">
-            {isMobile && <ThemeSwitcher />}
-          </div>
-        </header>
+          </header>
+        )}
 
         {/* — Main Content — */}
         <div className="flex flex-1 flex-col gap-6 p-4 md:p-6 lg:p-8 pb-20 md:pb-8 overflow-y-auto h-full">

@@ -56,6 +56,8 @@ const Visits = () => {
     partner_id: "",
     address: "",
     purpose_id: "",
+    travel_mode: "own" as "own" | "pooled",
+    pooled_with_user_id: "",
   });
 
   const { data: purposes = [] } = usePurposes(form.visit_with_type);
@@ -102,6 +104,36 @@ const Visits = () => {
     },
   });
 
+  // Fetch showroom colleagues for pooled travel selection
+  const { data: colleagues = [] } = useQuery({
+    queryKey: ["colleagues-list"],
+    queryFn: async () => {
+      if (!user) return [];
+      // Get the current user's showroom
+      const { data: myRole } = await supabase
+        .from("user_roles")
+        .select("showroom_id")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!myRole?.showroom_id) return [];
+      // Get all executives in same showroom
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("user_id")
+        .eq("showroom_id", myRole.showroom_id)
+        .eq("role", "executive")
+        .neq("user_id", user.id);
+      if (!roles?.length) return [];
+      const ids = roles.map(r => r.user_id);
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("user_id, full_name, conveyance_type, conveyance_rate")
+        .in("user_id", ids);
+      return profiles || [];
+    },
+    enabled: !!user,
+  });
+
   const createVisit = useMutation({
     mutationFn: async () => {
       const insertData: any = {
@@ -111,6 +143,8 @@ const Visits = () => {
         purpose_id: form.purpose_id,
         purpose: purposes.find(p => p.id === form.purpose_id)?.purpose_name || "Meeting",
         created_by: user!.id,
+        travel_mode: form.travel_mode,
+        pooled_with_user_id: form.travel_mode === "pooled" && form.pooled_with_user_id ? form.pooled_with_user_id : null,
       };
       if (form.visit_with_type === "client") insertData.client_id = form.client_id;
       else insertData.partner_id = form.partner_id;
@@ -120,7 +154,7 @@ const Visits = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["visits"] });
       toast.success("Visit planned!");
-      setForm({ visit_date: format(new Date(), "yyyy-MM-dd"), visit_with_type: "client", client_id: "", partner_id: "", address: "", purpose_id: "" });
+      setForm({ visit_date: format(new Date(), "yyyy-MM-dd"), visit_with_type: "client", client_id: "", partner_id: "", address: "", purpose_id: "", travel_mode: "own", pooled_with_user_id: "" });
       setDialogOpen(false);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -189,6 +223,22 @@ const Visits = () => {
             fromLng = attendance.check_in_lng;
             fromLocationName = "Start Day Check-In";
          }
+      }
+
+      // ─── Pooled Passenger: skip conveyance ───
+      const { data: visitForMode } = await supabase.from("visits").select("travel_mode, pooled_with_user_id").eq("id", visitId).single();
+      if (visitForMode?.travel_mode === "pooled") {
+        const { error } = await supabase.from("visits").update({
+          status: "done" as VisitStatus,
+          remarks,
+          photo_url: photoPath,
+          gps_latitude: gpsLat,
+          gps_longitude: gpsLng,
+          done_at: new Date().toISOString(),
+        }).eq("id", visitId);
+        if (error) throw error;
+        toast.success("Visit marked done! (No conveyance — pooled trip)");
+        return null;
       }
 
       const { error } = await supabase.from("visits").update({
@@ -380,6 +430,55 @@ const Visits = () => {
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* Travel Mode */}
+              <div className="space-y-2 pt-1 border-t border-border">
+                <Label className="text-sm font-semibold">🚗 How will you travel?</Label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, travel_mode: "own", pooled_with_user_id: "" })}
+                    className={`rounded-xl border py-2.5 text-sm font-semibold transition-all ${
+                      form.travel_mode === "own"
+                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                        : "bg-card border-border text-muted-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    🏍️ Own Vehicle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, travel_mode: "pooled" })}
+                    className={`rounded-xl border py-2.5 text-sm font-semibold transition-all ${
+                      form.travel_mode === "pooled"
+                        ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                        : "bg-card border-border text-muted-foreground hover:border-primary/40"
+                    }`}
+                  >
+                    🚗 With Colleague
+                  </button>
+                </div>
+                {form.travel_mode === "pooled" && (
+                  <div className="space-y-1 mt-2">
+                    <Label>Select Colleague (vehicle owner)</Label>
+                    <Select value={form.pooled_with_user_id} onValueChange={(v) => setForm({ ...form, pooled_with_user_id: v })} required>
+                      <SelectTrigger><SelectValue placeholder="Select colleague..." /></SelectTrigger>
+                      <SelectContent className="bg-popover">
+                        {colleagues.length === 0 ? (
+                          <SelectItem value="none" disabled>No colleagues found</SelectItem>
+                        ) : (
+                          colleagues.map((c) => (
+                            <SelectItem key={c.user_id} value={c.user_id}>
+                              {c.full_name} ({c.conveyance_type || "vehicle"}, ₹{c.conveyance_rate || 0}/km)
+                            </SelectItem>
+                          ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-muted-foreground">⚠️ No conveyance will be claimed for pooled travel.</p>
+                  </div>
+                )}
+              </div>
               <Button type="submit" className="w-full" disabled={createVisit.isPending}>Save Visit</Button>
             </form>
           </DialogContent>
@@ -469,6 +568,11 @@ const Visits = () => {
                         <div className="space-y-1 text-sm text-muted-foreground">
                           {v.address && <div className="flex items-center gap-1"><MapPin className="h-3 w-3" />{v.address}</div>}
                           <p className="text-xs">Purpose: {v.purpose}</p>
+                          {(v as any).travel_mode === "pooled" && (
+                            <p className="text-[10px] font-semibold text-amber-500 flex items-center gap-1">
+                              🚗 Pooled — no conveyance claimed
+                            </p>
+                          )}
                           {v.remarks && <p className="text-xs italic">Remarks: {v.remarks}</p>}
                         </div>
                         {v.status === "planned" && (

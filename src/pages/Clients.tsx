@@ -31,6 +31,46 @@ const statusColors: Record<ClientStatus, string> = {
   lost: "bg-[hsl(var(--status-lost))] text-white",
 };
 
+// ─── Hoisted outside Clients so it never remounts on parent re-render ─────────
+interface ClientFormProps {
+  values: typeof emptyForm;
+  onChange: (v: typeof emptyForm) => void;
+  onSubmit: () => void;
+  isPending: boolean;
+  submitLabel: string;
+  partners: { id: string; name: string; type: string }[];
+}
+
+const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partners }: ClientFormProps) => (
+  <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="space-y-3">
+    <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-1"><Label>Name</Label><Input value={values.name} onChange={(e) => onChange({ ...values, name: e.target.value })} required /></div>
+      <div className="space-y-1"><Label>Mobile</Label><Input value={values.mobile} onChange={(e) => onChange({ ...values, mobile: e.target.value })} required /></div>
+    </div>
+    <div className="space-y-1"><Label>Address</Label><Input value={values.address} onChange={(e) => onChange({ ...values, address: e.target.value })} /></div>
+    <div className="space-y-1"><Label>City</Label><Input value={values.city} onChange={(e) => onChange({ ...values, city: e.target.value })} /></div>
+    <div className="space-y-1">
+      <Label>Lead Source (Partner)</Label>
+      <Select value={values.partner_id} onValueChange={(v) => onChange({ ...values, partner_id: v })}>
+        <SelectTrigger><SelectValue placeholder="Select partner..." /></SelectTrigger>
+        <SelectContent className="bg-popover">{partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} ({p.type})</SelectItem>)}</SelectContent>
+      </Select>
+    </div>
+    <div className="space-y-1">
+      <Label>Status</Label>
+      <Select value={values.status} onValueChange={(v) => onChange({ ...values, status: v as ClientStatus })}>
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent className="bg-popover">
+          <SelectItem value="new">New</SelectItem><SelectItem value="hot">Hot</SelectItem>
+          <SelectItem value="converted">Converted</SelectItem><SelectItem value="lost">Lost</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+    <div className="space-y-1"><Label>Notes</Label><Textarea value={values.notes} onChange={(e) => onChange({ ...values, notes: e.target.value })} /></div>
+    <Button type="submit" className="w-full" disabled={isPending}>{isPending ? "Saving..." : submitLabel}</Button>
+  </form>
+);
+
 const Clients = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -143,39 +183,6 @@ const Clients = () => {
     return matchSearch && matchStatus;
   });
 
-  const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel }: {
-    values: typeof emptyForm; onChange: (v: typeof emptyForm) => void;
-    onSubmit: () => void; isPending: boolean; submitLabel: string;
-  }) => (
-    <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="space-y-3">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1"><Label>Name</Label><Input value={values.name} onChange={(e) => onChange({ ...values, name: e.target.value })} required /></div>
-        <div className="space-y-1"><Label>Mobile</Label><Input value={values.mobile} onChange={(e) => onChange({ ...values, mobile: e.target.value })} required /></div>
-      </div>
-      <div className="space-y-1"><Label>Address</Label><Input value={values.address} onChange={(e) => onChange({ ...values, address: e.target.value })} /></div>
-      <div className="space-y-1"><Label>City</Label><Input value={values.city} onChange={(e) => onChange({ ...values, city: e.target.value })} /></div>
-      <div className="space-y-1">
-        <Label>Lead Source (Partner)</Label>
-        <Select value={values.partner_id} onValueChange={(v) => onChange({ ...values, partner_id: v })}>
-          <SelectTrigger><SelectValue placeholder="Select partner..." /></SelectTrigger>
-          <SelectContent className="bg-popover">{partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} ({p.type})</SelectItem>)}</SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-1">
-        <Label>Status</Label>
-        <Select value={values.status} onValueChange={(v) => onChange({ ...values, status: v as ClientStatus })}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
-          <SelectContent className="bg-popover">
-            <SelectItem value="new">New</SelectItem><SelectItem value="hot">Hot</SelectItem>
-            <SelectItem value="converted">Converted</SelectItem><SelectItem value="lost">Lost</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-1"><Label>Notes</Label><Textarea value={values.notes} onChange={(e) => onChange({ ...values, notes: e.target.value })} /></div>
-      <Button type="submit" className="w-full" disabled={isPending}>{isPending ? "Saving..." : submitLabel}</Button>
-    </form>
-  );
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -186,7 +193,7 @@ const Clients = () => {
           </DialogTrigger>
           <DialogContent className="bg-popover max-h-[85vh] overflow-y-auto">
             <DialogHeader><DialogTitle>New Client</DialogTitle></DialogHeader>
-            <ClientForm values={form} onChange={setForm} onSubmit={() => createClientMutation.mutate()} isPending={createClientMutation.isPending} submitLabel="Save Client" />
+            <ClientForm values={form} onChange={setForm} onSubmit={() => createClientMutation.mutate()} isPending={createClientMutation.isPending} submitLabel="Save Client" partners={partners} />
           </DialogContent>
         </Dialog>
       </div>
@@ -246,7 +253,7 @@ const Clients = () => {
       <Dialog open={!!editClient} onOpenChange={(open) => !open && setEditClient(null)}>
         <DialogContent className="bg-popover max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Edit Client — {editClient?.name}</DialogTitle></DialogHeader>
-          <ClientForm values={editForm} onChange={setEditForm} onSubmit={() => updateClientMutation.mutate()} isPending={updateClientMutation.isPending} submitLabel="Save Changes" />
+          <ClientForm values={editForm} onChange={setEditForm} onSubmit={() => updateClientMutation.mutate()} isPending={updateClientMutation.isPending} submitLabel="Save Changes" partners={partners} />
         </DialogContent>
       </Dialog>
 

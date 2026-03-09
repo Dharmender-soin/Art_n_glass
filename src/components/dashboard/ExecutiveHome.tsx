@@ -248,83 +248,24 @@ export const ExecutiveHome = () => {
         enabled: !!user || USE_MOCK_DATA,
     });
 
-    // 3. Fetch Showroom Colleagues for Leaderboard
-    //    Resolves showroomId from DB if not yet in auth context (race-condition safe)
-    const { data: showroomExecs = USE_MOCK_DATA ? mockShowroomExecs : [] } = useQuery({
-        queryKey: ["executive-showroom-colleagues", showroomId, user?.id],
+    // 3. Fetch Showroom Leaderboard Stats
+    const { data: showroomLeaderboard = [] } = useQuery({
+        queryKey: ["executive-showroom-leaderboard-rpc", showroomId],
         queryFn: async () => {
-            if (USE_MOCK_DATA) return mockShowroomExecs;
-            if (!user) return [];
-
-            // Resolve showroom: use from context first, fall back to DB lookup
-            let resolvedShowroomId = showroomId;
-            if (!resolvedShowroomId) {
-                const { data: myRole } = await supabase
-                    .from("user_roles")
-                    .select("showroom_id")
-                    .eq("user_id", user.id)
-                    .maybeSingle();
-                resolvedShowroomId = myRole?.showroom_id ?? null;
+            if (!showroomId) return [];
+            
+            const { data, error } = await supabase.rpc('get_showroom_leaderboard', {
+                p_showroom_id: showroomId
+            });
+                
+            if (error) {
+                console.error("Error fetching leaderboard:", error);
+                return [];
             }
-
-            if (!resolvedShowroomId) return [];
-
-            // Fetch ALL executives in this showroom (including logged-in user)
-            const { data: roles, error: rolesError } = await supabase
-                .from("user_roles")
-                .select("user_id")
-                .eq("showroom_id", resolvedShowroomId)
-                .eq("role", "executive");
-
-            if (rolesError) throw rolesError;
-            if (!roles || roles.length === 0) return [];
-
-            const userIds = roles.map(r => r.user_id);
-
-            const { data: profiles, error: profError } = await supabase
-                .from("profiles")
-                .select("user_id, full_name")
-                .in("user_id", userIds);
-
-            if (profError) throw profError;
-            return profiles || [];
-        },
-        enabled: !!user || USE_MOCK_DATA,
-    });
-
-    // 4. Fetch Showroom Visits for Leaderboard
-    const { data: showroomVisits = USE_MOCK_DATA ? mockShowroomVisits : [] } = useQuery({
-        queryKey: ["executive-showroom-visits", showroomId],
-        queryFn: async () => {
-            if (USE_MOCK_DATA) return mockShowroomVisits;
-            if (!showroomId || showroomExecs.length === 0) return [];
-            const userIds = showroomExecs.map(e => e.user_id);
-            const { data, error } = await supabase
-                .from("visits")
-                .select("id, created_by, status")
-                .in("created_by", userIds)
-                .eq("status", "done");
-            if (error) throw error;
+            
             return data || [];
         },
-        enabled: showroomExecs.length > 0 || USE_MOCK_DATA,
-    });
-
-    // 5. Fetch Showroom WOS for Leaderboard
-    const { data: showroomWOS = USE_MOCK_DATA ? mockShowroomWOS : [] } = useQuery({
-        queryKey: ["executive-showroom-wos", showroomId],
-        queryFn: async () => {
-            if (USE_MOCK_DATA) return mockShowroomWOS;
-            if (!showroomId || showroomExecs.length === 0) return [];
-            const userIds = showroomExecs.map(e => e.user_id);
-            const { data, error } = await supabase
-                .from("work_scope_items")
-                .select("id, created_by, work_status, amount_in_lac, verified_amount")
-                .in("created_by", userIds);
-            if (error) throw error;
-            return data || [];
-        },
-        enabled: showroomExecs.length > 0 || USE_MOCK_DATA,
+        enabled: !!showroomId,
     });
 
     const displayDate = isToday(selectedDate) ? "TODAY" : format(selectedDate, "dd MMM yyyy");
@@ -334,34 +275,22 @@ export const ExecutiveHome = () => {
 
     // Calculate Leaderboard
     const leaderboard = useMemo(() => {
-        if (!showroomExecs.length) return { visits: [], wosCount: [], wosWon: [] };
+        if (!showroomLeaderboard.length) return { visits: [], wosCount: [], wosWon: [] };
 
-        const stats = showroomExecs.map(exec => {
-            const execVisits = showroomVisits.filter(v => v.created_by === exec.user_id).length;
-            const execWos = showroomWOS.filter(w => w.created_by === exec.user_id);
-            const execWosCount = execWos.length;
-            
-            let execWosWonTotal = 0;
-            execWos.forEach(w => {
-                 if(w.work_status === 'won' || w.verified_amount) {
-                      execWosWonTotal += Number(w.amount_in_lac || 0);
-                 }
-            });
-
-            return {
-                ...exec,
-                visits: execVisits,
-                wosCount: execWosCount,
-                wosWon: execWosWonTotal
-            };
-        });
+        const stats = showroomLeaderboard.map(exec => ({
+            user_id: exec.user_id,
+            full_name: exec.full_name,
+            visits: Number(exec.visits_count),
+            wosCount: Number(exec.wos_count),
+            wosWon: Number(exec.wos_won_total)
+        }));
 
         return {
             visits: [...stats].sort((a, b) => b.visits - a.visits).slice(0, 3),
             wosCount: [...stats].sort((a, b) => b.wosCount - a.wosCount).slice(0, 3),
             wosWon: [...stats].sort((a, b) => b.wosWon - a.wosWon).slice(0, 3),
         };
-    }, [showroomExecs, showroomVisits, showroomWOS]);
+    }, [showroomLeaderboard]);
 
 
     // Daily KPIs (for My Day section)

@@ -249,33 +249,47 @@ export const ExecutiveHome = () => {
     });
 
     // 3. Fetch Showroom Colleagues for Leaderboard
+    //    Resolves showroomId from DB if not yet in auth context (race-condition safe)
     const { data: showroomExecs = USE_MOCK_DATA ? mockShowroomExecs : [] } = useQuery({
-        queryKey: ["executive-showroom-colleagues", showroomId],
+        queryKey: ["executive-showroom-colleagues", showroomId, user?.id],
         queryFn: async () => {
             if (USE_MOCK_DATA) return mockShowroomExecs;
-            if (!showroomId) return [];
-            
+            if (!user) return [];
+
+            // Resolve showroom: use from context first, fall back to DB lookup
+            let resolvedShowroomId = showroomId;
+            if (!resolvedShowroomId) {
+                const { data: myRole } = await supabase
+                    .from("user_roles")
+                    .select("showroom_id")
+                    .eq("user_id", user.id)
+                    .maybeSingle();
+                resolvedShowroomId = myRole?.showroom_id ?? null;
+            }
+
+            if (!resolvedShowroomId) return [];
+
+            // Fetch ALL executives in this showroom (including logged-in user)
             const { data: roles, error: rolesError } = await supabase
                 .from("user_roles")
-                .select("user_id, role")
-                .eq("showroom_id", showroomId)
+                .select("user_id")
+                .eq("showroom_id", resolvedShowroomId)
                 .eq("role", "executive");
-                
+
             if (rolesError) throw rolesError;
             if (!roles || roles.length === 0) return [];
-            
+
             const userIds = roles.map(r => r.user_id);
-            
+
             const { data: profiles, error: profError } = await supabase
                 .from("profiles")
                 .select("user_id, full_name")
                 .in("user_id", userIds);
-                
+
             if (profError) throw profError;
-            
             return profiles || [];
         },
-        enabled: !!showroomId || USE_MOCK_DATA,
+        enabled: !!user || USE_MOCK_DATA,
     });
 
     // 4. Fetch Showroom Visits for Leaderboard

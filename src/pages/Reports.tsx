@@ -67,7 +67,7 @@ const Reports = () => {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("conveyance_records")
-        .select("*, profiles:user_id(full_name)")
+        .select("*")
         .gte("date", dateFrom)
         .lte("date", dateTo)
         .order("date", { ascending: false })
@@ -104,7 +104,8 @@ const Reports = () => {
   // Executive summary map (for the per-person breakdown)
   const execSummaryMap = new Map<string, { name: string; km: number; amount: number; trips: number }>();
   conveyanceRecords.forEach((r) => {
-    const name = (r as any).profiles?.full_name || "Unknown";
+    const matchedExec = executivesList.find(e => e.user_id === r.user_id);
+    const name = matchedExec ? matchedExec.full_name : "Unknown";
     const existing = execSummaryMap.get(r.user_id);
     if (existing) {
       existing.km += (r.distance_km || 0);
@@ -574,10 +575,13 @@ const Reports = () => {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {filteredConveyance.map((r) => (
+                            {filteredConveyance.map((r) => {
+                               const matchedExec = executivesList.find(e => e.user_id === r.user_id);
+                               const execName = matchedExec ? matchedExec.full_name : "Unknown";
+                               return (
                                <TableRow key={r.id}>
                                    <TableCell className="whitespace-nowrap font-medium text-xs">{format(parseISO(r.date), "dd MMM yyyy")}</TableCell>
-                                   <TableCell className="text-sm font-semibold text-primary/80">{(r as any).profiles?.full_name || "Unknown"}</TableCell>
+                                   <TableCell className="text-sm font-semibold text-primary/80">{execName}</TableCell>
                                    <TableCell>
                                        <div className="text-xs truncate max-w-[220px]"><span className="text-muted-foreground mr-1">From:</span> {r.from_location_name}</div>
                                        <div className="text-xs truncate max-w-[220px] mt-1"><span className="text-muted-foreground mr-1">To:</span> {r.to_location_name}</div>
@@ -589,7 +593,8 @@ const Reports = () => {
                                    <TableCell className="text-right font-mono text-sm">{r.distance_km} km</TableCell>
                                    <TableCell className="text-right font-mono text-green-500 font-bold tracking-tight">₹{r.amount}</TableCell>
                                </TableRow>
-                            ))}
+                             );
+                            })}
                             {filteredConveyance.length === 0 && (
                                 <TableRow><TableCell colSpan={6} className="text-center py-10 text-muted-foreground">No conveyance records found for this selection.</TableCell></TableRow>
                             )}

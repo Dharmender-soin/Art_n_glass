@@ -299,7 +299,7 @@ export const ExecutiveHome = () => {
         const todayPlanned = todayVisits.filter(v => v.status === "planned" || v.status === "in_progress" || v.status === "done").length;
         const todayDone = todayVisits.filter(v => v.status === "done").length;
         
-        const pendingFollowups = todayVisits.filter(v => v.purpose_masters?.purpose_name?.toLowerCase().includes("follow")).length;
+        const pendingFollowups = todayVisits.filter(v => (v.purpose_masters?.purpose_name || v.purpose || "").toLowerCase().includes("follow")).length;
         const overdueCount = ownVisits.filter(v => v.status === "planned" && v.visit_date < format(new Date(), "yyyy-MM-dd")).length;
 
         return { todayPlanned, todayDone, pendingFollowups, overdueCount, todayVisits };
@@ -701,7 +701,7 @@ export const ExecutiveHome = () => {
                     <div className="h-28 flex items-end justify-between gap-2.5 border-b border-exec-border pb-2 relative">
                         <div className="absolute top-1/2 left-0 right-0 border-t border-dashed border-exec-border" />
                         {trendData.map((data, i) => (
-                            <div key={i} className="w-full bg-exec-primary/5 rounded-t-sm relative group overflow-hidden">
+                            <div key={i} className="w-full h-full bg-exec-primary/5 rounded-t-sm relative group overflow-hidden">
                                 <motion.div
                                     initial={{ height: 0 }}
                                     animate={{ height: `${(data.val / Math.max(10, ...trendData.map(d=>d.val))) * 100}%` }}
@@ -1000,7 +1000,6 @@ const ProgressRing = ({ value, max, label, sublabel, color, displayValue, delay,
                         fill="transparent"
                         strokeWidth={stroke}
                         strokeDasharray={circumference + ' ' + circumference}
-                        style={{ strokeDashoffset }}
                         strokeLinecap="round"
                         r={normalizedRadius}
                         cx={radius}

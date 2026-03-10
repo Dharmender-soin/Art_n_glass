@@ -937,6 +937,15 @@ const AnalyticsDashboard = () => {
 
 const Dashboard = () => {
   const { role } = useAuth();
+  
+  if (!role) {
+    return (
+      <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center p-8 bg-[#0A0B0E]">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#A6192E] border-t-transparent" />
+      </div>
+    );
+  }
+
   if (role === "executive") return <ExecutiveHome />;
   return <AnalyticsDashboard />;
 };

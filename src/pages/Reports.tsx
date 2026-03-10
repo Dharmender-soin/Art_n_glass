@@ -475,7 +475,7 @@ const Reports = () => {
 
       {/* Conveyance Audit Report */}
       {isManager && (
-      <motion.div variants={containerVariants} className="space-y-6 mt-8">
+      <motion.div variants={containerVariants} className="space-y-6 mt-16 pt-8 border-t border-border/40">
           {/* Header */}
           <motion.div variants={itemVariants} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-2">

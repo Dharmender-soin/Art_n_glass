@@ -477,12 +477,12 @@ const Reports = () => {
       {isManager && (
       <motion.div variants={containerVariants} className="space-y-6 mt-8">
           {/* Header */}
-          <motion.div variants={itemVariants} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <motion.div variants={itemVariants} className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-2">
               <div className="h-8 w-1 bg-primary rounded-full" />
               <h2 className="text-xl font-bold">Conveyance Audit Report</h2>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={filterExecutive}
                 onChange={(e) => setFilterExecutive(e.target.value)}

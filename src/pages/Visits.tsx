@@ -16,7 +16,12 @@ import { Plus, CalendarCheck, MapPin, Camera, Loader2, ChevronDown, ChevronRight
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import type { Database } from "@/integrations/supabase/types";
-import { calculateDistance } from "@/lib/utils";
+import { calculateDistance, calculateRouteDistance } from "@/lib/utils";
+import { useJsApiLoader, Autocomplete, Library } from "@react-google-maps/api";
+
+const libraries: Library[] = ["places"];
+
+import { TripMap } from "@/components/TripMap";
 
 type VisitStatus = Database["public"]["Enums"]["visit_status"];
 type VisitWithType = Database["public"]["Enums"]["visit_with_type"];
@@ -42,10 +47,33 @@ const Visits = () => {
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState("");
   const [openDates, setOpenDates] = useState<Record<string, boolean>>({});
-  const [conveyanceModalInfo, setConveyanceModalInfo] = useState<{distance: number, amount: number, vehicle: string, from: string, to: string} | null>(null);
+  const [conveyanceModalInfo, setConveyanceModalInfo] = useState<{distance: number, amount: number, vehicle: string, from: string, to: string, fromLat: number, fromLng: number, toLat: number, toLng: number} | null>(null);
   
   const [editVisitId, setEditVisitId] = useState<string | null>(null);
   const [editVisitDate, setEditVisitDate] = useState("");
+
+  const { isLoaded } = useJsApiLoader({
+    id: 'google-map-script',
+    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
+    libraries,
+  });
+
+  const [autocomplete, setAutocomplete] = useState<google.maps.places.Autocomplete | null>(null);
+
+  const onLoadAutocomplete = (autocompleteInstance: google.maps.places.Autocomplete) => {
+    setAutocomplete(autocompleteInstance);
+  };
+
+  const onPlaceChanged = () => {
+    if (autocomplete) {
+      const place = autocomplete.getPlace();
+      if (place.formatted_address) {
+        setForm((prev) => ({ ...prev, address: place.formatted_address || "" }));
+      } else if (place.name) {
+        setForm((prev) => ({ ...prev, address: place.name || "" }));
+      }
+    }
+  };
 
   const tomorrow = format(addDays(new Date(), 1), "yyyy-MM-dd");
 
@@ -253,7 +281,7 @@ const Visits = () => {
 
       let convResult = null;
       if (fromLat && fromLng && profile?.conveyance_type) {
-         const distance = calculateDistance(fromLat, fromLng, gpsLat, gpsLng);
+         const distance = await calculateRouteDistance(fromLat, fromLng, gpsLat, gpsLng);
          const amount = Number((distance * (profile.conveyance_rate || 0)).toFixed(2));
          
          const { data: currentVisit } = await supabase.from("visits").select("address").eq("id", visitId).single();
@@ -277,7 +305,7 @@ const Visits = () => {
          });
          
          if (!convError && distance > 0) {
-             convResult = { distance, amount, vehicle: profile.conveyance_type, from: fromLocationName, to: toLocationName };
+             convResult = { distance, amount, vehicle: profile.conveyance_type, from: fromLocationName, to: toLocationName, fromLat, fromLng, toLat: gpsLat, toLng: gpsLng };
          }
       }
       return convResult;
@@ -418,7 +446,16 @@ const Visits = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1"><Label>Address</Label><Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Auto-filled from client/partner" /></div>
+              <div className="space-y-1">
+                <Label>Address</Label>
+                {isLoaded ? (
+                  <Autocomplete onLoad={onLoadAutocomplete} onPlaceChanged={onPlaceChanged}>
+                    <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Search or auto-filled from client/partner" />
+                  </Autocomplete>
+                ) : (
+                  <Input value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="Auto-filled from client/partner" />
+                )}
+              </div>
               <div className="space-y-1">
                 <Label>Purpose</Label>
                 <Select value={form.purpose_id} onValueChange={(v) => setForm({ ...form, purpose_id: v })} required>
@@ -517,6 +554,13 @@ const Visits = () => {
                        <p className="text-xl font-bold font-mono text-green-500">₹{conveyanceModalInfo.amount}</p>
                    </div>
                </div>
+               
+               <TripMap 
+                 fromLat={conveyanceModalInfo.fromLat} 
+                 fromLng={conveyanceModalInfo.fromLng} 
+                 toLat={conveyanceModalInfo.toLat} 
+                 toLng={conveyanceModalInfo.toLng} 
+               />
             </div>
           )}
           <Button onClick={() => setConveyanceModalInfo(null)} className="w-full">Done</Button>
@@ -630,7 +674,7 @@ const Visits = () => {
             </p>
             {gpsError && <p className="text-xs text-destructive">{gpsError}</p>}
             <Button type="submit" className="w-full" disabled={markDone.isPending}>
-              {markDone.isPending ? <><Loader2 className="mr-1 h-4 w-4 animate-spin" />Capturing GPS...</> : "Confirm Done"}
+              {markDone.isPending ? <><Loader2 className="mr-1 h-4 w-4 animate-spin" />Calculating Distance & Saving...</> : "Confirm Done"}
             </Button>
           </form>
         </DialogContent>

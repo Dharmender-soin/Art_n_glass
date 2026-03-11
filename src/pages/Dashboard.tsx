@@ -8,11 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ExecutiveHome } from "@/components/dashboard/ExecutiveHome";
+import { LiveTracking } from "@/components/dashboard/LiveTracking";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Building2, Users, CalendarCheck, Briefcase, Activity, TrendingUp, ArrowUpRight,
   Trophy, Star, UserCheck, ShoppingCart, CheckCircle2, Clock, XCircle, BarChart3,
-  UserPlus, GitCompare, Award, Target, Sparkles, Crown
+  UserPlus, GitCompare, Award, Target, Sparkles, Crown, MapPin
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -512,6 +513,7 @@ const AnalyticsDashboard = () => {
             <TabsTrigger value="overview" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><BarChart3 className="h-3.5 w-3.5" />Overview</TabsTrigger>
             <TabsTrigger value="top-visited" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><Star className="h-3.5 w-3.5" />Top Visited</TabsTrigger>
             {canSeeShowroom && <TabsTrigger value="team" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><Award className="h-3.5 w-3.5" />Team Performance</TabsTrigger>}
+            {canSeeShowroom && <TabsTrigger value="live-map" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><MapPin className="h-3.5 w-3.5" />Live Map</TabsTrigger>}
             {canSeeAll && <TabsTrigger value="comparison" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><GitCompare className="h-3.5 w-3.5" />Compare Showrooms</TabsTrigger>}
           </TabsList>
         </motion.div>
@@ -927,6 +929,13 @@ const AnalyticsDashboard = () => {
                 </motion.div>
               ))}
             </motion.div>
+          </TabsContent>
+        )}
+
+        {/* ═══ LIVE MAP TAB ═══ */}
+        {canSeeShowroom && (
+          <TabsContent value="live-map" className="space-y-4 mt-0">
+             <LiveTracking />
           </TabsContent>
         )}
       </Tabs>

@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -231,6 +231,47 @@ export const ExecutiveHome = () => {
             setIsEndingDay(false);
         }
     };
+
+    // --- Live Location Tracking (Feature 3) ---
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+        const sendLocation = async () => {
+             try {
+                  const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+                       navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 15000, enableHighAccuracy: true });
+                  });
+                  if (user?.id) {
+                      const { error } = await supabase.from("live_locations").upsert({
+                          user_id: user.id,
+                          lat: pos.coords.latitude,
+                          lng: pos.coords.longitude,
+                          updated_at: new Date().toISOString()
+                      });
+                      if (error) {
+                          toast.error("Database Error (Tracking): " + error.message);
+                      }
+                  }
+             } catch (err: any) {
+                  console.error("Failed to broadcast live location", err);
+                  // Code 1 is Permission Denied, Code 3 is Timeout
+                  if (err.code === 1) toast.error("GPS Permission Denied! Live tracking paused.");
+                  else if (err.code === 3) toast.error("GPS Timeout. Trying to find location again.");
+                  else toast.error("GPS Error: Could not acquire live location.");
+             }
+        };
+
+        // If today's attendance exists but no end day record, tracking should be active
+        if (todayAttendance && !endDayRecord && user) {
+            // Send initial location immediately
+            sendLocation();
+            // Then every 60 seconds
+            interval = setInterval(sendLocation, 60000);
+        }
+
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [todayAttendance, endDayRecord, user]);
 
     // 2. Fetch own WOS (all time)
     const { data: ownWorkScopes = USE_MOCK_DATA ? mockOwnWorkScopes : [] } = useQuery({
@@ -556,7 +597,7 @@ export const ExecutiveHome = () => {
                             label="WOS Count"
                             sublabel={`${weekKpis.wosCount} Added`}
                             color="#b91c1c"
-                            displayValue={weekKpis.estValue}
+                            displayValue={String(weekKpis.estValue)}
                             delay={0.2}
                         onClick={() => setKpiPopup({
                                 title: "This Week - WOS Count",
@@ -611,7 +652,7 @@ export const ExecutiveHome = () => {
                             label="WOS Count"
                             sublabel={`${monthKpis.wosCount} Added`}
                             color="#b91c1c"
-                            displayValue={monthKpis.estValue}
+                            displayValue={String(monthKpis.estValue)}
                             delay={0.5}
                         onClick={() => setKpiPopup({
                                 title: "This Month - WOS Count",
@@ -666,7 +707,7 @@ export const ExecutiveHome = () => {
                             label="WOS Count"
                             sublabel={`${totalKpis.wosCount} Added`}
                             color="#b91c1c"
-                            displayValue={totalKpis.estValue}
+                            displayValue={String(totalKpis.estValue)}
                             delay={0.8}
                         onClick={() => setKpiPopup({
                                 title: "Overview - WOS Count",

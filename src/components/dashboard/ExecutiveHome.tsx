@@ -15,6 +15,7 @@ import { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { mockOwnVisits, mockOwnWorkScopes, mockShowroomExecs, mockShowroomVisits, mockShowroomWOS } from "./mockData";
+import { calculateRouteDistance } from "@/lib/utils";
 
 type Visit = Database["public"]["Tables"]["visits"]["Row"] & {
     clients?: { name: string } | null;
@@ -193,12 +194,8 @@ export const ExecutiveHome = () => {
             }
 
             if (fromLat && fromLng && profile?.conveyance_type) {
-                // Dynamically evaluating calculation logic
-                const R = 6371;
-                const dLat = (gpsLat - fromLat) * (Math.PI / 180);
-                const dLon = (gpsLng - fromLng) * (Math.PI / 180);
-                const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(fromLat * (Math.PI/180)) * Math.cos(gpsLat * (Math.PI/180)) * Math.sin(dLon/2) * Math.sin(dLon/2);
-                const distance = Number((R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))).toFixed(1));
+                // Fetch actual road distance using Google Maps
+                const distance = await calculateRouteDistance(fromLat, fromLng, gpsLat, gpsLng);
                 
                 const amount = Number((distance * (profile.conveyance_rate || 0)).toFixed(2));
 

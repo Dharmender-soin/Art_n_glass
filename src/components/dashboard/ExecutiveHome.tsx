@@ -238,14 +238,24 @@ export const ExecutiveHome = () => {
                        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 15000, enableHighAccuracy: true });
                   });
                   if (user?.id) {
-                      const { error } = await supabase.from("live_locations").upsert({
+                      // 1. Update the live "current" pointer
+                      const { error: liveError } = await supabase.from("live_locations").upsert({
                           user_id: user.id,
                           lat: pos.coords.latitude,
                           lng: pos.coords.longitude,
                           updated_at: new Date().toISOString()
                       });
-                      if (error) {
-                          toast.error("Database Error (Tracking): " + error.message);
+                      
+                      // 2. Insert into the historical log for complete route tracking
+                      const { error: histError } = await supabase.from("location_history").insert({
+                          user_id: user.id,
+                          lat: pos.coords.latitude,
+                          lng: pos.coords.longitude,
+                          timestamp: new Date().toISOString()
+                      });
+
+                      if (liveError || histError) {
+                          console.error("Database Error (Tracking): ", liveError || histError);
                       }
                   }
              } catch (err: any) {

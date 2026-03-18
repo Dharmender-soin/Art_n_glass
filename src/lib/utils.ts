@@ -22,33 +22,77 @@ export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2
   return Number(distance.toFixed(1)); // round to 1 decimal
 }
 
+import { toast } from "sonner";
+
+let googleMapsPromise: Promise<void> | null = null;
+
+export function loadGoogleMapsScript(): Promise<void> {
+  if (googleMapsPromise) return googleMapsPromise;
+
+  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  if (!apiKey) {
+    return Promise.reject(new Error("Google Maps API Key not found"));
+  }
+
+  // If already loaded by another component
+  if (window.google && window.google.maps) {
+    googleMapsPromise = Promise.resolve();
+    return googleMapsPromise;
+  }
+
+  googleMapsPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = (err) => reject(err);
+    document.head.appendChild(script);
+  });
+
+  return googleMapsPromise;
+}
+
 /**
  * Calculates the actual driving distance using Google Maps Distance Matrix API.
  * Falls back to Haversine straight-line distance if the API request fails.
  */
 export async function calculateRouteDistance(lat1: number, lon1: number, lat2: number, lon2: number): Promise<number> {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-  
-  if (!apiKey) {
-    console.warn("Google Maps API Key not found. Falling back to straight-line distance.");
-    return calculateDistance(lat1, lon1, lat2, lon2);
-  }
-
   try {
-    const url = `https://maps.googleapis.com/maps/api/distancematrix/json?origins=${lat1},${lon1}&destinations=${lat2},${lon2}&key=${apiKey}`;
-    const response = await fetch(url);
-    const data = await response.json();
+    await loadGoogleMapsScript();
+    
+    if (!window.google || !window.google.maps) {
+        throw new Error("Google Maps not loaded");
+    }
 
-    if (data.status === "OK" && data.rows[0].elements[0].status === "OK") {
+    const service = new window.google.maps.DistanceMatrixService();
+    
+    const response = await new Promise<google.maps.DistanceMatrixResponse>((resolve, reject) => {
+        service.getDistanceMatrix({
+            origins: [{ lat: lat1, lng: lon1 }],
+            destinations: [{ lat: lat2, lng: lon2 }],
+            travelMode: window.google.maps.TravelMode.DRIVING,
+        }, (res, status) => {
+            if (status === window.google.maps.DistanceMatrixStatus.OK && res) {
+                resolve(res);
+            } else {
+                reject(new Error(`Distance Matrix failed with status: ${status}`));
+            }
+        });
+    });
+
+    if (response.rows[0]?.elements[0]?.status === window.google.maps.DistanceMatrixElementStatus.OK) {
       // The API returns distance in meters, convert to km
-      const distanceInMeters = data.rows[0].elements[0].distance.value;
+      const distanceInMeters = response.rows[0].elements[0].distance.value;
       return Number((distanceInMeters / 1000).toFixed(1));
     } else {
-      console.warn("Google Maps API returned non-OK status. Falling back to straight-line distance.", data);
+      console.warn("Google Maps Distance Matrix element status not OK. Falling back to straight-line distance.", response);
+      toast.error("Road distance failed. Falling back to straight-line distance.");
       return calculateDistance(lat1, lon1, lat2, lon2);
     }
   } catch (error) {
-    console.error("Error fetching distance from Google Maps API:", error);
+    console.error("Error fetching distance from Google Maps:", error);
+    toast.error("Map calculation failed. Falling back to straight-line distance.");
     return calculateDistance(lat1, lon1, lat2, lon2);
   }
 }

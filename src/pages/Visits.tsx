@@ -17,16 +17,16 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import type { Database } from "@/integrations/supabase/types";
 import { calculateDistance, calculateRouteDistance } from "@/lib/utils";
-import { useJsApiLoader, Autocomplete, Library } from "@react-google-maps/api";
+import { useJsApiLoader, Autocomplete } from "@react-google-maps/api";
 
-const libraries: Library[] = ["places"];
+const libraries: ("places")[] = ["places"];
 
 import { TripMap } from "@/components/TripMap";
 
 type VisitStatus = Database["public"]["Enums"]["visit_status"];
 type VisitWithType = Database["public"]["Enums"]["visit_with_type"];
 
-const visitStatusColors: Record<VisitStatus, string> = {
+const visitStatusColors: Record<string, string> = {
   planned: "bg-[hsl(var(--status-new))] text-white",
   in_progress: "bg-blue-500 text-white",
   done: "bg-[hsl(var(--status-converted))] text-white",
@@ -335,6 +335,26 @@ const Visits = () => {
     },
   });
 
+  const checkIn = useMutation({
+    mutationFn: async (visitId: string) => {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
+        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 15000, enableHighAccuracy: true })
+      );
+      const { error } = await supabase.from("visits").update({
+        status: "in_progress" as VisitStatus,
+        check_in_at: new Date().toISOString(),
+        check_in_lat: pos.coords.latitude,
+        check_in_lng: pos.coords.longitude,
+      }).eq("id", visitId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["visits"] });
+      toast.success("Checked in! Timer started.");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
   const updateVisitDate = useMutation({
     mutationFn: async ({ id, newDate }: { id: string; newDate: string }) => {
       const { error } = await supabase.from("visits").update({ visit_date: newDate }).eq("id", id);
@@ -619,13 +639,23 @@ const Visits = () => {
                           )}
                           {v.remarks && <p className="text-xs italic">Remarks: {v.remarks}</p>}
                         </div>
-                        {v.status === "planned" && (
-                          <div className="flex gap-2 mt-3">
-                            {canMarkDone(v) && (
+                        {((v.status as string) === "planned" || (v.status as string) === "in_progress") && (
+                          <div className="flex gap-2 mt-3 flex-wrap">
+                            {/* Check In — capture arrival time */}
+                            {(v.status as string) === "planned" && isToday(parseISO(v.visit_date)) && !(v as any).check_in_at && (
+                              <Button size="sm" variant="outline" className="border-green-600/50 text-green-400 hover:bg-green-900/20" onClick={() => checkIn.mutate(v.id)} disabled={checkIn.isPending}>
+                                📍 Check In
+                              </Button>
+                            )}
+                            {((v.status as string) === "planned" || (v.status as string) === "in_progress") && isToday(parseISO(v.visit_date)) && (
                               <Button size="sm" onClick={() => setDoneDialogId(v.id)}>Mark Done</Button>
                             )}
-                            <Button size="sm" variant="outline" onClick={() => { setEditVisitId(v.id); setEditVisitDate(v.visit_date); }}>Reschedule</Button>
-                            <Button size="sm" variant="outline" onClick={() => cancelVisit.mutate(v.id)}>Cancel</Button>
+                            {(v.status as string) === "planned" && (
+                              <>
+                                <Button size="sm" variant="outline" onClick={() => { setEditVisitId(v.id); setEditVisitDate(v.visit_date); }}>Reschedule</Button>
+                                <Button size="sm" variant="outline" onClick={() => cancelVisit.mutate(v.id)}>Cancel</Button>
+                              </>
+                            )}
                           </div>
                         )}
                         {(v as any)._signed_photo_url && (

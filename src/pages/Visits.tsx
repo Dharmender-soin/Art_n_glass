@@ -33,10 +33,13 @@ const visitStatusColors: Record<string, string> = {
   missed: "bg-red-500 text-white",
   rescheduled: "bg-orange-500 text-white",
   cancelled: "bg-[hsl(var(--status-lost))] text-white",
+  // aliases / fallbacks
+  submitted: "bg-purple-500 text-white",
+  draft: "bg-gray-500 text-white",
 };
 
 const Visits = () => {
-  const { user, role } = useAuth();
+  const { user, role, showroomId } = useAuth();
   const queryClient = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [doneDialogId, setDoneDialogId] = useState<string | null>(null);
@@ -46,7 +49,8 @@ const Visits = () => {
   const [search, setSearch] = useState("");
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState("");
-  const [openDates, setOpenDates] = useState<Record<string, boolean>>({});
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const [openDates, setOpenDates] = useState<Record<string, boolean>>({ [todayStr]: true });
   const [conveyanceModalInfo, setConveyanceModalInfo] = useState<{distance: number, amount: number, vehicle: string, from: string, to: string, fromLat: number, fromLng: number, toLat: number, toLng: number} | null>(null);
   
   const [editVisitId, setEditVisitId] = useState<string | null>(null);
@@ -132,32 +136,27 @@ const Visits = () => {
     },
   });
 
-  // Fetch showroom colleagues for pooled travel selection
+  // Fetch same-showroom colleagues via SECURITY DEFINER RPC (bypasses RLS on profiles)
   const { data: colleagues = [] } = useQuery({
-    queryKey: ["colleagues-list"],
+    queryKey: ["colleagues-list", user?.id, showroomId],
     queryFn: async () => {
       if (!user) return [];
-      // Get the current user's showroom
-      const { data: myRole } = await supabase
-        .from("user_roles")
-        .select("showroom_id")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (!myRole?.showroom_id) return [];
-      // Get all executives in same showroom
-      const { data: roles } = await supabase
-        .from("user_roles")
-        .select("user_id")
-        .eq("showroom_id", myRole.showroom_id)
-        .eq("role", "executive")
-        .neq("user_id", user.id);
-      if (!roles?.length) return [];
-      const ids = roles.map(r => r.user_id);
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("user_id, full_name, conveyance_type, conveyance_rate")
-        .in("user_id", ids);
-      return profiles || [];
+      // Try to get showroomId from auth context, fallback to DB query
+      let sid: string | null = showroomId ?? null;
+      if (!sid) {
+        const { data: myRole } = await supabase
+          .from("user_roles")
+          .select("showroom_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        sid = myRole?.showroom_id ?? null;
+      }
+      if (!sid) return [];
+      // Use the SECURITY DEFINER RPC — same as leaderboard, bypasses RLS
+      const { data } = await supabase.rpc("get_showroom_leaderboard", { p_showroom_id: sid });
+      return (data || [])
+        .filter((item) => item.user_id !== user.id)
+        .map((item) => ({ user_id: item.user_id, full_name: item.full_name || "Executive" }));
     },
     enabled: !!user,
   });
@@ -379,7 +378,8 @@ const Visits = () => {
   };
 
   const canMarkDone = (visit: any) => {
-    if (visit.status !== "planned") return false;
+    // Allow marking done if planned or in_progress
+    if (visit.status !== "planned" && visit.status !== "in_progress") return false;
     // Only allow marking done if visit date is today
     if (!isToday(parseISO(visit.visit_date))) return false;
     return true;
@@ -525,9 +525,9 @@ const Visits = () => {
                           <SelectItem value="none" disabled>No colleagues found</SelectItem>
                         ) : (
                           colleagues.map((c) => (
-                            <SelectItem key={c.user_id} value={c.user_id}>
-                              {c.full_name} ({c.conveyance_type || "vehicle"}, ₹{c.conveyance_rate || 0}/km)
-                            </SelectItem>
+                              <SelectItem key={c.user_id} value={c.user_id}>
+                                  {c.full_name}
+                                </SelectItem>
                           ))
                         )}
                       </SelectContent>

@@ -416,7 +416,14 @@ const AnalyticsDashboard = () => {
     [visits]
   );
 
-  const statusColor: Record<string, string> = { done: "bg-green-500", planned: "bg-blue-500", cancelled: "bg-red-500" };
+  const statusColor: Record<string, string> = {
+    done: "bg-green-500",
+    planned: "bg-blue-500",
+    in_progress: "bg-blue-400",
+    missed: "bg-red-500",
+    rescheduled: "bg-orange-500",
+    cancelled: "bg-red-500",
+  };
 
   // ── Loading State ────────────────────────────────
   if (visitsLoading) {
@@ -453,492 +460,480 @@ const AnalyticsDashboard = () => {
         animate="show"
         className="space-y-6 pt-6 px-4 md:px-6 lg:px-8"
       >
-      {/* ── Header ── */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-        <motion.div variants={itemVariants} className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Sparkles className="h-6 w-6 text-primary" />
-            Dashboard
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Welcome back! Here's your <Badge variant="secondary" className="ml-1 text-[10px] font-bold uppercase tracking-wider">{roleLabel}</Badge> overview.
-          </p>
-        </motion.div>
-
-        {/* Showroom Filter (Admin / MD only) */}
-        {canSeeAll && showrooms.length > 0 && (
-          <motion.div variants={itemVariants}>
-            <div className="flex items-center gap-2 bg-card border rounded-xl p-2 shadow-sm">
-              <Building2 className="h-4 w-4 text-muted-foreground ml-2" />
-              <Select value={selectedShowroom} onValueChange={setSelectedShowroom}>
-                <SelectTrigger className="w-[200px] border-none shadow-none bg-transparent h-8 text-sm">
-                  <SelectValue placeholder="All Showrooms" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Showrooms</SelectItem>
-                  {showrooms.map(sr => (
-                    <SelectItem key={sr.id} value={sr.id}>
-                      {sr.name} – {sr.city}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+        {/* ── Header ── */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+          <motion.div variants={itemVariants} className="space-y-1">
+            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+              <Sparkles className="h-6 w-6 text-primary" />
+              Dashboard
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Welcome back! Here's your <Badge variant="secondary" className="ml-1 text-[10px] font-bold uppercase tracking-wider">{roleLabel}</Badge> overview.
+            </p>
           </motion.div>
-        )}
-      </div>
 
-      {/* ── KPI Cards Row 1 ── */}
-      <motion.div variants={containerVariants} className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard label="Total Visits" value={metrics.totalVisits} icon={CalendarCheck} color="text-blue-500" bg="bg-blue-500/10" sub={`${metrics.completionRate}% completion`} />
-        <StatCard label="Clients" value={metrics.totalClients} icon={Users} color="text-emerald-500" bg="bg-emerald-500/10" sub={`+${metrics.newClientsThisMonth} this month`} />
-        <StatCard label="Partners" value={metrics.totalPartners} icon={Building2} color="text-purple-500" bg="bg-purple-500/10" sub={`+${metrics.newPartnersThisMonth} this month`} />
-        <StatCard label="Work Orders" value={metrics.totalOrders} icon={Briefcase} color="text-orange-500" bg="bg-orange-500/10" sub={`₹${metrics.totalOrderValue.toFixed(1)}L total`} />
-      </motion.div>
-
-      {/* ── KPI Cards Row 2 – Order Status ── */}
-      <motion.div variants={containerVariants} className="grid grid-cols-3 gap-3 md:grid-cols-6">
-        <StatCard label="Completed" value={metrics.completedVisits} icon={CheckCircle2} color="text-green-500" bg="bg-green-500/10" />
-        <StatCard label="Planned" value={metrics.plannedVisits} icon={Clock} color="text-blue-500" bg="bg-blue-500/10" />
-        <StatCard label="Cancelled" value={metrics.cancelledVisits} icon={XCircle} color="text-red-500" bg="bg-red-500/10" />
-        <StatCard label="Orders Won" value={metrics.ordersWon} icon={Trophy} color="text-emerald-600" bg="bg-emerald-600/10" sub={`₹${metrics.wonOrderValue.toFixed(1)}L`} />
-        <StatCard label="Orders Lost" value={metrics.ordersLost} icon={XCircle} color="text-red-500" bg="bg-red-500/10" />
-        <StatCard label="Pending" value={metrics.ordersPending} icon={Clock} color="text-amber-500" bg="bg-amber-500/10" />
-      </motion.div>
-
-      {/* ── Main Content Tabs ── */}
-      <Tabs defaultValue="overview" className="space-y-4">
-        <motion.div variants={itemVariants}>
-          <TabsList className="bg-[#12141A] border border-[#F5F5F7]/5 p-1 h-auto flex-wrap rounded-xl">
-            <TabsTrigger value="overview" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><BarChart3 className="h-3.5 w-3.5" />Overview</TabsTrigger>
-            <TabsTrigger value="top-visited" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><Star className="h-3.5 w-3.5" />Top Visited</TabsTrigger>
-            {canSeeShowroom && <TabsTrigger value="team" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><Award className="h-3.5 w-3.5" />Team Performance</TabsTrigger>}
-            {canSeeShowroom && <TabsTrigger value="live-map" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><MapPin className="h-3.5 w-3.5" />Live Map</TabsTrigger>}
-            {canSeeAll && <TabsTrigger value="comparison" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><GitCompare className="h-3.5 w-3.5" />Compare Showrooms</TabsTrigger>}
-          </TabsList>
-        </motion.div>
-
-        {/* ═══ OVERVIEW TAB ═══ */}
-        <TabsContent value="overview" className="space-y-4 mt-0">
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
-            {/* Bar Chart */}
-            <motion.div variants={itemVariants} className="col-span-full lg:col-span-4">
-              <Card className="h-full bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="flex items-center gap-2 text-base text-[#F5F5F7]">
-                    <TrendingUp className="h-4 w-4 text-[#A6192E]" />Visit Trends
-                  </CardTitle>
-                  <CardDescription className="text-[#A1A5AE]">Daily visits — last 7 days</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-[260px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={barData} barCategoryGap="20%">
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1A1D24" />
-                        <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#A1A5AE" }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: "#A1A5AE" }} axisLine={false} tickLine={false} allowDecimals={false} />
-                        <Tooltip cursor={{ fill: "#1A1D24" }} contentStyle={{ borderRadius: "10px", border: "1px solid rgba(245,245,247,0.05)", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)", background: "#12141A", color: "#F5F5F7", fontSize: "13px" }} />
-                        <Bar dataKey="visits" fill="#1A1D24" radius={[6, 6, 0, 0]} maxBarSize={36} name="Total" />
-                        <Bar dataKey="done" fill="#2E7D32" radius={[6, 6, 0, 0]} maxBarSize={36} name="Completed" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-
-            {/* Right Side - Donut Charts */}
-            <motion.div variants={itemVariants} className="col-span-full lg:col-span-3 space-y-4">
-              {/* Visit Status Pie */}
-              <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base text-[#F5F5F7]">Visit Status</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-[180px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={visitPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="value" strokeWidth={0}>
-                          {visitPieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                        </Pie>
-                        <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid rgba(245,245,247,0.05)", background: "#1A1D24", color: "#F5F5F7", fontSize: "12px" }} itemStyle={{ color: "#F5F5F7" }} />
-                        <Legend verticalAlign="bottom" height={28} iconType="circle" iconSize={7} formatter={(v: string) => <span style={{ color: "#A1A5AE", fontSize: "11px" }}>{v}</span>} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-              
-              {/* Order Status Pie */}
-              <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base text-[#F5F5F7]">Order Status</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-[180px] w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie data={orderPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="value" strokeWidth={0}>
-                          {orderPieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
-                        </Pie>
-                        <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid rgba(245,245,247,0.05)", background: "#1A1D24", color: "#F5F5F7", fontSize: "12px" }} itemStyle={{ color: "#F5F5F7" }} />
-                        <Legend verticalAlign="bottom" height={28} iconType="circle" iconSize={7} formatter={(v: string) => <span style={{ color: "#A1A5AE", fontSize: "11px" }}>{v}</span>} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </div>
-
-          {/* Recent Activity */}
-          <motion.div variants={itemVariants}>
-            <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base text-[#F5F5F7]">
-                  <Activity className="h-4 w-4 text-[#A6192E]" />Recent Activity
-                </CardTitle>
-                <CardDescription className="text-[#A1A5AE]">Latest updates</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {recentActivity.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <div className="h-12 w-12 rounded-full bg-[#1A1D24] flex items-center justify-center mb-3">
-                      <Activity className="h-5 w-5 text-[#8E939D]" />
-                    </div>
-                    <p className="text-sm text-[#A1A5AE]">No recent activity found.</p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    {recentActivity.map((a, i) => (
-                      <div key={i} className="flex items-center gap-3 px-4 py-3 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 transition-colors duration-150 hover:bg-[#F5F5F7]/10">
-                        <div className={`w-2 h-2 rounded-full shrink-0 ${statusColor[a.status] || "bg-gray-400"}`} />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-[#F5F5F7] leading-tight truncate">{a.desc}</p>
-                          <p className="text-xs text-[#8E939D] mt-0.5">{a.time}</p>
-                        </div>
-                        <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded shrink-0 ${a.status === "done" ? "bg-[#2E7D32]/20 text-[#2E7D32]" :
-                          a.status === "planned" ? "bg-[#2B6CB0]/20 text-[#3182CE]" :
-                            "bg-[#C21833]/20 text-[#C21833]"
-                          }`}>
-                          {a.statusLabel}
-                        </span>
-                      </div>
+          {/* Showroom Filter (Admin / MD only) */}
+          {canSeeAll && showrooms.length > 0 && (
+            <motion.div variants={itemVariants}>
+              <div className="flex items-center gap-2 bg-card border rounded-xl p-2 shadow-sm">
+                <Building2 className="h-4 w-4 text-muted-foreground ml-2" />
+                <Select value={selectedShowroom} onValueChange={setSelectedShowroom}>
+                  <SelectTrigger className="w-[200px] border-none shadow-none bg-transparent h-8 text-sm">
+                    <SelectValue placeholder="All Showrooms" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Showrooms</SelectItem>
+                    {showrooms.map(sr => (
+                      <SelectItem key={sr.id} value={sr.id}>
+                        {sr.name} – {sr.city}
+                      </SelectItem>
                     ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
-        </TabsContent>
-
-        {/* ═══ TOP VISITED TAB ═══ */}
-        <TabsContent value="top-visited" className="space-y-4 mt-0">
-          <motion.div variants={containerVariants} className="grid gap-4 md:grid-cols-2">
-            {/* Top Partners */}
-            <motion.div variants={itemVariants}>
-              <Card className="h-full bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
-                      <Building2 className="h-4 w-4 text-[#C21833]" />Top Visited Partners
-                    </CardTitle>
-                    <Badge variant="outline" className="font-mono text-xs border-[#F5F5F7]/10 text-[#A1A5AE] bg-[#1A1D24]">{topPartners.length}</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[400px]">
-                    {topPartners.length === 0 ? (
-                      <p className="text-center text-sm text-[#A1A5AE] py-10">No partner visits found.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {topPartners.map((p, i) => (
-                          <div key={i} className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#F5F5F7]/5 transition-colors border border-transparent hover:border-[#F5F5F7]/10">
-                            <RankBadge rank={i + 1} />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold truncate text-[#F5F5F7]">{p.name}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-lg font-bold text-[#F5F5F7] font-mono">{p.count}</p>
-                              <p className="text-[9px] text-[#8E939D] uppercase tracking-wider font-semibold">visits</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </ScrollArea>
-                </CardContent>
-              </Card>
+                  </SelectContent>
+                </Select>
+              </div>
             </motion.div>
+          )}
+        </div>
 
-            {/* Top Clients */}
-            <motion.div variants={itemVariants}>
-              <Card className="h-full bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
-                      <Users className="h-4 w-4 text-[#A6192E]" />Top Visited Clients
-                    </CardTitle>
-                    <Badge variant="outline" className="font-mono text-xs border-[#F5F5F7]/10 text-[#A1A5AE] bg-[#1A1D24]">{topClients.length}</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <ScrollArea className="h-[400px]">
-                    {topClients.length === 0 ? (
-                      <p className="text-center text-sm text-[#A1A5AE] py-10">No client visits found.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {topClients.map((c, i) => (
-                          <div key={i} className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#F5F5F7]/5 transition-colors border border-transparent hover:border-[#F5F5F7]/10">
-                            <RankBadge rank={i + 1} />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-semibold truncate text-[#F5F5F7]">{c.name}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-lg font-bold text-[#F5F5F7] font-mono">{c.count}</p>
-                              <p className="text-[9px] text-[#8E939D] uppercase tracking-wider font-semibold">visits</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </motion.div>
+        {/* ── KPI Cards Row 1 ── */}
+        <motion.div variants={containerVariants} className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <StatCard label="Total Visits" value={metrics.totalVisits} icon={CalendarCheck} color="text-blue-500" bg="bg-blue-500/10" sub={`${metrics.completionRate}% completion`} />
+          <StatCard label="Clients" value={metrics.totalClients} icon={Users} color="text-emerald-500" bg="bg-emerald-500/10" sub={`+${metrics.newClientsThisMonth} this month`} />
+          <StatCard label="Partners" value={metrics.totalPartners} icon={Building2} color="text-purple-500" bg="bg-purple-500/10" sub={`+${metrics.newPartnersThisMonth} this month`} />
+          <StatCard label="Work Orders" value={metrics.totalOrders} icon={Briefcase} color="text-orange-500" bg="bg-orange-500/10" />
+        </motion.div>
 
-          {/* New Additions This Month */}
+        {/* ── KPI Cards Row 2 – Order Status ── */}
+        <motion.div variants={containerVariants} className="grid grid-cols-3 gap-3 md:grid-cols-6">
+          <StatCard label="Completed" value={metrics.completedVisits} icon={CheckCircle2} color="text-green-500" bg="bg-green-500/10" />
+          <StatCard label="Planned" value={metrics.plannedVisits} icon={Clock} color="text-blue-500" bg="bg-blue-500/10" />
+          <StatCard label="Cancelled" value={metrics.cancelledVisits} icon={XCircle} color="text-red-500" bg="bg-red-500/10" />
+          <StatCard label="Orders Won" value={metrics.ordersWon} icon={Trophy} color="text-emerald-600" bg="bg-emerald-600/10" />
+          <StatCard label="Orders Lost" value={metrics.ordersLost} icon={XCircle} color="text-red-500" bg="bg-red-500/10" />
+          <StatCard label="Pending" value={metrics.ordersPending} icon={Clock} color="text-amber-500" bg="bg-amber-500/10" />
+        </motion.div>
+
+        {/* ── Main Content Tabs ── */}
+        <Tabs defaultValue="overview" className="space-y-4">
           <motion.div variants={itemVariants}>
-            <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
-                  <UserPlus className="h-4 w-4 text-[#A6192E]" />New Additions This Month
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div className="text-center p-4 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 shadow-inner">
-                    <p className="text-3xl font-bold font-mono text-[#F5F5F7]">{metrics.newClientsThisMonth}</p>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE] mt-1">New Clients</p>
-                  </div>
-                  <div className="text-center p-4 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 shadow-inner">
-                    <p className="text-3xl font-bold font-mono text-[#F5F5F7]">{metrics.newPartnersThisMonth}</p>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE] mt-1">New Partners</p>
-                  </div>
-                  <div className="text-center p-4 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 shadow-inner">
-                    <p className="text-3xl font-bold font-mono text-[#2E7D32]">{metrics.ordersWon}</p>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE] mt-1">Orders Won</p>
-                  </div>
-                  <div className="text-center p-4 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 shadow-inner">
-                    <p className="text-3xl font-bold font-mono text-[#D4AF37]">₹{metrics.wonOrderValue.toFixed(1)}L</p>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE] mt-1">Revenue Won</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <TabsList className="bg-[#12141A] border border-[#F5F5F7]/5 p-1 h-auto flex-wrap rounded-xl">
+              <TabsTrigger value="overview" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><BarChart3 className="h-3.5 w-3.5" />Overview</TabsTrigger>
+              <TabsTrigger value="top-visited" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><Star className="h-3.5 w-3.5" />Top Visited</TabsTrigger>
+              {canSeeShowroom && <TabsTrigger value="team" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><Award className="h-3.5 w-3.5" />Team Performance</TabsTrigger>}
+              {canSeeShowroom && <TabsTrigger value="live-map" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><MapPin className="h-3.5 w-3.5" />Live Map</TabsTrigger>}
+              {canSeeAll && <TabsTrigger value="comparison" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><GitCompare className="h-3.5 w-3.5" />Compare Showrooms</TabsTrigger>}
+            </TabsList>
           </motion.div>
-        </TabsContent>
 
-        {/* ═══ TEAM PERFORMANCE TAB ═══ */}
-        {canSeeShowroom && (
-          <TabsContent value="team" className="space-y-4 mt-0">
-            <motion.div variants={itemVariants}>
-              <Card className="overflow-hidden bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
-                <CardHeader className="bg-[#1A1D24] border-b border-[#F5F5F7]/5">
-                  <div className="flex items-center justify-between">
-                    <div className="space-y-1">
-                      <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
-                        <Trophy className="h-4 w-4 text-[#D4AF37]" />Employee Performance Leaderboard
-                      </CardTitle>
-                      <CardDescription className="text-[#A1A5AE]">Ranked by completed visits</CardDescription>
-                    </div>
-                    <Badge variant="secondary" className="font-mono text-xs bg-[#12141A] text-[#F5F5F7] border-[#F5F5F7]/10">{execPerformance.length} Executives</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <ScrollArea className="h-[600px]">
-                    <div className="p-4 space-y-2">
-                      {execPerformance.length === 0 ? (
-                        <p className="text-center text-sm text-[#A1A5AE] py-10">No executive data found.</p>
-                      ) : (
-                        execPerformance.map((exec, i) => (
-                          <motion.div
-                            key={exec.userId}
-                            initial={{ opacity: 0, x: -20 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: i * 0.04 }}
-                            className={`flex items-center gap-4 p-4 rounded-xl border transition-all hover:shadow-md ${i === 0 ? "bg-gradient-to-r from-[#D4AF37]/10 to-transparent border-[#D4AF37]/30" :
-                              i === 1 ? "bg-gradient-to-r from-[#F5F5F7]/10 to-transparent border-[#F5F5F7]/20" :
-                                i === 2 ? "bg-gradient-to-r from-[#B08D57]/10 to-transparent border-[#B08D57]/30" :
-                                  "bg-[#1A1D24] border-[#F5F5F7]/5"
-                              }`}
-                          >
-                            <RankBadge rank={i + 1} />
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-sm truncate text-[#F5F5F7]">{exec.name}</p>
-                              {canSeeAll && <p className="text-[10px] text-[#8E939D]">{exec.showroomName}</p>}
-                            </div>
-                            <div className="grid grid-cols-5 gap-3 text-center">
-                              <div>
-                                <p className="text-sm font-bold text-[#F5F5F7] font-mono">{exec.completedVisits}</p>
-                                <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Done</p>
-                              </div>
-                              <div>
-                                <p className="text-sm font-bold text-[#F5F5F7] font-mono">{exec.completionRate}%</p>
-                                <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Rate</p>
-                              </div>
-                              <div>
-                                <p className="text-sm font-bold text-[#F5F5F7] font-mono">{exec.clientsAdded}</p>
-                                <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Clients</p>
-                              </div>
-                              <div>
-                                <p className="text-sm font-bold text-[#F5F5F7] font-mono">{exec.ordersWon}</p>
-                                <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Won</p>
-                              </div>
-                              <div>
-                                <p className="text-sm font-bold text-[#2E7D32] font-mono">₹{exec.orderValue.toFixed(1)}L</p>
-                                <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Value</p>
-                              </div>
-                            </div>
-                          </motion.div>
-                        ))
-                      )}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </TabsContent>
-        )}
-
-        {/* ═══ COMPARE SHOWROOMS TAB (MD/Admin) ═══ */}
-        {canSeeAll && (
-          <TabsContent value="comparison" className="space-y-4 mt-0">
-            {/* Radar Comparison Chart */}
-            {showroomComparison.length > 0 && (
-              <motion.div variants={itemVariants}>
-                <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
-                  <CardHeader>
-                    <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
-                      <GitCompare className="h-4 w-4 text-[#A6192E]" />Showroom Comparison
+          {/* ═══ OVERVIEW TAB ═══ */}
+          <TabsContent value="overview" className="space-y-4 mt-0">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-7">
+              {/* Bar Chart */}
+              <motion.div variants={itemVariants} className="col-span-full lg:col-span-4">
+                <Card className="h-full bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-base text-[#F5F5F7]">
+                      <TrendingUp className="h-4 w-4 text-[#A6192E]" />Visit Trends
                     </CardTitle>
-                    <CardDescription className="text-[#A1A5AE]">Normalized performance metrics across showrooms</CardDescription>
+                    <CardDescription className="text-[#A1A5AE]">Daily visits — last 7 days</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <div className="h-[350px] w-full">
+                    <div className="h-[260px] w-full">
                       <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart outerRadius="75%" data={radarData}>
-                          <PolarGrid stroke="#1A1D24" />
-                          <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: "#A1A5AE" }} />
-                          <PolarRadiusAxis tick={false} axisLine={false} />
-                          {showroomComparison.slice(0, 5).map((sr, i) => (
-                            <Radar key={sr.showroomId} name={sr.showroomName} dataKey={sr.showroomName} stroke={radarColors[i]} fill={radarColors[i]} fillOpacity={0.15} strokeWidth={2} />
-                          ))}
-                          <Legend iconType="circle" iconSize={8} formatter={(v: string) => <span style={{ color: "#A1A5AE", fontSize: "12px" }}>{v}</span>} />
-                          <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid rgba(245,245,247,0.05)", background: "#1A1D24", color: "#F5F5F7", fontSize: "12px" }} itemStyle={{ color: "#F5F5F7" }} />
-                        </RadarChart>
+                        <BarChart data={barData} barCategoryGap="20%">
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1A1D24" />
+                          <XAxis dataKey="date" tick={{ fontSize: 11, fill: "#A1A5AE" }} axisLine={false} tickLine={false} />
+                          <YAxis tick={{ fontSize: 11, fill: "#A1A5AE" }} axisLine={false} tickLine={false} allowDecimals={false} />
+                          <Tooltip cursor={{ fill: "#1A1D24" }} contentStyle={{ borderRadius: "10px", border: "1px solid rgba(245,245,247,0.05)", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)", background: "#12141A", color: "#F5F5F7", fontSize: "13px" }} />
+                          <Bar dataKey="visits" fill="#1A1D24" radius={[6, 6, 0, 0]} maxBarSize={36} name="Total" />
+                          <Bar dataKey="done" fill="#2E7D32" radius={[6, 6, 0, 0]} maxBarSize={36} name="Completed" />
+                        </BarChart>
                       </ResponsiveContainer>
                     </div>
                   </CardContent>
                 </Card>
               </motion.div>
-            )}
 
-            {/* Showroom Cards Grid */}
-            <motion.div variants={containerVariants} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {showroomComparison.map((sr, i) => (
-                <motion.div key={sr.showroomId} variants={itemVariants}>
-                  <Card className={`overflow-hidden h-full bg-[#12141A] border-[#F5F5F7]/5 shadow-sm ${i === 0 ? "ring-1 ring-[#D4AF37]/50" : ""}`}>
-                    <CardHeader className="pb-3 bg-[#1A1D24] border-b border-[#F5F5F7]/5">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
-                            {i === 0 && <Crown className="h-4 w-4 text-[#D4AF37]" />}
-                            {sr.showroomName}
-                          </CardTitle>
-                          <CardDescription className="text-xs text-[#8E939D]">{sr.showroomCity} · {sr.executiveCount} executives</CardDescription>
-                        </div>
-                        {i === 0 && <Badge className="bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20 text-[10px]">Top Performer</Badge>}
+              {/* Right Side - Donut Charts */}
+              <motion.div variants={itemVariants} className="col-span-full lg:col-span-3 space-y-4">
+                {/* Visit Status Pie */}
+                <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base text-[#F5F5F7]">Visit Status</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-[180px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={visitPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="value" strokeWidth={0}>
+                            {visitPieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                          </Pie>
+                          <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid rgba(245,245,247,0.05)", background: "#1A1D24", color: "#F5F5F7", fontSize: "12px" }} itemStyle={{ color: "#F5F5F7" }} />
+                          <Legend verticalAlign="bottom" height={28} iconType="circle" iconSize={7} formatter={(v: string) => <span style={{ color: "#A1A5AE", fontSize: "11px" }}>{v}</span>} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Order Status Pie */}
+                <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base text-[#F5F5F7]">Order Status</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-[180px] w-full">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={orderPieData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={4} dataKey="value" strokeWidth={0}>
+                            {orderPieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                          </Pie>
+                          <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid rgba(245,245,247,0.05)", background: "#1A1D24", color: "#F5F5F7", fontSize: "12px" }} itemStyle={{ color: "#F5F5F7" }} />
+                          <Legend verticalAlign="bottom" height={28} iconType="circle" iconSize={7} formatter={(v: string) => <span style={{ color: "#A1A5AE", fontSize: "11px" }}>{v}</span>} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </div>
+
+            {/* Recent Activity */}
+            <motion.div variants={itemVariants}>
+              <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-base text-[#F5F5F7]">
+                    <Activity className="h-4 w-4 text-[#A6192E]" />Recent Activity
+                  </CardTitle>
+                  <CardDescription className="text-[#A1A5AE]">Latest updates</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {recentActivity.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-center">
+                      <div className="h-12 w-12 rounded-full bg-[#1A1D24] flex items-center justify-center mb-3">
+                        <Activity className="h-5 w-5 text-[#8E939D]" />
                       </div>
+                      <p className="text-sm text-[#A1A5AE]">No recent activity found.</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {recentActivity.map((a, i) => (
+                        <div key={i} className="flex items-center gap-3 px-4 py-3 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 transition-colors duration-150 hover:bg-[#F5F5F7]/10">
+                          <div className={`w-2 h-2 rounded-full shrink-0 ${statusColor[a.status] || "bg-gray-400"}`} />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-[#F5F5F7] leading-tight truncate">{a.desc}</p>
+                            <p className="text-xs text-[#8E939D] mt-0.5">{a.time}</p>
+                          </div>
+                          <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded shrink-0 ${a.status === "done" ? "bg-[#2E7D32]/20 text-[#2E7D32]" :
+                            a.status === "planned" ? "bg-[#2B6CB0]/20 text-[#3182CE]" :
+                              "bg-[#C21833]/20 text-[#C21833]"
+                            }`}>
+                            {a.statusLabel}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
+
+          {/* ═══ TOP VISITED TAB ═══ */}
+          <TabsContent value="top-visited" className="space-y-4 mt-0">
+            <motion.div variants={containerVariants} className="grid gap-4 md:grid-cols-2">
+              {/* Top Partners */}
+              <motion.div variants={itemVariants}>
+                <Card className="h-full bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
+                        <Building2 className="h-4 w-4 text-[#C21833]" />Top Visited Partners
+                      </CardTitle>
+                      <Badge variant="outline" className="font-mono text-xs border-[#F5F5F7]/10 text-[#A1A5AE] bg-[#1A1D24]">{topPartners.length}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-[400px]">
+                      {topPartners.length === 0 ? (
+                        <p className="text-center text-sm text-[#A1A5AE] py-10">No partner visits found.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {topPartners.map((p, i) => (
+                            <div key={i} className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#F5F5F7]/5 transition-colors border border-transparent hover:border-[#F5F5F7]/10">
+                              <RankBadge rank={i + 1} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold truncate text-[#F5F5F7]">{p.name}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-lg font-bold text-[#F5F5F7] font-mono">{p.count}</p>
+                                <p className="text-[9px] text-[#8E939D] uppercase tracking-wider font-semibold">visits</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </motion.div>
+
+              {/* Top Clients */}
+              <motion.div variants={itemVariants}>
+                <Card className="h-full bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
+                        <Users className="h-4 w-4 text-[#A6192E]" />Top Visited Clients
+                      </CardTitle>
+                      <Badge variant="outline" className="font-mono text-xs border-[#F5F5F7]/10 text-[#A1A5AE] bg-[#1A1D24]">{topClients.length}</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <ScrollArea className="h-[400px]">
+                      {topClients.length === 0 ? (
+                        <p className="text-center text-sm text-[#A1A5AE] py-10">No client visits found.</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {topClients.map((c, i) => (
+                            <div key={i} className="flex items-center gap-3 p-3 rounded-xl hover:bg-[#F5F5F7]/5 transition-colors border border-transparent hover:border-[#F5F5F7]/10">
+                              <RankBadge rank={i + 1} />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-semibold truncate text-[#F5F5F7]">{c.name}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-lg font-bold text-[#F5F5F7] font-mono">{c.count}</p>
+                                <p className="text-[9px] text-[#8E939D] uppercase tracking-wider font-semibold">visits</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </motion.div>
+
+            {/* New Additions This Month */}
+            <motion.div variants={itemVariants}>
+              <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
+                    <UserPlus className="h-4 w-4 text-[#A6192E]" />New Additions This Month
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="text-center p-4 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 shadow-inner">
+                      <p className="text-3xl font-bold font-mono text-[#F5F5F7]">{metrics.newClientsThisMonth}</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE] mt-1">New Clients</p>
+                    </div>
+                    <div className="text-center p-4 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 shadow-inner">
+                      <p className="text-3xl font-bold font-mono text-[#F5F5F7]">{metrics.newPartnersThisMonth}</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE] mt-1">New Partners</p>
+                    </div>
+                    <div className="text-center p-4 bg-[#1A1D24] rounded-xl border border-[#F5F5F7]/5 shadow-inner">
+                      <p className="text-3xl font-bold font-mono text-[#2E7D32]">{metrics.ordersWon}</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE] mt-1">Orders Won</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          </TabsContent>
+
+          {/* ═══ TEAM PERFORMANCE TAB ═══ */}
+          {canSeeShowroom && (
+            <TabsContent value="team" className="space-y-4 mt-0">
+              <motion.div variants={itemVariants}>
+                <Card className="overflow-hidden bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
+                  <CardHeader className="bg-[#1A1D24] border-b border-[#F5F5F7]/5">
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-1">
+                        <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
+                          <Trophy className="h-4 w-4 text-[#D4AF37]" />Employee Performance Leaderboard
+                        </CardTitle>
+                        <CardDescription className="text-[#A1A5AE]">Ranked by completed visits</CardDescription>
+                      </div>
+                      <Badge variant="secondary" className="font-mono text-xs bg-[#12141A] text-[#F5F5F7] border-[#F5F5F7]/10">{execPerformance.length} Executives</Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    <ScrollArea className="h-[600px]">
+                      <div className="p-4 space-y-2">
+                        {execPerformance.length === 0 ? (
+                          <p className="text-center text-sm text-[#A1A5AE] py-10">No executive data found.</p>
+                        ) : (
+                          execPerformance.map((exec, i) => (
+                            <motion.div
+                              key={exec.userId}
+                              initial={{ opacity: 0, x: -20 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              transition={{ delay: i * 0.04 }}
+                              className={`flex items-center gap-4 p-4 rounded-xl border transition-all hover:shadow-md ${i === 0 ? "bg-gradient-to-r from-[#D4AF37]/10 to-transparent border-[#D4AF37]/30" :
+                                i === 1 ? "bg-gradient-to-r from-[#F5F5F7]/10 to-transparent border-[#F5F5F7]/20" :
+                                  i === 2 ? "bg-gradient-to-r from-[#B08D57]/10 to-transparent border-[#B08D57]/30" :
+                                    "bg-[#1A1D24] border-[#F5F5F7]/5"
+                                }`}
+                            >
+                              <RankBadge rank={i + 1} />
+                              <div className="flex-1 min-w-0">
+                                <p className="font-semibold text-sm truncate text-[#F5F5F7]">{exec.name}</p>
+                                {canSeeAll && <p className="text-[10px] text-[#8E939D]">{exec.showroomName}</p>}
+                              </div>
+                              <div className="grid grid-cols-5 gap-3 text-center">
+                                <div>
+                                  <p className="text-sm font-bold text-[#F5F5F7] font-mono">{exec.completedVisits}</p>
+                                  <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Done</p>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-[#F5F5F7] font-mono">{exec.completionRate}%</p>
+                                  <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Rate</p>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-[#F5F5F7] font-mono">{exec.clientsAdded}</p>
+                                  <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Clients</p>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-[#F5F5F7] font-mono">{exec.ordersWon}</p>
+                                  <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Won</p>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-bold text-[#2E7D32] font-mono">₹{exec.orderValue.toFixed(1)}L</p>
+                                  <p className="text-[9px] text-[#A1A5AE] uppercase tracking-wider font-semibold">Value</p>
+                                </div>
+                              </div>
+                            </motion.div>
+                          ))
+                        )}
+                      </div>
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            </TabsContent>
+          )}
+
+          {/* ═══ COMPARE SHOWROOMS TAB (MD/Admin) ═══ */}
+          {canSeeAll && (
+            <TabsContent value="comparison" className="space-y-4 mt-0">
+              {/* Radar Comparison Chart */}
+              {showroomComparison.length > 0 && (
+                <motion.div variants={itemVariants}>
+                  <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm">
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
+                        <GitCompare className="h-4 w-4 text-[#A6192E]" />Showroom Comparison
+                      </CardTitle>
+                      <CardDescription className="text-[#A1A5AE]">Normalized performance metrics across showrooms</CardDescription>
                     </CardHeader>
-                    <CardContent className="space-y-3 pt-4">
-                      {/* Visits */}
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] uppercase font-bold tracking-wider text-[#A1A5AE] flex items-center gap-1"><CalendarCheck className="h-3 w-3" />Visits</p>
-                        <div className="grid grid-cols-3 gap-2 text-center">
-                          <div className="bg-[#1A1D24] rounded-lg p-2 border border-[#F5F5F7]/5 shadow-inner">
-                            <p className="text-sm font-bold text-[#F5F5F7] font-mono">{sr.completedVisits}</p>
-                            <p className="text-[9px] text-[#A1A5AE]">Done</p>
-                          </div>
-                          <div className="bg-[#1A1D24] rounded-lg p-2 border border-[#F5F5F7]/5 shadow-inner">
-                            <p className="text-sm font-bold text-[#F5F5F7] font-mono">{sr.plannedVisits}</p>
-                            <p className="text-[9px] text-[#A1A5AE]">Planned</p>
-                          </div>
-                          <div className="bg-[#2A2D35] rounded-lg p-2 border border-[#F5F5F7]/5">
-                            <p className="text-sm font-bold text-[#F5F5F7] font-mono">{sr.completionRate}%</p>
-                            <p className="text-[9px] text-[#A1A5AE]">Rate</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="h-px w-full bg-[#1A1D24] my-2" />
-
-                      {/* Clients & Partners */}
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <p className="text-[10px] uppercase font-bold tracking-wider text-[#A1A5AE]">Clients</p>
-                          <p className="text-lg font-bold text-[#F5F5F7] font-mono">{sr.totalClients} <span className="text-xs text-[#2E7D32] font-normal">+{sr.newClientsThisMonth}</span></p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] uppercase font-bold tracking-wider text-[#A1A5AE]">Partners</p>
-                          <p className="text-lg font-bold text-[#F5F5F7] font-mono">{sr.totalPartners} <span className="text-xs text-[#8E24AA] font-normal">+{sr.newPartnersThisMonth}</span></p>
-                        </div>
-                      </div>
-
-                      <div className="h-px w-full bg-[#1A1D24] my-2" />
-
-                      {/* Orders */}
-                      <div className="space-y-1.5">
-                        <p className="text-[10px] uppercase font-bold tracking-wider text-[#A1A5AE] flex items-center gap-1"><ShoppingCart className="h-3 w-3" />Orders</p>
-                        <div className="grid grid-cols-3 gap-2 text-center">
-                          <div className="bg-[#2E7D32]/10 rounded-lg p-2 border border-[#2E7D32]/20 shadow-inner">
-                            <p className="text-sm font-bold text-[#2E7D32] font-mono">{sr.ordersWon}</p>
-                            <p className="text-[9px] text-[#A1A5AE]">Won</p>
-                          </div>
-                          <div className="bg-[#C21833]/10 rounded-lg p-2 border border-[#C21833]/20 shadow-inner">
-                            <p className="text-sm font-bold text-[#C21833] font-mono">{sr.ordersLost}</p>
-                            <p className="text-[9px] text-[#A1A5AE]">Lost</p>
-                          </div>
-                          <div className="bg-[#D4AF37]/10 rounded-lg p-2 border border-[#D4AF37]/20 shadow-inner">
-                            <p className="text-sm font-bold text-[#D4AF37] font-mono">{sr.ordersPending}</p>
-                            <p className="text-[9px] text-[#A1A5AE]">Pending</p>
-                          </div>
-                        </div>
-                        <div className="flex justify-between items-center text-xs mt-2 pt-2 border-t border-dashed border-[#1A1D24]">
-                          <span className="text-[#A1A5AE]">Total Value</span>
-                          <span className="font-bold text-[#F5F5F7] font-mono">₹{sr.totalOrderValue.toFixed(1)}L</span>
-                        </div>
-                        <div className="flex justify-between items-center text-xs mt-1">
-                          <span className="text-[#A1A5AE]">Won Value</span>
-                          <span className="font-bold text-[#2E7D32] font-mono">₹{sr.wonOrderValue.toFixed(1)}L</span>
-                        </div>
+                    <CardContent>
+                      <div className="h-[350px] w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <RadarChart outerRadius="75%" data={radarData}>
+                            <PolarGrid stroke="#1A1D24" />
+                            <PolarAngleAxis dataKey="metric" tick={{ fontSize: 11, fill: "#A1A5AE" }} />
+                            <PolarRadiusAxis tick={false} axisLine={false} />
+                            {showroomComparison.slice(0, 5).map((sr, i) => (
+                              <Radar key={sr.showroomId} name={sr.showroomName} dataKey={sr.showroomName} stroke={radarColors[i]} fill={radarColors[i]} fillOpacity={0.15} strokeWidth={2} />
+                            ))}
+                            <Legend iconType="circle" iconSize={8} formatter={(v: string) => <span style={{ color: "#A1A5AE", fontSize: "12px" }}>{v}</span>} />
+                            <Tooltip contentStyle={{ borderRadius: "10px", border: "1px solid rgba(245,245,247,0.05)", background: "#1A1D24", color: "#F5F5F7", fontSize: "12px" }} itemStyle={{ color: "#F5F5F7" }} />
+                          </RadarChart>
+                        </ResponsiveContainer>
                       </div>
                     </CardContent>
                   </Card>
                 </motion.div>
-              ))}
-            </motion.div>
-          </TabsContent>
-        )}
+              )}
 
-        {/* ═══ LIVE MAP TAB ═══ */}
-        {canSeeShowroom && (
-          <TabsContent value="live-map" className="space-y-4 mt-0">
-             <LiveTracking />
-          </TabsContent>
-        )}
-      </Tabs>
+              {/* Showroom Cards Grid */}
+              <motion.div variants={containerVariants} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {showroomComparison.map((sr, i) => (
+                  <motion.div key={sr.showroomId} variants={itemVariants}>
+                    <Card className={`overflow-hidden h-full bg-[#12141A] border-[#F5F5F7]/5 shadow-sm ${i === 0 ? "ring-1 ring-[#D4AF37]/50" : ""}`}>
+                      <CardHeader className="pb-3 bg-[#1A1D24] border-b border-[#F5F5F7]/5">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <CardTitle className="text-base flex items-center gap-2 text-[#F5F5F7]">
+                              {i === 0 && <Crown className="h-4 w-4 text-[#D4AF37]" />}
+                              {sr.showroomName}
+                            </CardTitle>
+                            <CardDescription className="text-xs text-[#8E939D]">{sr.showroomCity} · {sr.executiveCount} executives</CardDescription>
+                          </div>
+                          {i === 0 && <Badge className="bg-[#D4AF37]/10 text-[#D4AF37] border-[#D4AF37]/20 text-[10px]">Top Performer</Badge>}
+                        </div>
+                      </CardHeader>
+                      <CardContent className="space-y-3 pt-4">
+                        {/* Visits */}
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] uppercase font-bold tracking-wider text-[#A1A5AE] flex items-center gap-1"><CalendarCheck className="h-3 w-3" />Visits</p>
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-[#1A1D24] rounded-lg p-2 border border-[#F5F5F7]/5 shadow-inner">
+                              <p className="text-sm font-bold text-[#F5F5F7] font-mono">{sr.completedVisits}</p>
+                              <p className="text-[9px] text-[#A1A5AE]">Done</p>
+                            </div>
+                            <div className="bg-[#1A1D24] rounded-lg p-2 border border-[#F5F5F7]/5 shadow-inner">
+                              <p className="text-sm font-bold text-[#F5F5F7] font-mono">{sr.plannedVisits}</p>
+                              <p className="text-[9px] text-[#A1A5AE]">Planned</p>
+                            </div>
+                            <div className="bg-[#2A2D35] rounded-lg p-2 border border-[#F5F5F7]/5">
+                              <p className="text-sm font-bold text-[#F5F5F7] font-mono">{sr.completionRate}%</p>
+                              <p className="text-[9px] text-[#A1A5AE]">Rate</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="h-px w-full bg-[#1A1D24] my-2" />
+
+                        {/* Clients & Partners */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <p className="text-[10px] uppercase font-bold tracking-wider text-[#A1A5AE]">Clients</p>
+                            <p className="text-lg font-bold text-[#F5F5F7] font-mono">{sr.totalClients} <span className="text-xs text-[#2E7D32] font-normal">+{sr.newClientsThisMonth}</span></p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] uppercase font-bold tracking-wider text-[#A1A5AE]">Partners</p>
+                            <p className="text-lg font-bold text-[#F5F5F7] font-mono">{sr.totalPartners} <span className="text-xs text-[#8E24AA] font-normal">+{sr.newPartnersThisMonth}</span></p>
+                          </div>
+                        </div>
+
+                        <div className="h-px w-full bg-[#1A1D24] my-2" />
+
+                        {/* Orders */}
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] uppercase font-bold tracking-wider text-[#A1A5AE] flex items-center gap-1"><ShoppingCart className="h-3 w-3" />Orders</p>
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="bg-[#2E7D32]/10 rounded-lg p-2 border border-[#2E7D32]/20 shadow-inner">
+                              <p className="text-sm font-bold text-[#2E7D32] font-mono">{sr.ordersWon}</p>
+                              <p className="text-[9px] text-[#A1A5AE]">Won</p>
+                            </div>
+                            <div className="bg-[#C21833]/10 rounded-lg p-2 border border-[#C21833]/20 shadow-inner">
+                              <p className="text-sm font-bold text-[#C21833] font-mono">{sr.ordersLost}</p>
+                              <p className="text-[9px] text-[#A1A5AE]">Lost</p>
+                            </div>
+                            <div className="bg-[#D4AF37]/10 rounded-lg p-2 border border-[#D4AF37]/20 shadow-inner">
+                              <p className="text-sm font-bold text-[#D4AF37] font-mono">{sr.ordersPending}</p>
+                              <p className="text-[9px] text-[#A1A5AE]">Pending</p>
+                            </div>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+              </motion.div>
+            </TabsContent>
+          )}
+
+          {/* ═══ LIVE MAP TAB ═══ */}
+          {canSeeShowroom && (
+            <TabsContent value="live-map" className="space-y-4 mt-0">
+              <LiveTracking />
+            </TabsContent>
+          )}
+        </Tabs>
       </motion.div>
     </div>
   );
@@ -946,7 +941,7 @@ const AnalyticsDashboard = () => {
 
 const Dashboard = () => {
   const { role } = useAuth();
-  
+
   if (!role) {
     return (
       <div className="flex min-h-[calc(100vh-3.5rem)] items-center justify-center p-8 bg-[#0A0B0E]">

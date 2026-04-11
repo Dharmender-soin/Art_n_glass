@@ -135,11 +135,11 @@ const DailyVisitDashboard = () => {
   };
 
   return (
-    <div className="space-y-6 min-h-screen bg-gradient-to-br from-gray-50 to-gray-100/50 p-6 -m-6 animate-in fade-in duration-500">
+    <div className="space-y-6 min-h-screen bg-[#0A0B0E] text-[#F5F5F7] p-6 -m-6 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between sticky top-0 z-20 bg-background/80 backdrop-blur-lg pb-4 border-b">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between sticky top-0 z-20 bg-[#0A0B0E]/90 backdrop-blur-lg pb-4 border-b border-[#F5F5F7]/5">
         <div>
-          <h1 className="text-3xl font-bold flex items-center gap-2 bg-clip-text text-transparent bg-gradient-to-r from-primary to-primary/60">
+          <h1 className="text-3xl font-bold flex items-center gap-2 text-[#F5F5F7]">
             <Sparkles className="h-6 w-6 text-primary" />
             Daily Visit
           </h1>
@@ -149,7 +149,7 @@ const DailyVisitDashboard = () => {
         </div>
 
         <div className="flex flex-wrap gap-3 items-center">
-          <div className="bg-card/50 backdrop-blur-sm p-1 rounded-lg border shadow-sm flex items-center gap-2">
+          <div className="bg-[#12141A] backdrop-blur-sm p-1 rounded-lg border border-[#F5F5F7]/5 shadow-sm flex items-center gap-2">
             <div className="relative">
               <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -170,7 +170,7 @@ const DailyVisitDashboard = () => {
 
           {(isAdmin || isMd) && (
             <Select value={filterShowroom} onValueChange={setFilterShowroom}>
-              <SelectTrigger className="w-[160px] bg-card/80 backdrop-blur-sm">
+              <SelectTrigger className="w-[160px] bg-[#12141A] border-[#F5F5F7]/10 text-[#F5F5F7]">
                 <SelectValue placeholder="All Showrooms" />
               </SelectTrigger>
               <SelectContent>
@@ -180,16 +180,16 @@ const DailyVisitDashboard = () => {
             </Select>
           )}
 
-          <div className="flex bg-card/80 backdrop-blur-sm rounded-md border p-1">
+          <div className="flex bg-[#12141A] rounded-md border border-[#F5F5F7]/5 p-1">
             <button
               onClick={() => setViewMode("grid")}
-              className={`p-1.5 rounded-sm transition-all ${viewMode === 'grid' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted'}`}
+              className={`p-1.5 rounded-sm transition-all ${viewMode === 'grid' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-[#A1A5AE] hover:bg-[#1A1D24]'}`}
             >
               <LayoutGrid className="h-4 w-4" />
             </button>
             <button
               onClick={() => setViewMode("list")}
-              className={`p-1.5 rounded-sm transition-all ${viewMode === 'list' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground hover:bg-muted'}`}
+              className={`p-1.5 rounded-sm transition-all ${viewMode === 'list' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-[#A1A5AE] hover:bg-[#1A1D24]'}`}
             >
               <List className="h-4 w-4" />
             </button>
@@ -235,12 +235,12 @@ const DailyVisitDashboard = () => {
           animate={{ opacity: 1, scale: 1 }}
           className="flex flex-col items-center justify-center py-20 text-center space-y-4"
         >
-          <div className="h-24 w-24 rounded-full bg-muted/50 flex items-center justify-center">
-            <Users className="h-10 w-10 text-muted-foreground" />
+          <div className="h-24 w-24 rounded-full bg-[#1A1D24] flex items-center justify-center">
+            <Users className="h-10 w-10 text-[#A1A5AE]" />
           </div>
           <div>
-            <h3 className="text-lg font-semibold">No Executives Found</h3>
-            <p className="text-muted-foreground">Try adjusting your filters or search criteria.</p>
+            <h3 className="text-lg font-semibold text-[#F5F5F7]">No Executives Found</h3>
+            <p className="text-[#A1A5AE]">Try adjusting your filters or search criteria.</p>
           </div>
         </motion.div>
       ) : (
@@ -284,18 +284,18 @@ const StatsCard = ({ icon, label, value, color, delay }: { icon: React.ReactNode
     animate={{ opacity: 1, y: 0 }}
     transition={{ delay, duration: 0.4 }}
   >
-    <Card className="border-none shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden relative group bg-white/60 backdrop-blur-xl">
+    <Card className="border-[#F5F5F7]/5 shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden relative group bg-[#12141A]">
       <div className={`absolute inset-0 bg-gradient-to-r from-${color}-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500`} />
       <div className={`absolute left-0 top-0 bottom-0 w-1 bg-${color}-500 rounded-l-full`} />
       <CardContent className="p-4 flex items-center gap-4 relative z-10">
-        <div className={`p-3 rounded-2xl bg-${color}-100/50 text-${color}-600 group-hover:scale-110 transition-transform duration-300`}>
+        <div className={`p-3 rounded-2xl bg-${color}-500/10 text-${color}-400 group-hover:scale-110 transition-transform duration-300`}>
           {icon}
         </div>
         <div>
-          <p className="text-sm text-muted-foreground font-medium uppercase tracking-wider text-[10px]">{label}</p>
+          <p className="text-[10px] text-[#A1A5AE] font-medium uppercase tracking-wider">{label}</p>
           <div className="flex items-baseline gap-1">
-            <span className="text-3xl font-bold tracking-tight">{value}</span>
-            <span className="text-xs text-muted-foreground font-medium">visits</span>
+            <span className="text-3xl font-bold tracking-tight text-[#F5F5F7]">{value}</span>
+            <span className="text-xs text-[#8E939D] font-medium">visits</span>
           </div>
         </div>
       </CardContent>
@@ -337,20 +337,20 @@ const CompletionCard = ({ rate, delay }: { rate: number, delay: number }) => (
 
 const ExecutiveCard = ({ exec, showroomName, getEntityName }: { exec: any, showroomName?: string, getEntityName: (v: any) => string }) => {
   return (
-    <Card className="group overflow-hidden border-none shadow-sm hover:shadow-xl transition-all duration-300 bg-white/70 backdrop-blur-md">
+    <Card className="group overflow-hidden border-[#F5F5F7]/5 shadow-sm hover:shadow-xl transition-all duration-300 bg-[#12141A]">
       {/* Executive Header */}
-      <div className="relative p-4 border-b bg-gradient-to-r from-gray-50/50 to-white/50">
+      <div className="relative p-4 border-b border-[#F5F5F7]/5 bg-[#1A1D24]">
         <div className="flex items-center justify-between gap-3 relative z-10">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-purple-600 p-[2px] shadow-sm">
-              <div className="h-full w-full rounded-full bg-white flex items-center justify-center overflow-hidden">
+              <div className="h-full w-full rounded-full bg-[#12141A] flex items-center justify-center overflow-hidden">
                 <Users className="h-5 w-5 text-primary" />
               </div>
             </div>
             <div>
-              <h3 className="font-bold text-base text-gray-800">{exec.name}</h3>
+              <h3 className="font-bold text-base text-[#F5F5F7]">{exec.name}</h3>
               {showroomName && (
-                <div className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                <div className="flex items-center gap-1 text-xs text-[#A1A5AE] mt-0.5">
                   <MapPin className="h-3 w-3" />
                   <span>{showroomName}</span>
                 </div>
@@ -360,7 +360,7 @@ const ExecutiveCard = ({ exec, showroomName, getEntityName }: { exec: any, showr
 
           <div className="flex gap-2">
             <div className="flex flex-col items-end">
-              <span className="text-[10px] uppercase text-muted-foreground font-semibold">Today</span>
+              <span className="text-[10px] uppercase text-[#8E939D] font-semibold">Today</span>
               <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
                 {exec.todayPlanned} Planned
               </Badge>
@@ -370,7 +370,7 @@ const ExecutiveCard = ({ exec, showroomName, getEntityName }: { exec: any, showr
       </div>
 
       <CardContent className="p-0">
-        <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-gray-100">
+        <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#F5F5F7]/5">
 
           <VisitColumn
             title="Missed / Overdue"
@@ -407,19 +407,19 @@ const VisitColumn = ({ title, subtitle, visits, type, getEntityName, showRemarks
   title: string, subtitle: string, visits: any[], type: 'pending' | 'success' | 'info', getEntityName: (v: any) => string, showRemarks?: boolean
 }) => {
   const styles = {
-    pending: { header: "text-amber-600", bg: "bg-amber-50/30", badge: "text-amber-600 bg-amber-100" },
-    success: { header: "text-emerald-600", bg: "bg-emerald-50/30", badge: "text-emerald-600 bg-emerald-100" },
-    info: { header: "text-blue-600", bg: "bg-blue-50/30", badge: "text-blue-600 bg-blue-100" },
+    pending: { header: "text-amber-400", bg: "bg-amber-500/5", badge: "text-amber-400 bg-amber-500/15" },
+    success: { header: "text-emerald-400", bg: "bg-emerald-500/5", badge: "text-emerald-400 bg-emerald-500/15" },
+    info: { header: "text-blue-400", bg: "bg-blue-500/5", badge: "text-blue-400 bg-blue-500/15" },
   };
 
   const style = styles[type];
 
   return (
     <div className={`flex flex-col h-full ${style.bg} transition-colors duration-300 hover:bg-opacity-50`}>
-      <div className="p-3 border-b border-gray-100 flex items-center justify-between">
+      <div className="p-3 border-b border-[#F5F5F7]/5 flex items-center justify-between">
         <div>
           <p className={`text-xs font-bold uppercase tracking-tight ${style.header}`}>{title}</p>
-          <p className="text-[10px] text-muted-foreground">{subtitle}</p>
+          <p className="text-[10px] text-[#8E939D]">{subtitle}</p>
         </div>
         <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${style.badge}`}>
           {visits.length}
@@ -429,10 +429,10 @@ const VisitColumn = ({ title, subtitle, visits, type, getEntityName, showRemarks
       <div className="flex-1 max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-200 p-2 space-y-2">
         {visits.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center p-4 text-center opacity-40">
-            <div className="p-3 rounded-full bg-gray-100 mb-2">
-              <List className="h-4 w-4" />
+            <div className="p-3 rounded-full bg-[#1A1D24] mb-2">
+              <List className="h-4 w-4 text-[#A1A5AE]" />
             </div>
-            <p className="text-xs font-medium">No visits found</p>
+            <p className="text-xs font-medium text-[#A1A5AE]">No visits found</p>
           </div>
         ) : (
           <AnimatePresence>
@@ -442,33 +442,33 @@ const VisitColumn = ({ title, subtitle, visits, type, getEntityName, showRemarks
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.05 }}
-                className="group relative bg-white rounded-lg p-3 shadow-sm border border-gray-100 hover:border-primary/20 hover:shadow-md transition-all duration-200 cursor-default"
+                className="group relative bg-[#1A1D24] rounded-lg p-3 shadow-sm border border-[#F5F5F7]/5 hover:border-primary/30 hover:shadow-md transition-all duration-200 cursor-default"
               >
-                <div className="absolute left-0 top-3 bottom-3 w-0.5 bg-gray-200 group-hover:bg-primary transition-colors rounded-r-full" />
+                <div className="absolute left-0 top-3 bottom-3 w-0.5 bg-[#F5F5F7]/10 group-hover:bg-primary transition-colors rounded-r-full" />
 
                 <div className="flex justify-between items-start gap-2 pl-2">
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm text-gray-800 truncate leading-tight group-hover:text-primary transition-colors">
+                    <p className="font-semibold text-sm text-[#F5F5F7] truncate leading-tight group-hover:text-primary transition-colors">
                       {getEntityName(v)}
                     </p>
-                    <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{v.purpose}</p>
+                    <p className="text-xs text-[#8E939D] mt-0.5 line-clamp-1">{v.purpose}</p>
 
                     {showRemarks && v.remarks && (
-                      <div className="mt-2 flex items-start gap-1.5 p-1.5 rounded bg-emerald-50/50 border border-emerald-100/50">
-                        <CheckCircle2 className="h-3 w-3 text-emerald-500 shrink-0 mt-0.5" />
-                        <p className="text-[10px] text-emerald-700 leading-snug">{v.remarks}</p>
+                      <div className="mt-2 flex items-start gap-1.5 p-1.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                        <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0 mt-0.5" />
+                        <p className="text-[10px] text-emerald-300 leading-snug">{v.remarks}</p>
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="mt-2 flex items-center justify-between border-t pt-2 border-dashed border-gray-100">
+                <div className="mt-2 flex items-center justify-between border-t pt-2 border-dashed border-[#F5F5F7]/5">
                   <div className="flex items-center gap-1">
-                    <Badge variant="outline" className="text-[10px] px-1.5 h-5 font-normal bg-gray-50 border-gray-200 text-gray-500 capitalize">
+                    <Badge variant="outline" className="text-[10px] px-1.5 h-5 font-normal bg-[#12141A] border-[#F5F5F7]/10 text-[#A1A5AE] capitalize">
                       {v.visit_with_type || 'Solo'}
                     </Badge>
                   </div>
-                  <span className="text-[10px] text-gray-400 font-mono">#{i + 1}</span>
+                  <span className="text-[10px] text-[#8E939D] font-mono">#{i + 1}</span>
                 </div>
               </motion.div>
             ))}

@@ -261,7 +261,7 @@ const Reports = () => {
             <Badge variant="outline" className="px-3 py-1">Manager View</Badge>
           </motion.div>
 
-          <motion.div variants={containerVariants} className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <motion.div variants={containerVariants} className="grid grid-cols-2 gap-4 md:grid-cols-2">
             <motion.div variants={itemVariants}>
               <Card className="bg-gradient-to-br from-card to-muted border-none shadow-sm">
                 <CardContent className="p-4 flex flex-col items-center justify-center text-center space-y-2">
@@ -271,26 +271,10 @@ const Reports = () => {
               </Card>
             </motion.div>
             <motion.div variants={itemVariants}>
-              <Card className="bg-gradient-to-br from-card to-muted border-none shadow-sm">
-                <CardContent className="p-4 flex flex-col items-center justify-center text-center space-y-2">
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Total Value</span>
-                  <span className="text-3xl font-bold text-primary">₹{totalWorkAmount.toFixed(1)}<span className="text-sm text-muted-foreground ml-1">L</span></span>
-                </CardContent>
-              </Card>
-            </motion.div>
-            <motion.div variants={itemVariants}>
               <Card className="bg-gradient-to-br from-primary/5 to-primary/10 border-none shadow-sm">
                 <CardContent className="p-4 flex flex-col items-center justify-center text-center space-y-2">
                   <span className="text-[10px] uppercase font-bold tracking-widest text-primary/80">Verified Count</span>
                   <span className="text-3xl font-bold text-primary">{verifiedCount}</span>
-                </CardContent>
-              </Card>
-            </motion.div>
-            <motion.div variants={itemVariants}>
-              <Card className="bg-gradient-to-br from-[hsl(var(--status-converted))]/10 to-[hsl(var(--status-converted))]/20 border-none shadow-sm">
-                <CardContent className="p-4 flex flex-col items-center justify-center text-center space-y-2">
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-[hsl(var(--status-converted))]">Verified Value</span>
-                  <span className="text-3xl font-bold text-[hsl(var(--status-converted))]">₹{verifiedWorkAmount.toFixed(1)}<span className="text-sm opacity-70 ml-1">L</span></span>
                 </CardContent>
               </Card>
             </motion.div>
@@ -348,12 +332,6 @@ const Reports = () => {
                               </div>
 
                               <div className="flex items-center justify-between sm:justify-end gap-4 mt-3 sm:mt-0 pl-4 sm:pl-0 border-t sm:border-0 pt-3 sm:pt-0">
-                                {amt != null && amt > 0 && (
-                                  <div className="text-right">
-                                    <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Amount</p>
-                                    <p className="font-bold text-sm">₹{amt} Lac</p>
-                                  </div>
-                                )}
                                 <div className="min-w-[80px] text-right">
                                   {verified ? (
                                     <Badge className="bg-[hsl(var(--status-converted))/15] text-[hsl(var(--status-converted))] hover:bg-[hsl(var(--status-converted))/25] border-0">Verified</Badge>

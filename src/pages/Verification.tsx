@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ShieldCheck, IndianRupee, Package, CheckCircle, XCircle, Clock, Filter, Search, Sparkles, Building2, User, FileText } from "lucide-react";
+import { ShieldCheck, Package, CheckCircle, XCircle, Clock, Filter, Search, Sparkles, Building2, User, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const Verification = () => {
@@ -21,7 +21,6 @@ const Verification = () => {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [verifiedAmount, setVerifiedAmount] = useState("");
   const [verificationRemarks, setVerificationRemarks] = useState("");
   const [workStatus, setWorkStatus] = useState<string>("pending");
   const [visibleCount, setVisibleCount] = useState(20);
@@ -88,26 +87,23 @@ const Verification = () => {
 
   // Summary stats
   const stats = useMemo(() => {
-    const totalAmount = items.reduce((s: number, i: any) => s + (i.amount_in_lac || 0), 0);
-    const verifiedAmount_ = items.reduce((s: number, i: any) => s + (i.verified_amount || 0), 0);
     const wonCount = items.filter((i: any) => i.work_status === "won").length;
     const lostCount = items.filter((i: any) => i.work_status === "lost").length;
     const pendingCount = items.filter((i: any) => i.work_status === "pending").length;
-    return { totalAmount, verifiedAmount_, wonCount, lostCount, pendingCount, totalItems: items.length };
+    return { wonCount, lostCount, pendingCount, totalItems: items.length };
   }, [items]);
 
   const verifyMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedItem) return;
+      if (!selectedItem) throw new Error("No item selected");
       const { error } = await supabase
         .from("work_scope_items")
         .update({
-          is_verified: true,
-          verified_by: user!.id,
+          work_status: workStatus as "pending" | "submitted" | "draft" | "won" | "lost" | "rejected",
+          verification_remarks: verificationRemarks,
+          is_verified: workStatus === "won" || workStatus === "lost",
+          verified_by: user?.id,
           verified_at: new Date().toISOString(),
-          verified_amount: verifiedAmount ? parseFloat(verifiedAmount) : null,
-          verification_remarks: verificationRemarks || null,
-          work_status: workStatus as any,
         })
         .eq("id", selectedItem.id);
       if (error) throw error;
@@ -122,16 +118,14 @@ const Verification = () => {
   });
 
   const resetForm = () => {
-    setVerifiedAmount("");
     setVerificationRemarks("");
-    setWorkStatus("submitted");
+    setWorkStatus("won"); // Verification page only sets Won or Lost
   };
 
   const openVerifyDialog = (item: any) => {
     setSelectedItem(item);
-    setVerifiedAmount(item.verified_amount?.toString() || item.amount_in_lac?.toString() || "");
     setVerificationRemarks(item.verification_remarks || "");
-    setWorkStatus(item.work_status || "submitted");
+    setWorkStatus(item.work_status === "won" || item.work_status === "lost" ? item.work_status : "won");
   };
 
   const filteredItems = useMemo(() => {
@@ -205,12 +199,11 @@ const Verification = () => {
       </div>
 
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatsCard icon={<Package className="h-5 w-5 text-primary" />} label="Total Items" value={stats.totalItems} color="primary" delay={0} />
-        <StatsCard icon={<IndianRupee className="h-5 w-5 text-blue-500" />} label="Est. Amount (Lac)" value={stats.totalAmount.toFixed(1)} color="blue" delay={0.1} />
-        <StatsCard icon={<CheckCircle className="h-5 w-5 text-emerald-500" />} label="Won" value={stats.wonCount} color="emerald" delay={0.2} />
-        <StatsCard icon={<XCircle className="h-5 w-5 text-rose-500" />} label="Lost" value={stats.lostCount} color="rose" delay={0.3} />
-        <StatsCard icon={<Clock className="h-5 w-5 text-amber-500" />} label="Pending" value={stats.pendingCount} color="amber" delay={0.4} />
+        <StatsCard icon={<CheckCircle className="h-5 w-5 text-emerald-500" />} label="Won" value={stats.wonCount} color="emerald" delay={0.1} />
+        <StatsCard icon={<XCircle className="h-5 w-5 text-rose-500" />} label="Lost" value={stats.lostCount} color="rose" delay={0.2} />
+        <StatsCard icon={<Clock className="h-5 w-5 text-amber-500" />} label="Pending" value={stats.pendingCount} color="amber" delay={0.3} />
       </div>
 
       <Separator className="bg-border/50" />
@@ -425,44 +418,21 @@ const Verification = () => {
                 <p className="text-sm text-muted-foreground">
                   {selectedItem.master_work_types?.type_of_work} <span className="text-muted-foreground/40 mx-1">/</span> <span className="text-foreground/80 font-medium">{selectedItem.master_work_types?.sub_work}</span>
                 </p>
-                {selectedItem.amount_in_lac && (
-                  <div className="mt-3 flex items-center gap-2 text-sm bg-background/50 p-2 rounded-lg inline-flex border border-border/50">
-                    <IndianRupee className="h-3.5 w-3.5 text-muted-foreground" />
-                    <span>Estimated: <span className="font-semibold text-foreground">₹{selectedItem.amount_in_lac} Lac</span></span>
-                  </div>
-                )}
               </div>
 
               <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-xs font-semibold text-muted-foreground uppercase">Actual Amount (Lac)</Label>
-                    <div className="relative">
-                      <IndianRupee className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                      <Input
-                        type="number"
-                        step="0.01"
-                        className="pl-8"
-                        placeholder="0.00"
-                        value={verifiedAmount}
-                        onChange={(e) => setVerifiedAmount(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-xs font-semibold text-muted-foreground uppercase">Status</Label>
-                    <Select value={workStatus} onValueChange={setWorkStatus}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="submitted">Submitted</SelectItem>
-                        <SelectItem value="pending">Pending</SelectItem>
-                        <SelectItem value="won">Won</SelectItem>
-                        <SelectItem value="lost">Lost</SelectItem>
-                        <SelectItem value="rejected">Rejected</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase">Status</Label>
+                  <Select value={workStatus} onValueChange={setWorkStatus}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="won">✅ Won — Order Confirmed</SelectItem>
+                      <SelectItem value="lost">❌ Lost — Order Not Received</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-[10px] text-muted-foreground mt-1">
+                    Note: Quotation status is managed by executives from their Visit page.
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -563,22 +533,9 @@ const VerificationCard = ({ item, onVerify }: { item: any, onVerify: () => void 
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            <div className="p-2 rounded-lg bg-muted/40">
-              <p className="text-[10px] text-muted-foreground uppercase">Estimated</p>
-              <p className="font-semibold text-sm">₹{item.amount_in_lac || 0} L</p>
-            </div>
-            <div className={`p-2 rounded-lg ${item.verified_amount ? "bg-primary/5" : "bg-gray-50/50"}`}>
-              <p className="text-[10px] text-muted-foreground uppercase">Verified</p>
-              <p className={`font-semibold text-sm ${item.verified_amount ? "text-primary" : "text-gray-400"}`}>
-                {item.verified_amount ? `₹${item.verified_amount} L` : "—"}
-              </p>
-            </div>
-          </div>
-
           {item.verification_remarks && (
             <div className="text-xs italic text-muted-foreground px-2 py-1 border-l-2 border-primary/20">
-              "{item.verification_remarks}"
+              {item.verification_remarks}
             </div>
           )}
         </div>

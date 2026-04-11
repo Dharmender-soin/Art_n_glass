@@ -15,10 +15,12 @@ import Profile from "./pages/Profile";
 import Admin from "./pages/Admin";
 import DailyVisitDashboard from "./pages/DailyVisitDashboard";
 import Verification from "./pages/Verification";
+import Hierarchy from "./pages/Hierarchy";
 import NotFound from "./pages/NotFound";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AnimatePresence } from "framer-motion";
 import PageTransition from "@/components/PageTransition";
+import { AIAssistant } from "@/components/AIAssistant";
 
 const queryClient = new QueryClient();
 
@@ -38,6 +40,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return (
     <AppLayout>
       <PageTransition>{children}</PageTransition>
+      <AIAssistant />
     </AppLayout>
   );
 };
@@ -69,6 +72,7 @@ const AnimatedRoutes = () => {
         <Route path="/admin" element={<ProtectedRoute><Admin /></ProtectedRoute>} />
         <Route path="/daily-visits" element={<ProtectedRoute><DailyVisitDashboard /></ProtectedRoute>} />
         <Route path="/verification" element={<ProtectedRoute><Verification /></ProtectedRoute>} />
+        <Route path="/hierarchy" element={<ProtectedRoute><Hierarchy /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AnimatePresence>

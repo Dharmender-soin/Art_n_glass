@@ -23,6 +23,7 @@ import {
   Shield,
   ClipboardList,
   ShieldCheck,
+  GitBranch,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -45,6 +46,7 @@ const AppSidebar = () => {
         { to: "/reports", label: "Reports", icon: BarChart3 },
         { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
         { to: "/verification", label: "Verification", icon: ShieldCheck },
+        { to: "/hierarchy", label: "Hierarchy", icon: GitBranch },
       ]
       : []),
     ...(role === "admin"

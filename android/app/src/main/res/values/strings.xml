@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Art N Glass</string>
+    <string name="title_activity_main">Art N Glass</string>
+    <string name="package_name">com.artnglasss.visitwiz</string>
+    <string name="custom_url_scheme">com.artnglasss.visitwiz</string>
+</resources>

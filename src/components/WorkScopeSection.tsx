@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { Plus, Trash2, Package, Layers, FileText, Hash, IndianRupee, CheckCircle, ShieldCheck } from "lucide-react";
+import { Plus, Trash2, Package, Layers, FileText, Hash, CheckCircle, ShieldCheck, Send } from "lucide-react";
 
 const WorkScopeSection = ({ clientId }: { clientId: string }) => {
   const { user, role } = useAuth();
@@ -20,7 +20,6 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
   const [workTypeId, setWorkTypeId] = useState("");
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState("");
-  const [amountInLac, setAmountInLac] = useState("");
 
   const { data: masterTypes = [] } = useQuery({
     queryKey: ["master-work-types"],
@@ -51,11 +50,14 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
         work_type_id: workTypeId,
         description: description || null,
         quantity: quantity ? parseInt(quantity) : null,
-        amount_in_lac: amountInLac ? parseFloat(amountInLac) : null,
-        work_status: "submitted",
+        work_status: "pending",  // Always start as WOS — executive marks quotation separately
         created_by: user!.id,
       });
-      if (error) throw error;
+      if (error) {
+        // DB unique constraint violation — duplicate WOS
+        if (error.code === "23505") throw new Error("This work type has already been added for this client. Duplicates are not allowed.");
+        throw error;
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["work-scope", clientId] });
@@ -64,7 +66,6 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
       setWorkTypeId("");
       setDescription("");
       setQuantity("");
-      setAmountInLac("");
       setShowForm(false);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -80,6 +81,23 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
       queryClient.invalidateQueries({ queryKey: ["work-scope-counts"] });
       toast.success("Item removed!");
     },
+  });
+
+  // Executive marks quotation as sent
+  const markQuotation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from("work_scope_items")
+        .update({ work_status: "submitted", submitted_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["work-scope", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["wos-h3"] });
+      toast.success("Quotation marked as sent!");
+    },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const verifyItem = useMutation({
@@ -107,7 +125,7 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
   const selectedType = masterTypes.find((t) => t.id === workTypeId);
   const isManager = role === "admin" || role === "manager" || role === "md";
 
-  const totalAmount = items.reduce((sum, item) => sum + ((item as any).amount_in_lac || 0), 0);
+
   const verifiedCount = items.filter((item) => (item as any).is_verified).length;
 
   return (
@@ -126,14 +144,7 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
 
       {/* Summary bar */}
       {items.length > 0 && (
-        <div className="flex justify-between items-center rounded-xl border border-red-100 bg-red-50/50 px-4 py-3 text-sm">
-          <span className="flex flex-col items-center">
-             <span className="flex items-center gap-1 text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">
-               <IndianRupee className="h-3 w-3" /> Total
-             </span>
-             <span className="text-red-500 font-bold text-base mt-0.5">{totalAmount.toFixed(2)} Lac</span>
-          </span>
-          <Separator orientation="vertical" className="h-8 bg-red-100" />
+        <div className="flex justify-center items-center rounded-xl border border-red-100 bg-red-50/50 px-4 py-3 text-sm">
           <span className="flex flex-col items-center">
              <span className="flex items-center gap-1 text-[10px] text-muted-foreground uppercase font-semibold tracking-wider">
                <ShieldCheck className="h-3 w-3" /> Verified
@@ -176,7 +187,7 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 <div className="space-y-2">
                   <Label className="flex items-center gap-1.5 font-semibold text-foreground/80">
                     <Hash className="h-4 w-4" />Quantity
@@ -184,12 +195,6 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                   <Input type="number" placeholder="e.g. 10" className="bg-white" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
                 </div>
                 <div className="space-y-2">
-                  <Label className="flex items-center gap-1.5 font-semibold text-foreground/80">
-                    <IndianRupee className="h-4 w-4" />Amount <span className="text-[10px] font-normal text-muted-foreground">(in Lac)</span>
-                  </Label>
-                  <Input type="number" step="0.01" placeholder="e.g. 2.50" className="bg-white" value={amountInLac} onChange={(e) => setAmountInLac(e.target.value)} />
-                </div>
-                <div className="col-span-2 space-y-2 mt-1">
                   <Label className="flex items-center gap-1.5 font-semibold text-foreground/80">
                     <FileText className="h-4 w-4" />Notes
                   </Label>
@@ -217,7 +222,22 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
           {items.map((item) => {
             const wt = (item as any).master_work_types;
             const verified = (item as any).is_verified;
-            const amt = (item as any).amount_in_lac;
+            const wStatus: string = (item as any).work_status || "pending";
+            const isPending  = wStatus === "pending" || wStatus === "draft";
+            const isQuotation = wStatus === "submitted";
+            const isWon  = wStatus === "won";
+            const isLost = wStatus === "lost";
+            const isOwnItem = item.created_by === user?.id;
+
+            // Pipeline badge config
+            const pipelineBadge = isPending
+              ? { label: "WOS",       cls: "text-sky-700 bg-sky-50 border-sky-200" }
+              : isQuotation
+              ? { label: "Quotation", cls: "text-amber-700 bg-amber-50 border-amber-200" }
+              : isWon
+              ? { label: "Won ✓",     cls: "text-emerald-700 bg-emerald-50 border-emerald-200" }
+              : { label: "Lost",      cls: "text-rose-600 bg-rose-50 border-rose-200" };
+
             return (
               <Card key={item.id} className={`group hover:shadow-sm transition-shadow rounded-2xl ${verified ? "border-[hsl(var(--status-converted))]/30" : ""}`}>
                 <CardContent className="p-3.5 flex items-start justify-between gap-3">
@@ -225,6 +245,10 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                     <div className="flex items-center gap-2 flex-wrap mb-1.5">
                       <p className="text-base font-bold text-foreground">{wt?.sub_work || "Unknown"}</p>
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-background">{wt?.type_of_work}</Badge>
+                      {/* Pipeline status badge */}
+                      <span className={`inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded border ${pipelineBadge.cls}`}>
+                        {pipelineBadge.label}
+                      </span>
                       {verified && (
                         <Badge className="bg-[hsl(var(--status-converted))] text-white text-[10px] px-1.5 py-0 border-0">
                           <CheckCircle className="h-2.5 w-2.5 mr-0.5" />Verified
@@ -237,15 +261,19 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                           <Hash className="h-3.5 w-3.5" />Qty: <span className="font-semibold text-foreground/80">{item.quantity}</span>
                         </span>
                       )}
-                      {amt != null && amt > 0 && (
-                        <span className="inline-flex items-center gap-1 text-sm text-red-500">
-                          <IndianRupee className="h-3.5 w-3.5" />
-                          <span className="font-semibold">{amt} Lac</span>
-                        </span>
-                      )}
                     </div>
                     {item.description && (
                       <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{item.description}</p>
+                    )}
+                    {/* Quotation Sent button — for executive only, on pending WOS items */}
+                    {!isManager && isOwnItem && isPending && (
+                      <button
+                        onClick={() => markQuotation.mutate(item.id)}
+                        disabled={markQuotation.isPending}
+                        className="mt-2 flex items-center gap-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all"
+                      >
+                        <Send className="h-3 w-3" /> Quotation Sent
+                      </button>
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
@@ -265,6 +293,8 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                       variant="ghost"
                       className="opacity-0 group-hover:opacity-100 transition-opacity"
                       onClick={() => deleteItem.mutate(item.id)}
+                      disabled={!isManager && (verified || item.created_by !== user?.id)}
+                      title={!isManager && verified ? "Cannot delete verified item" : "Delete"}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>

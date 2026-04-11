@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Building2, Users, CalendarCheck, UserCircle, LayoutDashboard, BarChart3, ClipboardList, ShieldCheck } from "lucide-react";
+import { Building2, Users, CalendarCheck, UserCircle, LayoutDashboard, BarChart3, ClipboardList, ShieldCheck, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -16,8 +16,9 @@ const BottomNav = () => {
     { to: "/visits", label: "Visits", icon: CalendarCheck },
     ...(isManagerOrAdmin ? [
       { to: "/reports", label: "Reports", icon: BarChart3 },
-      { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
-      { to: "/verification", label: "Verify", icon: ShieldCheck }
+      { to: "/daily-visits", label: "Daily", icon: ClipboardList },
+      { to: "/verification", label: "Verify", icon: ShieldCheck },
+      { to: "/hierarchy", label: "Hierarchy", icon: GitBranch },
     ] : []),
     { to: "/profile", label: "Profile", icon: UserCircle },
   ];
@@ -32,7 +33,7 @@ const BottomNav = () => {
               key={to}
               to={to}
               className={cn(
-                "group relative flex flex-col items-center justify-center w-16 h-12 rounded-xl transition-all duration-300",
+                "group relative flex flex-col items-center justify-center w-14 h-12 rounded-xl transition-all duration-300",
                 isActive ? "text-[#F5F5F7]" : "text-[#8E939D] hover:text-[#A1A5AE] hover:bg-white/5"
               )}
             >

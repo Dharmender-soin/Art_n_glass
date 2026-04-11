@@ -26,6 +26,7 @@ import {
   GitBranch,
   PanelLeftClose,
   PanelLeftOpen,
+  Map,
 } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
@@ -47,6 +48,7 @@ const AppSidebar = () => {
         { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
         { to: "/verification", label: "Verification", icon: ShieldCheck },
         { to: "/hierarchy", label: "Hierarchy", icon: GitBranch },
+        { to: "/live-map", label: "Live Map", icon: Map },
       ]
       : []),
     ...(role === "admin"

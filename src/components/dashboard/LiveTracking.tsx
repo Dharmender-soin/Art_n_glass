@@ -1,43 +1,31 @@
-import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   GoogleMap,
   useJsApiLoader,
   OverlayView,
-  Polyline,
-  Marker,
   DirectionsRenderer,
+  TrafficLayer,
 } from "@react-google-maps/api";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useQuery } from "@tanstack/react-query";
 import {
-  MapPin,
-  Navigation,
-  Clock,
-  Users,
-  Filter,
-  Calendar,
-  ChevronRight,
-  CheckCircle2,
-  XCircle,
-  AlertCircle,
-  Activity,
-  Route,
-  Timer,
-  Building2,
-  ArrowLeft,
+  MapPin, Navigation, Clock, Users, Calendar, ChevronRight,
+  CheckCircle2, XCircle, AlertCircle, Activity, Route,
+  Building2, ArrowLeft, Layers, Zap, Timer, Car, Target,
 } from "lucide-react";
-import { format, formatDistanceToNow, differenceInMinutes, parseISO } from "date-fns";
+import { format, formatDistanceToNow, differenceInMinutes } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 
+// ─── Constants ────────────────────────────────────────────────────────────────
 const containerStyle = { width: "100%", height: "100%", borderRadius: "0.75rem" };
-const defaultCenter = { lat: 28.6139, lng: 77.2090 };
+const defaultCenter = { lat: 28.6139, lng: 77.209 };
 const libraries: ("places" | "geometry")[] = ["places", "geometry"];
 
-const darkMapStyles = [
+const darkMapStyles: google.maps.MapTypeStyle[] = [
   { elementType: "geometry", stylers: [{ color: "#1a1d27" }] },
   { elementType: "labels.text.stroke", stylers: [{ color: "#1a1d27" }] },
   { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
@@ -57,6 +45,7 @@ const darkMapStyles = [
   { featureType: "transit", stylers: [{ visibility: "off" }] },
 ];
 
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface ExecutiveLocation {
   user_id: string;
   lat: number;
@@ -65,6 +54,7 @@ interface ExecutiveLocation {
   full_name: string;
   showroom_id?: string;
   showroom_name?: string;
+  current_address?: string; // reverse geocoded
 }
 
 interface VisitPoint {
@@ -78,14 +68,24 @@ interface VisitPoint {
   gps_lat: number | null;
   gps_lng: number | null;
   purpose: string | null;
+  created_at: string;
+  // enriched by Distance Matrix
+  distFromPrev?: string;
+  travelTimeFromPrev?: string;
+  etaFromCurrent?: string;
 }
 
-interface LocationHistoryPoint {
-  lat: number;
-  lng: number;
-  timestamp: string;
+interface LocationHistoryPoint { lat: number; lng: number; timestamp: string; }
+
+interface DistMatrixResult {
+  totalRoadKm: string;
+  nextVisitDist: string | null;
+  nextVisitEta: string | null;
+  legDistances: string[];
+  legDurations: string[];
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 const statusColor = (s: string) => {
   if (s === "done") return "#22c55e";
   if (s === "planned") return "#3b82f6";
@@ -114,20 +114,45 @@ function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): nu
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// Cache for reverse geocoding: avoids repeated API calls for the same coords
+const geocodeCache = new Map<string, string>();
+
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
+  if (geocodeCache.has(key)) return geocodeCache.get(key)!;
+  return new Promise(resolve => {
+    const geocoder = new window.google.maps.Geocoder();
+    geocoder.geocode({ location: { lat, lng } }, (results, status) => {
+      if (status === "OK" && results?.[0]) {
+        // Use locality + sublocality for a short human label
+        const components = results[0].address_components;
+        const sublocality = components.find(c => c.types.includes("sublocality_level_1"))?.long_name;
+        const locality = components.find(c => c.types.includes("locality"))?.long_name;
+        const label = sublocality ? `${sublocality}, ${locality}` : (locality || results[0].formatted_address);
+        geocodeCache.set(key, label);
+        resolve(label);
+      } else {
+        resolve(`${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+      }
+    });
+  });
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 export const LiveTracking = () => {
   const { role, showroomId } = useAuth();
   const [liveLocations, setLiveLocations] = useState<ExecutiveLocation[]>([]);
   const [selectedExecId, setSelectedExecId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [filterShowroom, setFilterShowroom] = useState("all");
-  const [filterStatus, setFilterStatus] = useState("all");
-  const [showSidebar, setShowSidebar] = useState(true);
-  const [showroomList, setShowroomList] = useState<{id: string, name: string}[]>([]);
-  const [mapCenter, setMapCenter] = useState(defaultCenter);
-  const [mapZoom, setMapZoom] = useState(5);
+  const [showroomList, setShowroomList] = useState<{ id: string; name: string }[]>([]);
   const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
+  const [showTraffic, setShowTraffic] = useState(false);
+  const [distMatrix, setDistMatrix] = useState<DistMatrixResult | null>(null);
+  const [distMatrixLoading, setDistMatrixLoading] = useState(false);
   const mapRef = useRef<google.maps.Map | null>(null);
   const isAdminOrMd = role === "admin" || role === "md";
+  const isToday = selectedDate === format(new Date(), "yyyy-MM-dd");
 
   const { isLoaded } = useJsApiLoader({
     id: "google-map-script",
@@ -135,7 +160,7 @@ export const LiveTracking = () => {
     libraries,
   });
 
-  // --- Fetch live tracking data ---
+  // ── Fetch live locations + enrich with reverse geocode ──────────────────────
   useEffect(() => {
     const fetchLocations = async () => {
       const { data: locData } = await (supabase as any).from("live_locations").select("*");
@@ -153,14 +178,16 @@ export const LiveTracking = () => {
           full_name: profile?.full_name || "Unknown",
           showroom_id: roleData?.showroom_id,
           showroom_name: (roleData as any)?.showrooms?.name || "—",
+          current_address: undefined,
         };
       });
+
       const filtered = isAdminOrMd ? enriched : enriched.filter(e => e.showroom_id === showroomId);
       setLiveLocations(filtered);
-      
-      // Build distinct showrooms list
+
+      // Build showroom list
       const seen = new Set<string>();
-      const rooms: {id: string, name: string}[] = [];
+      const rooms: { id: string; name: string }[] = [];
       filtered.forEach(e => {
         if (e.showroom_id && !seen.has(e.showroom_id)) {
           seen.add(e.showroom_id);
@@ -168,16 +195,32 @@ export const LiveTracking = () => {
         }
       });
       setShowroomList(rooms);
+
+      // Reverse geocode each live exec (only if Maps is loaded)
+      if (isLoaded && filtered.length > 0) {
+        const withAddresses = await Promise.all(
+          filtered.map(async (loc) => {
+            try {
+              const addr = await reverseGeocode(loc.lat, loc.lng);
+              return { ...loc, current_address: addr };
+            } catch {
+              return loc;
+            }
+          })
+        );
+        setLiveLocations(withAddresses);
+      }
     };
+
     fetchLocations();
     const channel = (supabase as any)
-      .channel("live-tracking-v2")
+      .channel("live-tracking-v3")
       .on("postgres_changes", { event: "*", schema: "public", table: "live_locations" }, fetchLocations)
       .subscribe();
     return () => { (supabase as any).removeChannel(channel); };
-  }, [isAdminOrMd, showroomId]);
+  }, [isAdminOrMd, showroomId, isLoaded]);
 
-  // --- Fetch selected executive's visits ---
+  // ── Visits query ────────────────────────────────────────────────────────────
   const { data: execVisits = [] } = useQuery<VisitPoint[]>({
     queryKey: ["exec-visits-route", selectedExecId, selectedDate],
     queryFn: async () => {
@@ -187,7 +230,6 @@ export const LiveTracking = () => {
         .select("id, clients(name), partners(name), address, check_in_at, done_at, status, gps_latitude, gps_longitude, purpose, created_at")
         .eq("created_by", selectedExecId)
         .eq("visit_date", selectedDate);
-        
       const visits = (data || []).map((v: any) => ({
         id: v.id,
         client_name: v.clients?.name || v.partners?.name || "Meeting",
@@ -201,33 +243,28 @@ export const LiveTracking = () => {
         purpose: v.purpose,
         created_at: v.created_at,
       }));
-
-      // Sort chronologically using check_in_at, falling back to done_at or created_at
       visits.sort((a, b) => {
-        const timeA = new Date(a.check_in_at || a.done_at || a.created_at).getTime();
-        const timeB = new Date(b.check_in_at || b.done_at || b.created_at).getTime();
-        return timeA - timeB;
+        const tA = new Date(a.check_in_at || a.done_at || a.created_at).getTime();
+        const tB = new Date(b.check_in_at || b.done_at || b.created_at).getTime();
+        return tA - tB;
       });
-
       return visits;
     },
     enabled: !!selectedExecId,
     refetchInterval: 30000,
   });
 
-  // --- Fetch location history for route polyline ---
+  // ── Location history ────────────────────────────────────────────────────────
   const { data: locationHistory = [] } = useQuery<LocationHistoryPoint[]>({
     queryKey: ["exec-location-history", selectedExecId, selectedDate],
     queryFn: async () => {
       if (!selectedExecId) return [];
-      const startOfDay = `${selectedDate}T00:00:00.000Z`;
-      const endOfDay = `${selectedDate}T23:59:59.999Z`;
       const { data } = await (supabase as any)
         .from("location_history")
         .select("lat, lng, timestamp")
         .eq("user_id", selectedExecId)
-        .gte("timestamp", startOfDay)
-        .lte("timestamp", endOfDay)
+        .gte("timestamp", `${selectedDate}T00:00:00.000Z`)
+        .lte("timestamp", `${selectedDate}T23:59:59.999Z`)
         .order("timestamp", { ascending: true });
       return (data || []) as LocationHistoryPoint[];
     },
@@ -235,7 +272,7 @@ export const LiveTracking = () => {
     refetchInterval: 60000,
   });
 
-  // --- Fetch daily attendance check-in (Start Day location) ---
+  // ── Daily attendance ────────────────────────────────────────────────────────
   const { data: startDayLocation } = useQuery<{ lat: number; lng: number; time: string } | null>({
     queryKey: ["exec-attendance", selectedExecId, selectedDate],
     queryFn: async () => {
@@ -252,137 +289,204 @@ export const LiveTracking = () => {
     enabled: !!selectedExecId,
   });
 
-  // --- Compute route summary ---
+  // ── Route path ──────────────────────────────────────────────────────────────
+  const routePath = React.useMemo(() => {
+    const startPt = startDayLocation ? [{ lat: startDayLocation.lat, lng: startDayLocation.lng }] : [];
+    if (locationHistory.length > 1) return [...startPt, ...locationHistory.map(p => ({ lat: p.lat, lng: p.lng }))];
+    const visitPts = execVisits.filter(v => v.gps_lat && v.gps_lng).map(v => ({ lat: v.gps_lat!, lng: v.gps_lng! }));
+    return [...startPt, ...visitPts];
+  }, [locationHistory, execVisits, startDayLocation]);
+
+  // ── Directions API — traffic-aware ──────────────────────────────────────────
+  useEffect(() => {
+    if (!isLoaded || !selectedExecId || routePath.length < 2) { setDirections(null); return; }
+
+    const svc = new window.google.maps.DirectionsService();
+    const origin = routePath[0];
+    const destination = routePath[routePath.length - 1];
+    let wpts = routePath.slice(1, -1);
+    if (wpts.length > 23) {
+      const step = Math.ceil(wpts.length / 23);
+      wpts = wpts.filter((_, i) => i % step === 0).slice(0, 23);
+    }
+
+    svc.route(
+      {
+        origin,
+        destination,
+        waypoints: wpts.map(p => ({ location: p, stopover: false })),
+        travelMode: window.google.maps.TravelMode.DRIVING,
+        optimizeWaypoints: false,
+        // Traffic-aware routing (only meaningful for current time)
+        ...(isToday && {
+          drivingOptions: {
+            departureTime: new Date(),
+            trafficModel: window.google.maps.TrafficModel.BEST_GUESS,
+          },
+        }),
+      },
+      (result, status) => {
+        if (status === window.google.maps.DirectionsStatus.OK && result) {
+          setDirections(result);
+        }
+      }
+    );
+  }, [isLoaded, selectedExecId, routePath.length, JSON.stringify(routePath), isToday]);
+
+  // ── Distance Matrix API ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isLoaded || !selectedExecId) { setDistMatrix(null); return; }
+
+    const gpsVisits = execVisits.filter(v => v.gps_lat && v.gps_lng);
+    const selectedExec = liveLocations.find(l => l.user_id === selectedExecId);
+    if (gpsVisits.length < 1) { setDistMatrix(null); return; }
+
+    setDistMatrixLoading(true);
+
+    const service = new window.google.maps.DistanceMatrixService();
+
+    // Build origins + destinations for chained leg calculation
+    const allPoints: google.maps.LatLng[] = [];
+    if (startDayLocation) allPoints.push(new window.google.maps.LatLng(startDayLocation.lat, startDayLocation.lng));
+    gpsVisits.forEach(v => allPoints.push(new window.google.maps.LatLng(v.gps_lat!, v.gps_lng!)));
+
+    // Find next pending/planned visit for ETA from current live location
+    const nextPending = execVisits.find(v => v.status === "planned" && v.gps_lat && v.gps_lng);
+    const execCurrentLoc = selectedExec ? new window.google.maps.LatLng(selectedExec.lat, selectedExec.lng) : null;
+
+    const promises: Promise<void>[] = [];
+
+    // Promise 1: leg-by-leg distances between GPS visit points
+    let legDistances: string[] = [];
+    let legDurations: string[] = [];
+    let totalRoadMeters = 0;
+
+    if (allPoints.length >= 2) {
+      const origins = allPoints.slice(0, -1);
+      const destinations = allPoints.slice(1);
+
+      promises.push(new Promise(resolve => {
+        service.getDistanceMatrix(
+          {
+            origins,
+            destinations,
+            travelMode: window.google.maps.TravelMode.DRIVING,
+            ...(isToday && { drivingOptions: { departureTime: new Date(), trafficModel: window.google.maps.TrafficModel.BEST_GUESS } }),
+          },
+          (res, status) => {
+            if (status === "OK" && res) {
+              res.rows.forEach((row, i) => {
+                const el = row.elements[i]; // diagonal: origin[i] → dest[i]
+                if (el?.status === "OK") {
+                  legDistances.push(el.distance.text);
+                  legDurations.push(
+                    isToday && (el as any).duration_in_traffic
+                      ? (el as any).duration_in_traffic.text
+                      : el.duration.text
+                  );
+                  totalRoadMeters += el.distance.value;
+                }
+              });
+            }
+            resolve();
+          }
+        );
+      }));
+    }
+
+    // Promise 2: current location → next pending visit ETA
+    let nextVisitDist: string | null = null;
+    let nextVisitEta: string | null = null;
+
+    if (execCurrentLoc && nextPending && isToday) {
+      promises.push(new Promise(resolve => {
+        service.getDistanceMatrix(
+          {
+            origins: [execCurrentLoc],
+            destinations: [new window.google.maps.LatLng(nextPending.gps_lat!, nextPending.gps_lng!)],
+            travelMode: window.google.maps.TravelMode.DRIVING,
+            drivingOptions: { departureTime: new Date(), trafficModel: window.google.maps.TrafficModel.BEST_GUESS },
+          },
+          (res, status) => {
+            if (status === "OK" && res?.rows[0]?.elements[0]?.status === "OK") {
+              const el = res.rows[0].elements[0];
+              nextVisitDist = el.distance.text;
+              nextVisitEta = (el as any).duration_in_traffic?.text || el.duration.text;
+            }
+            resolve();
+          }
+        );
+      }));
+    }
+
+    Promise.all(promises).then(() => {
+      setDistMatrix({
+        totalRoadKm: totalRoadMeters > 0 ? (totalRoadMeters / 1000).toFixed(1) : "—",
+        nextVisitDist,
+        nextVisitEta,
+        legDistances,
+        legDurations,
+      });
+      setDistMatrixLoading(false);
+    });
+  }, [isLoaded, selectedExecId, execVisits.length, JSON.stringify(execVisits.map(v => v.id)), isToday]);
+
+  // ── Route summary ───────────────────────────────────────────────────────────
   const routeSummary = React.useMemo(() => {
     if (!selectedExecId) return null;
     const doneVisits = execVisits.filter(v => v.status === "done");
-    
-    // Prefer GPS history for distance; fall back to haversine between visit points
-    let totalDistKm = 0;
-    if (locationHistory.length > 1) {
-      for (let i = 1; i < locationHistory.length; i++) {
-        totalDistKm += haversineKm(
-          locationHistory[i - 1].lat, locationHistory[i - 1].lng,
-          locationHistory[i].lat, locationHistory[i].lng
-        );
-      }
-    } else {
-      // Fallback: connect start-day -> visit GPS points in order
-      const gpsPoints: { lat: number; lng: number }[] = [];
-      if (startDayLocation) gpsPoints.push({ lat: startDayLocation.lat, lng: startDayLocation.lng });
-      execVisits.filter(v => v.gps_lat && v.gps_lng).forEach(v => gpsPoints.push({ lat: v.gps_lat!, lng: v.gps_lng! }));
-      for (let i = 1; i < gpsPoints.length; i++) {
-        totalDistKm += haversineKm(gpsPoints[i-1].lat, gpsPoints[i-1].lng, gpsPoints[i].lat, gpsPoints[i].lng);
-      }
-    }
-
     let totalAtClientMins = 0;
     doneVisits.forEach(v => {
-      if (v.check_in_at && v.done_at) {
-        totalAtClientMins += differenceInMinutes(new Date(v.done_at), new Date(v.check_in_at));
-      }
+      if (v.check_in_at && v.done_at) totalAtClientMins += differenceInMinutes(new Date(v.done_at), new Date(v.check_in_at));
     });
-    // First activity = start day time, or first check-in
-    const startDayTime = startDayLocation?.time || null;
-    const firstCheckIn = execVisits.find(v => v.check_in_at)?.check_in_at;
-    const firstActivity = startDayTime || firstCheckIn;
+    const firstActivity = startDayLocation?.time || execVisits.find(v => v.check_in_at)?.check_in_at;
     const lastActivity = [...execVisits].reverse().find(v => v.done_at)?.done_at;
     let totalTravelMins = 0;
     if (firstActivity && lastActivity) {
       totalTravelMins = Math.max(0, differenceInMinutes(new Date(lastActivity), new Date(firstActivity)) - totalAtClientMins);
     }
+    // Fallback haversine if Distance Matrix not done yet
+    let haversineKmTotal = 0;
+    if (locationHistory.length > 1) {
+      for (let i = 1; i < locationHistory.length; i++) {
+        haversineKmTotal += haversineKm(locationHistory[i-1].lat, locationHistory[i-1].lng, locationHistory[i].lat, locationHistory[i].lng);
+      }
+    }
     return {
-      totalDistKm: totalDistKm.toFixed(1),
       totalVisits: execVisits.length,
       doneVisits: doneVisits.length,
+      pendingVisits: execVisits.filter(v => v.status === "planned").length,
       totalAtClientMins,
       totalTravelMins,
       firstCheckIn: firstActivity,
       lastActivity,
-      usingFallback: locationHistory.length < 2,
+      haversineKmTotal: haversineKmTotal.toFixed(1),
     };
   }, [execVisits, locationHistory, startDayLocation, selectedExecId]);
 
-  // Polyline path — starts from Start Day location, then GPS history or visit points
-  const routePath = React.useMemo(() => {
-    const startPt = startDayLocation ? [{ lat: startDayLocation.lat, lng: startDayLocation.lng }] : [];
-    if (locationHistory.length > 1) {
-      return [...startPt, ...locationHistory.map(p => ({ lat: p.lat, lng: p.lng }))];
-    }
-    // Fallback: start day → each visit GPS in order
-    const visitPts = execVisits
-      .filter(v => v.gps_lat && v.gps_lng)
-      .map(v => ({ lat: v.gps_lat!, lng: v.gps_lng! }));
-    return [...startPt, ...visitPts];
-  }, [locationHistory, execVisits, startDayLocation]);
+  // ── Fit bounds on data change ───────────────────────────────────────────────
+  const filteredLocations = liveLocations.filter(loc =>
+    filterShowroom === "all" || loc.showroom_id === filterShowroom
+  );
+  const selectedExec = liveLocations.find(l => l.user_id === selectedExecId);
 
-  // --- Fetch directions for fallback mode (Google Maps realistic road paths) ---
-  useEffect(() => {
-    if (!isLoaded || !selectedExecId || !routeSummary?.usingFallback || routePath.length < 2) {
-      setDirections(null);
-      return;
-    }
-
-    const directionsService = new window.google.maps.DirectionsService();
-    const origin = routePath[0];
-    const destination = routePath[routePath.length - 1];
-    const waypoints = routePath.slice(1, -1).slice(0, 23).map(p => ({ location: p, stopover: true }));
-
-    directionsService.route(
-      {
-        origin,
-        destination,
-        waypoints,
-        travelMode: window.google.maps.TravelMode.DRIVING,
-      },
-      (result, status) => {
-        if (status === window.google.maps.DirectionsStatus.OK && result) {
-          setDirections(result);
-          
-          // Update the fallback distance to the actual driving distance calculated by DirectionsService
-          if (routeSummary && result.routes[0]) {
-            let actualDistanceMeters = 0;
-            result.routes[0].legs.forEach(leg => {
-              if (leg.distance) actualDistanceMeters += leg.distance.value;
-            });
-            // Assuming we only want to mutate distance for better accuracy
-            routeSummary.totalDistKm = (actualDistanceMeters / 1000).toFixed(1);
-          }
-        }
-      }
-    );
-  }, [isLoaded, selectedExecId, routeSummary?.usingFallback, routePath, routeSummary]);
-
-  // Filter liveLocations by showroom and status
-  const filteredLocations = liveLocations.filter(loc => {
-    if (filterShowroom !== "all" && loc.showroom_id !== filterShowroom) return false;
-    return true;
-  });
-
-  // Auto-fit map to route/pins
   const fitBounds = useCallback(() => {
     if (!mapRef.current) return;
     const bounds = new window.google.maps.LatLngBounds();
     if (selectedExecId) {
       if (startDayLocation) bounds.extend({ lat: startDayLocation.lat, lng: startDayLocation.lng });
-      if (locationHistory.length > 0) {
-        locationHistory.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }));
-      }
+      locationHistory.forEach(p => bounds.extend({ lat: p.lat, lng: p.lng }));
       execVisits.forEach(v => { if (v.gps_lat && v.gps_lng) bounds.extend({ lat: v.gps_lat, lng: v.gps_lng }); });
       if (selectedExec) bounds.extend({ lat: selectedExec.lat, lng: selectedExec.lng });
     } else {
       filteredLocations.forEach(l => bounds.extend({ lat: l.lat, lng: l.lng }));
     }
     if (!bounds.isEmpty()) mapRef.current.fitBounds(bounds, 80);
-  }, [locationHistory, execVisits, filteredLocations, selectedExecId]);
+  }, [locationHistory, execVisits, filteredLocations, selectedExecId, startDayLocation, selectedExec]);
 
   useEffect(() => {
-    if (isLoaded && mapRef.current) {
-      setTimeout(fitBounds, 300);
-    }
+    if (isLoaded && mapRef.current) setTimeout(fitBounds, 300);
   }, [locationHistory, filteredLocations, fitBounds, isLoaded]);
-
-  const selectedExec = liveLocations.find(l => l.user_id === selectedExecId);
 
   if (!isLoaded) return (
     <div className="h-[calc(100vh-8rem)] w-full animate-pulse bg-[#1a1d27] rounded-xl border border-[#2a2d3a] flex items-center justify-center text-[#6b7280]">
@@ -390,122 +494,135 @@ export const LiveTracking = () => {
     </div>
   );
 
+  // ─── JSX ──────────────────────────────────────────────────────────────────
+  const nextPending = execVisits.find(v => v.status === "planned" && v.gps_lat && v.gps_lng);
+
   return (
     <div className="flex flex-col h-[calc(100vh-7rem)] gap-0 text-[#f1f5f9]">
-      {/* TOP FILTER BAR */}
-      <div className="flex flex-wrap items-center gap-2 px-1 pb-3">
-        <div className="flex items-center gap-1.5 bg-[#1a1d27] border border-[#2a2d3a] rounded-xl px-3 py-2">
-          <Calendar className="h-3.5 w-3.5 text-[#6b7280]" />
+
+      {/* ── COMPACT FILTER BAR ─────────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 pb-2.5 flex-nowrap overflow-x-auto scrollbar-none">
+        {/* Date */}
+        <div className="flex items-center gap-1.5 bg-[#1a1d27] border border-[#2a2d3a] rounded-lg px-2.5 py-1.5 shrink-0">
+          <Calendar className="h-3 w-3 text-[#6b7280] shrink-0" />
           <Input
             type="date"
             value={selectedDate}
-            onChange={e => setSelectedDate(e.target.value)}
-            className="border-0 bg-transparent p-0 h-auto text-xs text-[#f1f5f9] w-[120px] focus-visible:ring-0"
+            onChange={e => { setSelectedDate(e.target.value); setDistMatrix(null); setDirections(null); }}
+            className="border-0 bg-transparent p-0 h-auto text-[11px] text-[#f1f5f9] w-[110px] focus-visible:ring-0 cursor-pointer"
           />
         </div>
+
+        {/* Showroom filter */}
         {isAdminOrMd && showroomList.length > 0 && (
           <Select value={filterShowroom} onValueChange={setFilterShowroom}>
-            <SelectTrigger className="bg-[#1a1d27] border-[#2a2d3a] text-xs h-9 rounded-xl min-w-[140px]">
-              <Building2 className="h-3.5 w-3.5 mr-1.5 text-[#6b7280]" />
+            <SelectTrigger className="bg-[#1a1d27] border-[#2a2d3a] text-[11px] h-8 rounded-lg min-w-[130px] max-w-[160px] shrink-0 gap-1">
+              <Building2 className="h-3 w-3 text-[#6b7280] shrink-0" />
               <SelectValue placeholder="All Showrooms" />
             </SelectTrigger>
-            <SelectContent className="bg-[#1a1d27] border-[#2a2d3a] text-[#f1f5f9]">
+            <SelectContent className="bg-[#1a1d27] border-[#2a2d3a] text-[#f1f5f9] text-xs">
               <SelectItem value="all">All Showrooms</SelectItem>
               {showroomList.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
             </SelectContent>
           </Select>
         )}
+
+        {/* Traffic toggle */}
+        <button
+          onClick={() => setShowTraffic(v => !v)}
+          className={`flex items-center gap-1.5 h-8 px-2.5 rounded-lg border text-[11px] font-semibold transition-all shrink-0 ${
+            showTraffic
+              ? "bg-amber-500/20 border-amber-500/50 text-amber-400"
+              : "bg-[#1a1d27] border-[#2a2d3a] text-[#6b7280] hover:border-[#3a3d4a]"
+          }`}
+        >
+          <Layers className="h-3 w-3" />
+          Traffic
+        </button>
+
+        {/* Back button */}
         {selectedExecId && (
           <Button
             size="sm"
             variant="outline"
-            className="h-9 rounded-xl bg-[#1a1d27] border-[#2a2d3a] text-xs gap-1.5 text-[#f1f5f9] hover:bg-[#2a2d3a]"
-            onClick={() => setSelectedExecId(null)}
+            className="h-8 rounded-lg bg-[#1a1d27] border-[#2a2d3a] text-[11px] gap-1 text-[#f1f5f9] hover:bg-[#2a2d3a] px-2.5 shrink-0"
+            onClick={() => { setSelectedExecId(null); setDistMatrix(null); setDirections(null); }}
           >
-            <ArrowLeft className="h-3.5 w-3.5" /> Back to All
+            <ArrowLeft className="h-3 w-3" /> Back
           </Button>
         )}
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-[10px] text-[#6b7280] font-medium uppercase tracking-widest">
-            {filteredLocations.length} active
+
+        <div className="flex-1" />
+
+        {/* Live indicator */}
+        <div className="flex items-center gap-1.5 bg-[#1a1d27] border border-[#2a2d3a] rounded-lg px-2.5 py-1.5 shrink-0">
+          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+          <span className="text-[10px] text-green-400 font-semibold uppercase tracking-widest">
+            {filteredLocations.length} Live
           </span>
-          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
         </div>
       </div>
 
-      {/* MAIN LAYOUT */}
+      {/* ── MAIN LAYOUT ────────────────────────────────────────────────────── */}
       <div className="flex flex-1 gap-3 overflow-hidden">
-        {/* LEFT: MAP */}
+
+        {/* MAP */}
         <div className="flex-1 rounded-2xl overflow-hidden border border-[#2a2d3a] bg-[#1a1d27] relative shadow-lg">
           <GoogleMap
             mapContainerStyle={containerStyle}
-            center={mapCenter}
-            zoom={mapZoom}
+            center={defaultCenter}
+            zoom={5}
             onLoad={map => { mapRef.current = map; }}
-            options={{ disableDefaultUI: false, clickableIcons: false, styles: darkMapStyles }}
+            options={{ disableDefaultUI: false, clickableIcons: false, styles: showTraffic ? [] : darkMapStyles }}
           >
-            {/* Real route polyline (continuous GPS history) */}
-            {selectedExecId && !routeSummary?.usingFallback && routePath.length > 1 && (
-              <Polyline
-                path={routePath}
-                options={{
-                  strokeColor: "#b91c1c",
-                  strokeOpacity: 0.85,
-                  strokeWeight: 4,
-                  geodesic: true,
-                }}
-              />
-            )}
+            {/* Traffic Layer */}
+            {showTraffic && <TrafficLayer />}
 
-            {/* Fallback route directions (using Directions API for realistic road paths) */}
-            {selectedExecId && routeSummary?.usingFallback && directions && (
+            {/* Road route */}
+            {selectedExecId && directions && (
               <DirectionsRenderer
                 directions={directions}
                 options={{
                   suppressMarkers: true,
-                  polylineOptions: {
-                    strokeColor: "#f59e0b",
-                    strokeOpacity: 0.6,
-                    strokeWeight: 4,
-                  }
+                  polylineOptions: { strokeColor: "#dc2626", strokeOpacity: 0.9, strokeWeight: 4 },
                 }}
               />
             )}
 
-            {/* START DAY marker - where executive began the day */}
-            {selectedExecId && startDayLocation && (
-              <OverlayView
-                position={{ lat: startDayLocation.lat, lng: startDayLocation.lng }}
-                mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-              >
-                <div className="relative -translate-x-1/2 -translate-y-[calc(100%+10px)] flex flex-col items-center">
-                  <div className="bg-[#0e0f12] border border-green-500/60 rounded-xl px-2.5 py-1.5 min-w-max mb-1 shadow-xl">
-                    <p className="text-[10px] font-bold text-green-400">🏠 Start of Day</p>
-                    <p className="text-[9px] text-[#9ca3af]">{format(new Date(startDayLocation.time), "hh:mm a")}</p>
-                  </div>
-                  <div className="w-6 h-6 rounded-full bg-green-500 border-2 border-[#0e0f12] flex items-center justify-center text-[10px] font-bold text-white shadow-lg">
-                    S
-                  </div>
+            {/* Loading route indicator */}
+            {selectedExecId && !directions && routePath.length > 1 && (
+              <OverlayView position={routePath[Math.floor(routePath.length / 2)]} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
+                <div className="bg-[#0e0f12] border border-[#2a2d3a] rounded-xl px-3 py-1.5 text-[10px] text-[#9ca3af] font-medium animate-pulse">
+                  🛣️ Building road route…
                 </div>
               </OverlayView>
             )}
 
-            {/* Visit markers when exec is selected */}
+            {/* Start of Day marker */}
+            {selectedExecId && startDayLocation && (
+              <OverlayView position={{ lat: startDayLocation.lat, lng: startDayLocation.lng }} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
+                <div className="relative -translate-x-1/2 -translate-y-[calc(100%+10px)] flex flex-col items-center">
+                  <div className="bg-[#0e0f12] border border-green-500/60 rounded-xl px-2.5 py-1.5 min-w-max mb-1 shadow-xl">
+                    <p className="text-[10px] font-bold text-green-400">🏠 Day Start</p>
+                    <p className="text-[9px] text-[#9ca3af]">{format(new Date(startDayLocation.time), "hh:mm a")}</p>
+                  </div>
+                  <div className="w-6 h-6 rounded-full bg-green-500 border-2 border-[#0e0f12] flex items-center justify-center text-[10px] font-bold text-white shadow-lg">S</div>
+                </div>
+              </OverlayView>
+            )}
+
+            {/* Visit markers */}
             {selectedExecId && execVisits.filter(v => v.gps_lat && v.gps_lng).map((v, i) => (
-              <OverlayView
-                key={v.id}
-                position={{ lat: v.gps_lat!, lng: v.gps_lng! }}
-                mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-              >
+              <OverlayView key={v.id} position={{ lat: v.gps_lat!, lng: v.gps_lng! }} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
                 <div className="relative -translate-x-1/2 -translate-y-[calc(100%+10px)] flex flex-col items-center">
                   <div className="bg-[#0e0f12] border rounded-xl px-2.5 py-1.5 min-w-max mb-1 shadow-xl text-left"
                     style={{ borderColor: statusColor(v.status) + "80" }}>
                     <p className="text-[11px] font-bold text-[#f1f5f9] leading-tight">{i + 1}. {v.client_name}</p>
                     {v.check_in_at && <p className="text-[9px] text-[#9ca3af] mt-0.5">In: {format(new Date(v.check_in_at), "hh:mm a")}</p>}
                     {v.done_at && <p className="text-[9px] text-[#9ca3af]">Out: {format(new Date(v.done_at), "hh:mm a")}</p>}
-                    {v.check_in_at && v.done_at && (
-                      <p className="text-[9px] font-semibold" style={{ color: statusColor(v.status) }}>
-                        {durationStr(v.check_in_at, v.done_at)}
+                    {distMatrix?.legDistances[i] && (
+                      <p className="text-[9px] text-amber-400 font-semibold mt-0.5">
+                        {distMatrix.legDistances[i]} · {distMatrix.legDurations[i]}
                       </p>
                     )}
                   </div>
@@ -517,23 +634,20 @@ export const LiveTracking = () => {
               </OverlayView>
             ))}
 
-            {/* Live location markers for ALL executives (when no exec selected) */}
+            {/* All execs — overview mode */}
             {!selectedExecId && filteredLocations.map(loc => {
-              const isStale = new Date().getTime() - new Date(loc.updated_at).getTime() > 300000;
+              const isStale = Date.now() - new Date(loc.updated_at).getTime() > 300000;
               return (
-                <OverlayView
-                  key={loc.user_id}
-                  position={{ lat: loc.lat, lng: loc.lng }}
-                  mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-                >
-                  <div
-                    className="relative -translate-x-1/2 -translate-y-[calc(100%+10px)] flex flex-col items-center cursor-pointer group"
-                    onClick={() => setSelectedExecId(loc.user_id)}
-                  >
-                    <div className="bg-[#0e0f12] border border-[#2a2d3a] group-hover:border-[#b91c1c]/60 shadow-xl rounded-xl px-2.5 py-1.5 min-w-max mb-1 transition-all">
+                <OverlayView key={loc.user_id} position={{ lat: loc.lat, lng: loc.lng }} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
+                  <div className="relative -translate-x-1/2 -translate-y-[calc(100%+10px)] flex flex-col items-center cursor-pointer group"
+                    onClick={() => setSelectedExecId(loc.user_id)}>
+                    <div className="bg-[#0e0f12] border border-[#2a2d3a] group-hover:border-[#dc2626]/60 shadow-xl rounded-xl px-2.5 py-1.5 min-w-max mb-1 transition-all">
                       <p className="text-[11px] font-bold text-[#f1f5f9]">{loc.full_name}</p>
+                      {loc.current_address && (
+                        <p className="text-[9px] text-[#6b7280] mt-0.5 max-w-[160px] truncate">📍 {loc.current_address}</p>
+                      )}
                       <p className={`text-[9px] font-medium mt-0.5 ${isStale ? "text-amber-400" : "text-green-400"}`}>
-                        {isStale ? "⚠ Last seen" : "● Live"}: {formatDistanceToNow(new Date(loc.updated_at))} ago
+                        {isStale ? "⚠ " : "● "}{formatDistanceToNow(new Date(loc.updated_at))} ago
                       </p>
                     </div>
                     <Navigation className={`w-7 h-7 fill-current stroke-[#0e0f12] stroke-2 drop-shadow-lg ${isStale ? "text-amber-400" : "text-green-500 animate-bounce"}`} />
@@ -542,64 +656,107 @@ export const LiveTracking = () => {
               );
             })}
 
-            {/* Current live location of selected exec */}
+            {/* Selected exec current location */}
             {selectedExecId && selectedExec && (
-              <OverlayView
-                position={{ lat: selectedExec.lat, lng: selectedExec.lng }}
-                mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
-              >
+              <OverlayView position={{ lat: selectedExec.lat, lng: selectedExec.lng }} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
                 <div className="relative -translate-x-1/2 -translate-y-[calc(100%+10px)] flex flex-col items-center">
-                  <div className="bg-[#b91c1c] text-white rounded-xl px-2.5 py-1 min-w-max mb-1 shadow-xl">
-                    <p className="text-[10px] font-bold">📍 Current Location</p>
+                  <div className="bg-[#dc2626] text-white rounded-xl px-2.5 py-1 min-w-max mb-1 shadow-xl">
+                    <p className="text-[10px] font-bold">📍 Now</p>
+                    {selectedExec.current_address && (
+                      <p className="text-[8px] text-white/70 max-w-[150px] truncate">{selectedExec.current_address}</p>
+                    )}
                   </div>
-                  <Navigation className="w-7 h-7 fill-[#b91c1c] stroke-[#0e0f12] stroke-2 drop-shadow-lg animate-bounce" />
+                  <Navigation className="w-7 h-7 fill-[#dc2626] stroke-[#0e0f12] stroke-2 drop-shadow-lg animate-bounce" />
                 </div>
               </OverlayView>
             )}
           </GoogleMap>
         </div>
 
-        {/* RIGHT SIDEBAR */}
-        {showSidebar && (
-          <div className="w-80 xl:w-96 flex flex-col gap-3 overflow-hidden">
+        {/* ── RIGHT SIDEBAR ───────────────────────────────────────────────── */}
+        <div className="w-80 xl:w-96 flex flex-col gap-2.5 overflow-hidden">
 
-            {/* ROUTE SUMMARY - only when exec selected */}
-            {selectedExecId && routeSummary && (
-              <div className="bg-[#1a1d27] border border-[#2a2d3a] rounded-2xl p-4 shadow-md shrink-0">
-                <div className="flex items-center gap-2 mb-3">
-                  <Route className="h-4 w-4 text-[#b91c1c]" />
-                  <p className="text-xs font-bold text-[#f1f5f9] uppercase tracking-widest">Route Summary</p>
+          {/* ── EXEC DETAIL VIEW ── */}
+          {selectedExecId && routeSummary && (
+            <>
+              {/* Executive header card */}
+              <div className="bg-[#1a1d27] border border-[#2a2d3a] rounded-2xl p-3.5 shrink-0 shadow-md">
+                <div className="flex items-center gap-2.5 mb-2">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#dc2626] to-[#7f1d1d] flex items-center justify-center text-sm font-bold text-white shrink-0">
+                    {selectedExec?.full_name.charAt(0)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-[#f1f5f9] truncate">{selectedExec?.full_name}</p>
+                    {selectedExec?.current_address && (
+                      <p className="text-[10px] text-[#6b7280] truncate">📍 {selectedExec.current_address}</p>
+                    )}
+                  </div>
+                  <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                    <span className="text-[9px] text-green-400 font-bold uppercase tracking-wider">Live</span>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-2 mb-2">
-                  <div className="bg-[#0e0f12] rounded-xl p-2.5 border border-[#2a2d3a]">
-                    <p className="text-[9px] text-[#6b7280] uppercase font-semibold tracking-wider">
-                      Distance {routeSummary.usingFallback && <span className="text-amber-500">~est</span>}
+
+                {/* Next Visit ETA — only today */}
+                {isToday && nextPending && (
+                  <div className="bg-blue-500/10 border border-blue-500/30 rounded-xl px-3 py-2 mb-2 flex items-center gap-2">
+                    <Target className="h-4 w-4 text-blue-400 shrink-0" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-blue-400 font-semibold">Next: {nextPending.client_name}</p>
+                      {distMatrixLoading ? (
+                        <p className="text-[9px] text-[#6b7280] animate-pulse">Calculating ETA…</p>
+                      ) : distMatrix?.nextVisitEta ? (
+                        <p className="text-[9px] text-[#9ca3af]">
+                          <span className="text-blue-300 font-bold">{distMatrix.nextVisitDist}</span>
+                          {" · "}
+                          <span className="text-amber-300 font-bold">~{distMatrix.nextVisitEta}</span>
+                          {" away (with traffic)"}
+                        </p>
+                      ) : (
+                        <p className="text-[9px] text-[#6b7280]">No GPS for this visit</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Stats grid */}
+              <div className="bg-[#1a1d27] border border-[#2a2d3a] rounded-2xl p-3.5 shrink-0 shadow-md">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <Route className="h-3.5 w-3.5 text-[#dc2626]" />
+                  <p className="text-[10px] font-bold text-[#f1f5f9] uppercase tracking-widest">Day Summary</p>
+                  {distMatrixLoading && <span className="text-[9px] text-amber-400 animate-pulse ml-auto">Calculating…</span>}
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="bg-[#0e0f12] rounded-xl p-2 border border-[#2a2d3a] text-center">
+                    <p className="text-[8px] text-[#6b7280] uppercase font-semibold">Road Dist</p>
+                    <p className="text-base font-bold text-[#f1f5f9] font-mono leading-tight">
+                      {distMatrix ? distMatrix.totalRoadKm : routeSummary.haversineKmTotal}
+                      <span className="text-[9px] text-[#6b7280]">km</span>
                     </p>
-                    <p className="text-lg font-bold text-[#f1f5f9] font-mono leading-tight">{routeSummary.totalDistKm}<span className="text-xs text-[#6b7280] ml-0.5">km</span></p>
+                    <p className="text-[8px] text-[#4b5563]">{distMatrix ? "road" : "~est"}</p>
                   </div>
-                  <div className="bg-[#0e0f12] rounded-xl p-2.5 border border-[#2a2d3a]">
-                    <p className="text-[9px] text-[#6b7280] uppercase font-semibold tracking-wider">Visits</p>
-                    <p className="text-lg font-bold text-[#f1f5f9] font-mono leading-tight">{routeSummary.doneVisits}<span className="text-xs text-[#6b7280] ml-0.5">/ {routeSummary.totalVisits}</span></p>
+                  <div className="bg-[#0e0f12] rounded-xl p-2 border border-[#2a2d3a] text-center">
+                    <p className="text-[8px] text-[#6b7280] uppercase font-semibold">Visits</p>
+                    <p className="text-base font-bold text-[#f1f5f9] font-mono leading-tight">
+                      {routeSummary.doneVisits}
+                      <span className="text-[9px] text-[#6b7280]">/{routeSummary.totalVisits}</span>
+                    </p>
+                    {routeSummary.pendingVisits > 0 && (
+                      <p className="text-[8px] text-amber-400">{routeSummary.pendingVisits} left</p>
+                    )}
                   </div>
-                  <div className="bg-[#0e0f12] rounded-xl p-2.5 border border-[#2a2d3a]">
-                    <p className="text-[9px] text-[#6b7280] uppercase font-semibold tracking-wider">At Client</p>
+                  <div className="bg-[#0e0f12] rounded-xl p-2 border border-[#2a2d3a] text-center">
+                    <p className="text-[8px] text-[#6b7280] uppercase font-semibold">At Client</p>
                     <p className="text-sm font-bold text-green-400 font-mono leading-tight">
                       {routeSummary.totalAtClientMins >= 60
-                        ? `${Math.floor(routeSummary.totalAtClientMins / 60)}h ${routeSummary.totalAtClientMins % 60}m`
+                        ? `${Math.floor(routeSummary.totalAtClientMins / 60)}h${routeSummary.totalAtClientMins % 60}m`
                         : `${routeSummary.totalAtClientMins}m`}
-                    </p>
-                  </div>
-                  <div className="bg-[#0e0f12] rounded-xl p-2.5 border border-[#2a2d3a]">
-                    <p className="text-[9px] text-[#6b7280] uppercase font-semibold tracking-wider">Travel Time</p>
-                    <p className="text-sm font-bold text-amber-400 font-mono leading-tight">
-                      {routeSummary.totalTravelMins >= 60
-                        ? `${Math.floor(routeSummary.totalTravelMins / 60)}h ${routeSummary.totalTravelMins % 60}m`
-                        : `${routeSummary.totalTravelMins}m`}
                     </p>
                   </div>
                 </div>
                 {routeSummary.firstCheckIn && (
-                  <div className="text-[10px] text-[#6b7280] font-medium flex justify-between">
+                  <div className="flex justify-between mt-2 pt-2 border-t border-[#2a2d3a] text-[9px] text-[#4b5563] font-medium">
                     <span>First In: <span className="text-[#9ca3af]">{format(new Date(routeSummary.firstCheckIn), "hh:mm a")}</span></span>
                     {routeSummary.lastActivity && (
                       <span>Last Out: <span className="text-[#9ca3af]">{format(new Date(routeSummary.lastActivity), "hh:mm a")}</span></span>
@@ -607,17 +764,15 @@ export const LiveTracking = () => {
                   </div>
                 )}
               </div>
-            )}
 
-            {/* VISIT TIMELINE - when exec selected */}
-            {selectedExecId && (
+              {/* Visit timeline */}
               <div className="bg-[#1a1d27] border border-[#2a2d3a] rounded-2xl flex flex-col overflow-hidden shadow-md flex-1 min-h-0">
-                <div className="px-4 py-3 border-b border-[#2a2d3a] flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-[#b91c1c]" />
-                    <p className="text-xs font-bold text-[#f1f5f9] uppercase tracking-widest">Visit Timeline</p>
+                <div className="px-3.5 py-2.5 border-b border-[#2a2d3a] flex items-center justify-between shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <Activity className="h-3.5 w-3.5 text-[#dc2626]" />
+                    <p className="text-[10px] font-bold text-[#f1f5f9] uppercase tracking-widest">Visit Timeline</p>
                   </div>
-                  <Badge className="bg-[#0e0f12] text-[#9ca3af] border-[#2a2d3a] text-[10px]">{execVisits.length}</Badge>
+                  <Badge className="bg-[#0e0f12] text-[#9ca3af] border-[#2a2d3a] text-[9px]">{execVisits.length}</Badge>
                 </div>
                 <div className="overflow-y-auto flex-1 p-3 space-y-2">
                   {execVisits.length === 0 ? (
@@ -625,122 +780,128 @@ export const LiveTracking = () => {
                       <MapPin className="h-8 w-8 mx-auto mb-2 opacity-30" />
                       No visits for this date
                     </div>
-                  ) : (
-                    execVisits.map((v, i) => (
-                      <div key={v.id} className="relative pl-6">
-                        {/* Timeline connector */}
-                        {i < execVisits.length - 1 && (
-                          <div className="absolute left-[9px] top-5 bottom-0 w-px bg-[#2a2d3a]" />
-                        )}
-                        <div className="absolute left-0 top-1.5 w-5 h-5 rounded-full border-2 border-[#0e0f12] flex items-center justify-center text-[9px] font-bold text-white shadow-sm"
-                          style={{ backgroundColor: statusColor(v.status) }}>
-                          {i + 1}
-                        </div>
-                        <div className="bg-[#0e0f12] border border-[#2a2d3a] rounded-xl p-3 hover:border-[#3a3d4a] transition-colors">
-                          <div className="flex items-start justify-between gap-2 mb-1.5">
-                            <p className="text-xs font-bold text-[#f1f5f9] leading-tight">{v.client_name}</p>
-                            <div className="flex items-center gap-1 shrink-0">
-                              {statusIcon(v.status)}
-                              <span className="text-[9px] font-semibold uppercase tracking-wider"
-                                style={{ color: statusColor(v.status) }}>
-                                {v.status.replace("_", " ")}
-                              </span>
-                            </div>
+                  ) : execVisits.map((v, i) => (
+                    <div key={v.id} className="relative pl-5">
+                      {i < execVisits.length - 1 && (
+                        <div className="absolute left-[8px] top-5 bottom-0 w-px bg-[#2a2d3a]" />
+                      )}
+                      <div className="absolute left-0 top-1.5 w-4 h-4 rounded-full border-2 border-[#0e0f12] flex items-center justify-center text-[8px] font-bold text-white shadow-sm"
+                        style={{ backgroundColor: statusColor(v.status) }}>
+                        {i + 1}
+                      </div>
+                      <div className="bg-[#0e0f12] border border-[#2a2d3a] rounded-xl p-2.5 hover:border-[#3a3d4a] transition-colors">
+                        <div className="flex items-start justify-between gap-2 mb-1">
+                          <p className="text-[11px] font-bold text-[#f1f5f9] leading-tight">{v.client_name}</p>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {statusIcon(v.status)}
+                            <span className="text-[8px] font-semibold uppercase" style={{ color: statusColor(v.status) }}>
+                              {v.status}
+                            </span>
                           </div>
-                          {v.purpose && <p className="text-[10px] text-[#6b7280] mb-1.5">{v.purpose}</p>}
-                          {v.address && (
-                            <p className="text-[10px] text-[#4b5563] flex items-center gap-1 mb-1.5 truncate">
-                              <MapPin className="h-2.5 w-2.5 shrink-0" />{v.address}
+                        </div>
+                        {v.purpose && <p className="text-[9px] text-[#6b7280] mb-1">{v.purpose}</p>}
+                        {v.address && (
+                          <p className="text-[9px] text-[#4b5563] flex items-center gap-1 mb-1.5 truncate">
+                            <MapPin className="h-2.5 w-2.5 shrink-0" />{v.address}
+                          </p>
+                        )}
+
+                        {/* Drive info from Distance Matrix */}
+                        {distMatrix?.legDistances[i - 1] && (
+                          <div className="flex items-center gap-1.5 mb-1.5 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2 py-1">
+                            <Car className="h-2.5 w-2.5 text-amber-400 shrink-0" />
+                            <span className="text-[9px] text-amber-300 font-semibold">
+                              {distMatrix.legDistances[i - 1]} · {distMatrix.legDurations[i - 1]}
+                              {isToday ? " (traffic)" : ""}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-3 gap-1 mt-1.5 pt-1.5 border-t border-[#2a2d3a]">
+                          <div>
+                            <p className="text-[7px] text-[#4b5563] uppercase font-semibold">In</p>
+                            <p className="text-[9px] font-semibold text-[#9ca3af]">
+                              {v.check_in_at ? format(new Date(v.check_in_at), "hh:mm a") : "—"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[7px] text-[#4b5563] uppercase font-semibold">Out</p>
+                            <p className="text-[9px] font-semibold text-[#9ca3af]">
+                              {v.done_at ? format(new Date(v.done_at), "hh:mm a") : "—"}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[7px] text-[#4b5563] uppercase font-semibold">Stayed</p>
+                            <p className="text-[9px] font-semibold text-green-400">
+                              {durationStr(v.check_in_at, v.done_at)}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── OVERVIEW MODE — all execs list ── */}
+          {!selectedExecId && (
+            <div className="bg-[#1a1d27] border border-[#2a2d3a] rounded-2xl flex flex-col overflow-hidden shadow-md flex-1 min-h-0">
+              <div className="px-3.5 py-2.5 border-b border-[#2a2d3a] flex items-center justify-between shrink-0">
+                <div className="flex items-center gap-1.5">
+                  <Navigation className="h-3.5 w-3.5 text-green-500" />
+                  <p className="text-[10px] font-bold text-[#f1f5f9] uppercase tracking-widest">Active Executives</p>
+                </div>
+                <Badge className="bg-[#0e0f12] text-[#9ca3af] border-[#2a2d3a] text-[9px]">{filteredLocations.length}</Badge>
+              </div>
+              <div className="overflow-y-auto flex-1 divide-y divide-[#2a2d3a]">
+                {filteredLocations.length === 0 ? (
+                  <div className="p-8 text-center text-sm text-[#4b5563] flex flex-col items-center gap-2">
+                    <Users className="h-8 w-8 opacity-30" />
+                    <p>No executives broadcasting location</p>
+                  </div>
+                ) : filteredLocations.map(loc => {
+                  const isStale = Date.now() - new Date(loc.updated_at).getTime() > 300000;
+                  return (
+                    <div
+                      key={loc.user_id}
+                      className="p-3.5 hover:bg-[#2a2d3a]/40 transition-colors cursor-pointer flex items-center justify-between gap-3 group"
+                      onClick={() => setSelectedExecId(loc.user_id)}
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2a2d3a] to-[#3a3d4a] border border-[#3a3d4a] flex items-center justify-center text-xs font-bold text-[#f1f5f9] shrink-0">
+                          {loc.full_name.charAt(0)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-[#f1f5f9] truncate">{loc.full_name}</p>
+                          {/* Reverse geocoded address */}
+                          {loc.current_address ? (
+                            <p className="text-[9px] text-[#6b7280] truncate flex items-center gap-1">
+                              <MapPin className="h-2.5 w-2.5 shrink-0" />{loc.current_address}
+                            </p>
+                          ) : (
+                            <p className="text-[9px] text-[#4b5563] flex items-center gap-1">
+                              <Clock className="h-2.5 w-2.5" />
+                              {formatDistanceToNow(new Date(loc.updated_at))} ago
                             </p>
                           )}
-                          <div className="grid grid-cols-3 gap-1.5 mt-2 pt-2 border-t border-[#2a2d3a]">
-                            <div>
-                              <p className="text-[8px] text-[#4b5563] uppercase font-semibold">Check In</p>
-                              <p className="text-[10px] font-semibold text-[#9ca3af]">
-                                {v.check_in_at ? format(new Date(v.check_in_at), "hh:mm a") : "—"}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-[8px] text-[#4b5563] uppercase font-semibold">Check Out</p>
-                              <p className="text-[10px] font-semibold text-[#9ca3af]">
-                                {v.done_at ? format(new Date(v.done_at), "hh:mm a") : "—"}
-                              </p>
-                            </div>
-                            <div>
-                              <p className="text-[8px] text-[#4b5563] uppercase font-semibold">Duration</p>
-                              <p className="text-[10px] font-semibold text-green-400">
-                                {durationStr(v.check_in_at, v.done_at)}
-                              </p>
-                            </div>
-                          </div>
-                          {v.gps_lat && (
-                            <p className="text-[8px] text-[#4b5563] mt-1.5 font-mono">
-                              GPS: {v.gps_lat?.toFixed(5)}, {v.gps_lng?.toFixed(5)}
-                            </p>
+                          {loc.showroom_name && (
+                            <p className="text-[9px] text-[#4b5563]">{loc.showroom_name}</p>
                           )}
                         </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* TRACKING ACTIVE LIST - when no exec selected */}
-            {!selectedExecId && (
-              <div className="bg-[#1a1d27] border border-[#2a2d3a] rounded-2xl flex flex-col overflow-hidden shadow-md flex-1 min-h-0">
-                <div className="px-4 py-3 border-b border-[#2a2d3a] flex items-center justify-between shrink-0">
-                  <div className="flex items-center gap-2">
-                    <Navigation className="h-4 w-4 text-green-500" />
-                    <p className="text-xs font-bold text-[#f1f5f9] uppercase tracking-widest">Tracking Active</p>
-                  </div>
-                  <Badge className="bg-[#0e0f12] text-[#9ca3af] border-[#2a2d3a] text-[10px]">{filteredLocations.length}</Badge>
-                </div>
-                <div className="overflow-y-auto flex-1">
-                  {filteredLocations.length === 0 ? (
-                    <div className="p-8 text-center text-sm text-[#4b5563] flex flex-col items-center gap-2">
-                      <Users className="h-8 w-8 opacity-30" />
-                      <p>No executives actively broadcasting location.</p>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <div className={`w-2 h-2 rounded-full ${isStale ? "bg-amber-400" : "bg-green-500 animate-pulse"}`} />
+                        <ChevronRight className="h-3.5 w-3.5 text-[#4b5563] group-hover:text-[#9ca3af] transition-colors" />
+                      </div>
                     </div>
-                  ) : (
-                    <div className="divide-y divide-[#2a2d3a]">
-                      {filteredLocations.map(loc => {
-                        const isStale = new Date().getTime() - new Date(loc.updated_at).getTime() > 300000;
-                        return (
-                          <div
-                            key={loc.user_id}
-                            className="p-4 hover:bg-[#2a2d3a]/40 transition-colors cursor-pointer flex items-center justify-between group"
-                            onClick={() => setSelectedExecId(loc.user_id)}
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-8 h-8 rounded-full bg-[#2a2d3a] border border-[#3a3d4a] flex items-center justify-center text-xs font-bold text-[#f1f5f9] shrink-0">
-                                {loc.full_name.charAt(0)}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold text-[#f1f5f9] truncate">{loc.full_name}</p>
-                                <p className="text-[10px] text-[#6b7280] font-medium flex items-center gap-1 mt-0.5">
-                                  <Clock className="h-2.5 w-2.5" />
-                                  {isStale ? "⚠" : "●"} {formatDistanceToNow(new Date(loc.updated_at))} ago
-                                </p>
-                                {loc.showroom_name && (
-                                  <p className="text-[9px] text-[#4b5563] truncate">{loc.showroom_name}</p>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 shrink-0">
-                              <div className={`w-2.5 h-2.5 rounded-full ${isStale ? "bg-amber-400" : "bg-green-500 animate-pulse"}`} />
-                              <ChevronRight className="h-4 w-4 text-[#4b5563] group-hover:text-[#9ca3af] transition-colors" />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
+                  );
+                })}
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -8,12 +8,12 @@ import {
   GitBranch, Filter, CheckCircle2, XCircle, Clock, Send,
   Loader2, TrendingUp, Building2, Search, RotateCcw,
   Award, BarChart2, Target, Zap, ChevronRight, Download,
-  FolderCheck, Archive, AlertTriangle
+  FolderCheck, Archive, AlertTriangle, PauseCircle
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
 
-type WorkStatus = "pending" | "submitted" | "won" | "lost" | "draft" | "rejected";
+type WorkStatus = "pending" | "submitted" | "won" | "lost" | "draft" | "rejected" | "hold";
 
 interface WOSRecord {
   id: string; client_id: string; work_type_id: string;
@@ -44,15 +44,16 @@ interface WorkTypeGroup {
   typeOfWork: string; subTypes: { id: string; subWork: string }[];
 }
 
-const STATUS_PRIORITY: Record<string, number> = { won:5, submitted:4, pending:3, draft:2, lost:1, rejected:0 };
+const STATUS_PRIORITY: Record<string, number> = { won:5, submitted:4, pending:3, hold:3, draft:2, lost:1, rejected:0 };
 
 const STATUS_CFG = {
-  pending:   { label:"WOS",        icon:<Clock    className="h-2.5 w-2.5"/>, cls:"text-sky-700 bg-sky-50 border-sky-200 dark:text-sky-300 dark:bg-sky-900/30 dark:border-sky-700/50",   dot:"bg-sky-500",    dateLabel:"Added"      },
-  submitted: { label:"Quotation",  icon:<Send     className="h-2.5 w-2.5"/>, cls:"text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-900/30 dark:border-amber-600/50", dot:"bg-amber-400",  dateLabel:"Quoted"     },
-  won:       { label:"Won ✓",      icon:<CheckCircle2 className="h-2.5 w-2.5"/>, cls:"text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-900/30 dark:border-emerald-700/50", dot:"bg-emerald-500", dateLabel:"Closed"    },
-  lost:      { label:"Lost",       icon:<XCircle  className="h-2.5 w-2.5"/>, cls:"text-rose-600 bg-rose-50 border-rose-200 dark:text-rose-400 dark:bg-rose-900/30 dark:border-rose-700/50",   dot:"bg-rose-500",   dateLabel:"Closed"    },
-  rejected:  { label:"Rejected",   icon:<XCircle  className="h-2.5 w-2.5"/>, cls:"text-rose-600 bg-rose-50 border-rose-200 dark:text-rose-400 dark:bg-rose-900/30 dark:border-rose-700/50",   dot:"bg-rose-400",   dateLabel:"Closed"    },
-  draft:     { label:"WOS",        icon:<Clock    className="h-2.5 w-2.5"/>, cls:"text-slate-500 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-800 dark:border-slate-700",    dot:"bg-slate-400",  dateLabel:"Added"     },
+  pending:   { label:"WOS",        icon:<Clock       className="h-2.5 w-2.5"/>, cls:"text-sky-700 bg-sky-50 border-sky-200 dark:text-sky-300 dark:bg-sky-900/30 dark:border-sky-700/50",       dot:"bg-sky-500",      dateLabel:"Added"   },
+  submitted: { label:"Quotation",  icon:<Send        className="h-2.5 w-2.5"/>, cls:"text-amber-700 bg-amber-50 border-amber-200 dark:text-amber-300 dark:bg-amber-900/30 dark:border-amber-600/50",  dot:"bg-amber-400",   dateLabel:"Quoted"  },
+  won:       { label:"Won ✓",      icon:<CheckCircle2 className="h-2.5 w-2.5"/>, cls:"text-emerald-700 bg-emerald-50 border-emerald-200 dark:text-emerald-300 dark:bg-emerald-900/30 dark:border-emerald-700/50", dot:"bg-emerald-500", dateLabel:"Closed"  },
+  lost:      { label:"Lost",       icon:<XCircle     className="h-2.5 w-2.5"/>, cls:"text-rose-600 bg-rose-50 border-rose-200 dark:text-rose-400 dark:bg-rose-900/30 dark:border-rose-700/50",     dot:"bg-rose-500",    dateLabel:"Closed"  },
+  hold:      { label:"Hold",       icon:<PauseCircle className="h-2.5 w-2.5"/>, cls:"text-purple-700 bg-purple-50 border-purple-200 dark:text-purple-300 dark:bg-purple-900/30 dark:border-purple-700/50", dot:"bg-purple-500",  dateLabel:"Hold"    },
+  rejected:  { label:"Rejected",   icon:<XCircle     className="h-2.5 w-2.5"/>, cls:"text-rose-600 bg-rose-50 border-rose-200 dark:text-rose-400 dark:bg-rose-900/30 dark:border-rose-700/50",     dot:"bg-rose-400",    dateLabel:"Closed"  },
+  draft:     { label:"WOS",        icon:<Clock       className="h-2.5 w-2.5"/>, cls:"text-slate-500 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-800 dark:border-slate-700",        dot:"bg-slate-400",   dateLabel:"Added"   },
 } as const;
 
 function displayDate(r: WOSRecord): string {
@@ -672,7 +673,7 @@ const Hierarchy = () => {
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Change Pipeline Stage</p>
                 <div className="grid grid-cols-2 gap-2">
-                  {([{s:"pending",label:"WOS",icon:<Clock className="h-3 w-3"/>},{s:"submitted",label:"Quotation",icon:<Send className="h-3 w-3"/>},{s:"won",label:"Won ✓",icon:<CheckCircle2 className="h-3 w-3"/>},{s:"lost",label:"Lost",icon:<XCircle className="h-3 w-3"/>}] as {s:WorkStatus;label:string;icon:React.ReactNode}[]).map(({s,label,icon})=>{
+                  {([{s:"pending",label:"WOS",icon:<Clock className="h-3 w-3"/>},{s:"submitted",label:"Quotation",icon:<Send className="h-3 w-3"/>},{s:"hold",label:"Hold",icon:<PauseCircle className="h-3 w-3"/>},{s:"won",label:"Won ✓",icon:<CheckCircle2 className="h-3 w-3"/>},{s:"lost",label:"Lost",icon:<XCircle className="h-3 w-3"/>}] as {s:WorkStatus;label:string;icon:React.ReactNode}[]).map(({s,label,icon})=>{
                     const sc=STATUS_CFG[s]; const sel=updateStatus===s;
                     return (
                       <button key={s} onClick={()=>setUpdateStatus(s)}

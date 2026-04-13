@@ -90,7 +90,8 @@ const Verification = () => {
     const wonCount = items.filter((i: any) => i.work_status === "won").length;
     const lostCount = items.filter((i: any) => i.work_status === "lost").length;
     const pendingCount = items.filter((i: any) => i.work_status === "pending").length;
-    return { wonCount, lostCount, pendingCount, totalItems: items.length };
+    const holdCount = items.filter((i: any) => i.work_status === "hold").length;
+    return { wonCount, lostCount, pendingCount, holdCount, totalItems: items.length };
   }, [items]);
 
   const verifyMutation = useMutation({
@@ -99,7 +100,7 @@ const Verification = () => {
       const { error } = await supabase
         .from("work_scope_items")
         .update({
-          work_status: workStatus as "pending" | "submitted" | "draft" | "won" | "lost" | "rejected",
+          work_status: workStatus as "pending" | "submitted" | "draft" | "won" | "lost" | "rejected" | "hold",
           verification_remarks: verificationRemarks,
           is_verified: workStatus === "won" || workStatus === "lost",
           verified_by: user?.id,
@@ -119,13 +120,15 @@ const Verification = () => {
 
   const resetForm = () => {
     setVerificationRemarks("");
-    setWorkStatus("won"); // Verification page only sets Won or Lost
+    setWorkStatus("pending");
   };
 
   const openVerifyDialog = (item: any) => {
     setSelectedItem(item);
     setVerificationRemarks(item.verification_remarks || "");
-    setWorkStatus(item.work_status === "won" || item.work_status === "lost" ? item.work_status : "won");
+    // Preserve current status if it's a recognized status, otherwise default to pending
+    const recognized = ["won", "lost", "pending", "hold", "submitted"];
+    setWorkStatus(recognized.includes(item.work_status) ? item.work_status : "pending");
   };
 
   const filteredItems = useMemo(() => {
@@ -189,6 +192,7 @@ const Verification = () => {
                 <SelectItem value="draft">Draft</SelectItem>
                 <SelectItem value="submitted">Submitted</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
+                <SelectItem value="hold">Hold</SelectItem>
                 <SelectItem value="won">Won</SelectItem>
                 <SelectItem value="lost">Lost</SelectItem>
                 <SelectItem value="rejected">Rejected</SelectItem>
@@ -204,6 +208,7 @@ const Verification = () => {
         <StatsCard icon={<CheckCircle className="h-5 w-5 text-emerald-500" />} label="Won" value={stats.wonCount} color="emerald" delay={0.1} />
         <StatsCard icon={<XCircle className="h-5 w-5 text-rose-500" />} label="Lost" value={stats.lostCount} color="rose" delay={0.2} />
         <StatsCard icon={<Clock className="h-5 w-5 text-amber-500" />} label="Pending" value={stats.pendingCount} color="amber" delay={0.3} />
+        <StatsCard icon={<Filter className="h-5 w-5 text-purple-500" />} label="On Hold" value={stats.holdCount} color="purple" delay={0.4} />
       </div>
 
       <Separator className="bg-border/50" />
@@ -426,6 +431,8 @@ const Verification = () => {
                   <Select value={workStatus} onValueChange={setWorkStatus}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="pending">⏳ Pending — Awaiting Decision</SelectItem>
+                      <SelectItem value="hold">⏸️ Hold — Decision Deferred</SelectItem>
                       <SelectItem value="won">✅ Won — Order Confirmed</SelectItem>
                       <SelectItem value="lost">❌ Lost — Order Not Received</SelectItem>
                     </SelectContent>
@@ -489,6 +496,7 @@ const VerificationCard = ({ item, onVerify }: { item: any, onVerify: () => void 
     won: "text-emerald-600 bg-emerald-50 border-emerald-100",
     lost: "text-rose-600 bg-rose-50 border-rose-100",
     pending: "text-amber-600 bg-amber-50 border-amber-100",
+    hold: "text-purple-600 bg-purple-50 border-purple-100",
     draft: "text-gray-600 bg-gray-50 border-gray-100",
     submitted: "text-blue-600 bg-blue-50 border-blue-100",
     rejected: "text-red-600 bg-red-50 border-red-100"
@@ -498,6 +506,7 @@ const VerificationCard = ({ item, onVerify }: { item: any, onVerify: () => void 
     won: <CheckCircle className="h-3 w-3" />,
     lost: <XCircle className="h-3 w-3" />,
     pending: <Clock className="h-3 w-3" />,
+    hold: <Filter className="h-3 w-3" />,
     draft: <FileText className="h-3 w-3" />,
     submitted: <Package className="h-3 w-3" />,
     rejected: <XCircle className="h-3 w-3" />

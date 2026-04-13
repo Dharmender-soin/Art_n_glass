@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { User, Car, LogOut } from "lucide-react";
+import { User, Car, LogOut, Camera, Loader2 } from "lucide-react";
 
 const Profile = () => {
   const { user, role, signOut } = useAuth();
@@ -19,6 +19,17 @@ const Profile = () => {
   const [phone, setPhone] = useState("");
   const [conveyanceType, setConveyanceType] = useState("");
   const [conveyanceRate, setConveyanceRate] = useState("");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  const { data: conveyanceSettings = [] } = useQuery({
+    queryKey: ["conveyance-settings"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("conveyance_settings").select("*").order("vehicle_type");
+      if (error && error.code !== '42P01') throw error;
+      return data || [];
+    },
+  });
 
   const { data: profile } = useQuery({
     queryKey: ["profile"],
@@ -36,8 +47,38 @@ const Profile = () => {
       setPhone(profile.phone || "");
       setConveyanceType((profile as any).conveyance_type || "");
       setConveyanceRate((profile as any).conveyance_rate?.toString() || "");
+      setAvatarUrl((profile as any).avatar_url || null);
     }
   }, [profile]);
+
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    try {
+      setIsUploadingAvatar(true);
+      if (!event.target.files || event.target.files.length === 0) {
+        throw new Error("You must select an image to upload.");
+      }
+      const file = event.target.files[0];
+      const fileExt = file.name.split(".").pop();
+      const filePath = `${user!.id}-${Math.random()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage.from("avatars").upload(filePath, file);
+      if (uploadError) throw uploadError;
+
+      const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(filePath);
+      
+      const { error: updateError } = await supabase.from("profiles").update({ avatar_url: urlData.publicUrl }).eq("user_id", user!.id);
+      if (updateError) throw updateError;
+      
+      setAvatarUrl(urlData.publicUrl);
+      queryClient.invalidateQueries({ queryKey: ["profile"] });
+      queryClient.invalidateQueries({ queryKey: ["userProfile"] });
+      toast.success("Avatar updated successfully!");
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
 
   const updateProfile = useMutation({
     mutationFn: async () => {
@@ -61,8 +102,17 @@ const Profile = () => {
 
   const handleVehicleChange = (v: string) => {
     setConveyanceType(v === "none" ? "" : v);
-    if (v === "car" && !conveyanceRate) setConveyanceRate("8");
-    else if (v === "bike" && !conveyanceRate) setConveyanceRate("4");
+    if (v === "none") {
+      setConveyanceRate("");
+      return;
+    }
+    const setting = conveyanceSettings.find(s => s.vehicle_type === v);
+    if (setting) {
+      setConveyanceRate(setting.rate_per_km.toString());
+    } else {
+      if (v === "car" && !conveyanceRate) setConveyanceRate("8");
+      else if (v === "bike" && !conveyanceRate) setConveyanceRate("4");
+    }
   };
 
   return (
@@ -74,6 +124,29 @@ const Profile = () => {
       <Card>
         <CardHeader><CardTitle className="text-lg">Your Information</CardTitle></CardHeader>
         <CardContent>
+          <div className="flex flex-col items-center mb-6">
+            <div className="relative group">
+              <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center overflow-hidden border-2 border-primary/20">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                ) : (
+                  <User className="h-12 w-12 text-muted-foreground opacity-50" />
+                )}
+              </div>
+              <Label htmlFor="avatar-upload" className="absolute bottom-0 right-0 bg-primary text-primary-foreground p-2 rounded-full cursor-pointer hover:bg-primary/90 transition shadow-md">
+                {isUploadingAvatar ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+              </Label>
+              <Input
+                id="avatar-upload"
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleAvatarUpload}
+                disabled={isUploadingAvatar}
+              />
+            </div>
+          </div>
+
           <form onSubmit={(e) => { e.preventDefault(); updateProfile.mutate(); }} className="space-y-4">
             {/* Email & Role — read-only */}
             <div className="space-y-1">
@@ -112,8 +185,17 @@ const Profile = () => {
                     <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
                     <SelectContent className="bg-popover">
                       <SelectItem value="none">No Vehicle</SelectItem>
-                      <SelectItem value="car">🚗 Car</SelectItem>
-                      <SelectItem value="bike">🏍 Bike</SelectItem>
+                      {conveyanceSettings.map(c => (
+                        <SelectItem key={c.vehicle_type} value={c.vehicle_type}>
+                          <span className="capitalize">{c.vehicle_type}</span>
+                        </SelectItem>
+                      ))}
+                      {conveyanceSettings.length === 0 && (
+                        <>
+                          <SelectItem value="car">🚗 Car</SelectItem>
+                          <SelectItem value="bike">🏍 Bike</SelectItem>
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>

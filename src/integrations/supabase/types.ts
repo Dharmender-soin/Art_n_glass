@@ -126,6 +126,30 @@ export type Database = {
           },
         ]
       }
+      conveyance_settings: {
+        Row: {
+          id: string
+          vehicle_type: string
+          rate_per_km: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          vehicle_type: string
+          rate_per_km: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          vehicle_type?: string
+          rate_per_km?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       daily_attendance: {
         Row: {
           check_in_lat: number
@@ -257,6 +281,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          avatar_url: string | null
           conveyance_rate: number | null
           conveyance_type: string | null
           created_at: string
@@ -268,6 +293,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          avatar_url?: string | null
           conveyance_rate?: number | null
           conveyance_type?: string | null
           created_at?: string
@@ -279,6 +305,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          avatar_url?: string | null
           conveyance_rate?: number | null
           conveyance_type?: string | null
           created_at?: string

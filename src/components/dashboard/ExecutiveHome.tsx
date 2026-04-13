@@ -56,8 +56,20 @@ export const ExecutiveHome = () => {
     const fullName: string = user?.user_metadata?.full_name || "Executive";
     const firstName = (fullName.split(" ")[0] || "Executive").charAt(0).toUpperCase() + (fullName.split(" ")[0] || "").slice(1);
 
-    // ── ADD WOS DIALOG ──
+    // ── Fetch profile avatar ──
     const queryClient = useQueryClient();
+    const { data: userProfile } = useQuery({
+        queryKey: ["userProfile", user?.id],
+        queryFn: async () => {
+            if (!user?.id) return null;
+            const { data } = await supabase.from("profiles").select("avatar_url, full_name").eq("user_id", user.id).maybeSingle();
+            return data;
+        },
+        enabled: !!user?.id,
+    });
+    const avatarUrl: string | null = (userProfile as any)?.avatar_url || null;
+
+    // ── ADD WOS DIALOG ──
     const [wosDialogVisit, setWosDialogVisit] = useState<Visit | null>(null);
     const [wosForm, setWosForm] = useState({ work_type_id: "", qty: "", description: "" });
 
@@ -569,8 +581,12 @@ export const ExecutiveHome = () => {
             <div className="sticky top-0 z-50 bg-background/90 dark:bg-[#0A0B0F]/90 backdrop-blur-2xl border-b border-border dark:border-white/5 px-4 py-3 flex items-center justify-between w-full max-w-full overflow-hidden">
                 <div className="flex items-center gap-3">
                     <div className="relative">
-                        <div className="h-9 w-9 rounded-full bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center text-foreground font-bold text-sm shadow-lg shadow-red-900/40">
-                            {firstName.charAt(0).toUpperCase()}
+                        <div className="h-9 w-9 rounded-full bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-red-900/40 overflow-hidden border-2 border-red-800/50">
+                            {avatarUrl ? (
+                                <img src={avatarUrl} alt={firstName} className="w-full h-full object-cover" />
+                            ) : (
+                                <span>{firstName.charAt(0).toUpperCase()}</span>
+                            )}
                         </div>
                         <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-500 border-2 border-[#0A0B0F] rounded-full" />
                     </div>

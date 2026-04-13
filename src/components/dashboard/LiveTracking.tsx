@@ -55,6 +55,7 @@ interface ExecutiveLocation {
   showroom_id?: string;
   showroom_name?: string;
   current_address?: string; // reverse geocoded
+  is_live?: boolean;
 }
 
 interface VisitPoint {
@@ -170,6 +171,7 @@ export const LiveTracking = () => {
       const enriched: ExecutiveLocation[] = (locData || []).map((loc: any) => {
         const profile = profiles?.find((p: any) => p.user_id === loc.user_id);
         const roleData = roles?.find((r: any) => r.user_id === loc.user_id);
+        const isLive = differenceInMinutes(new Date(), new Date(loc.updated_at)) <= 15;
         return {
           user_id: loc.user_id,
           lat: loc.lat,
@@ -179,6 +181,7 @@ export const LiveTracking = () => {
           showroom_id: roleData?.showroom_id,
           showroom_name: (roleData as any)?.showrooms?.name || "—",
           current_address: undefined,
+          is_live: isLive,
         };
       });
 
@@ -555,12 +558,21 @@ export const LiveTracking = () => {
         <div className="flex-1" />
 
         {/* Live indicator */}
-        <div className="flex items-center gap-1.5 bg-[#1a1d27] border border-[#2a2d3a] rounded-lg px-2.5 py-1.5 shrink-0">
-          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-[10px] text-green-400 font-semibold uppercase tracking-widest">
-            {filteredLocations.length} Live
-          </span>
-        </div>
+        {filteredLocations.filter(l => l.is_live).length > 0 ? (
+          <div className="flex items-center gap-1.5 bg-[#1a1d27] border border-green-500/30 rounded-lg px-2.5 py-1.5 shrink-0">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            <span className="text-[10px] text-green-400 font-bold uppercase tracking-widest">
+              {filteredLocations.filter(l => l.is_live).length} Live
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 bg-[#1a1d27] border border-[#2a2d3a] rounded-lg px-2.5 py-1.5 shrink-0">
+            <div className="w-1.5 h-1.5 rounded-full bg-[#6b7280]" />
+            <span className="text-[10px] text-[#6b7280] font-bold uppercase tracking-widest">
+              0 Live
+            </span>
+          </div>
+        )}
       </div>
 
       {/* ── MAIN LAYOUT ────────────────────────────────────────────────────── */}
@@ -851,7 +863,7 @@ export const LiveTracking = () => {
               <div className="px-3.5 py-2.5 border-b border-[#2a2d3a] flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-1.5">
                   <Navigation className="h-3.5 w-3.5 text-green-500" />
-                  <p className="text-[10px] font-bold text-[#f1f5f9] uppercase tracking-widest">Active Executives</p>
+                  <p className="text-[10px] font-bold text-[#f1f5f9] uppercase tracking-widest">Executives</p>
                 </div>
                 <Badge className="bg-[#0e0f12] text-[#9ca3af] border-[#2a2d3a] text-[9px]">{filteredLocations.length}</Badge>
               </div>
@@ -859,9 +871,9 @@ export const LiveTracking = () => {
                 {filteredLocations.length === 0 ? (
                   <div className="p-8 text-center text-sm text-[#4b5563] flex flex-col items-center gap-2">
                     <Users className="h-8 w-8 opacity-30" />
-                    <p>No executives broadcasting location</p>
+                    <p>No executives found</p>
                   </div>
-                ) : filteredLocations.map(loc => {
+                ) : [...filteredLocations].sort((a,b) => (a.is_live === b.is_live ? 0 : a.is_live ? -1 : 1)).map(loc => {
                   const isStale = Date.now() - new Date(loc.updated_at).getTime() > 300000;
                   return (
                     <div
@@ -891,9 +903,21 @@ export const LiveTracking = () => {
                           )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <div className={`w-2 h-2 rounded-full ${isStale ? "bg-amber-400" : "bg-green-500 animate-pulse"}`} />
-                        <ChevronRight className="h-3.5 w-3.5 text-[#4b5563] group-hover:text-[#9ca3af] transition-colors" />
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <div className="flex items-center gap-2">
+                          {!loc.is_live ? (
+                            <div className="w-2 h-2 rounded-full bg-[#4b5563]" />
+                          ) : isStale ? (
+                            <div className="w-2 h-2 rounded-full bg-amber-400" />
+                          ) : (
+                            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                          )}
+                          <ChevronRight className="h-3.5 w-3.5 text-[#4b5563] group-hover:text-[#9ca3af] transition-colors" />
+                        </div>
+                        <span className="text-[8px] font-bold uppercase tracking-wider" 
+                          style={{ color: !loc.is_live ? "#6b7280" : isStale ? "#fbbf24" : "#4ade80" }}>
+                          {!loc.is_live ? "OFFLINE" : isStale ? "AWAY" : "LIVE"}
+                        </span>
                       </div>
                     </div>
                   );

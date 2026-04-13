@@ -12,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Shield, MapPin, Users, UserPlus, Eye, EyeOff, Key, Trash2, Building, Plus, Search, Tag, Power, PowerOff, Pencil } from "lucide-react";
+import { Shield, MapPin, Users, UserPlus, Eye, EyeOff, Key, Trash2, Building, Plus, Search, Tag, Power, PowerOff, Pencil, Car } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
@@ -33,6 +33,8 @@ const Admin = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [createPurposeOpen, setCreatePurposeOpen] = useState(false);
   const [newPurpose, setNewPurpose] = useState({ purpose_name: "", entity_type: "client" as VisitWithType });
+  const [createConveyanceOpen, setCreateConveyanceOpen] = useState(false);
+  const [newConveyance, setNewConveyance] = useState({ vehicle_type: "", rate_per_km: "" });
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [editProfileUser, setEditProfileUser] = useState<any>(null);
   const [editProfileForm, setEditProfileForm] = useState({ full_name: "", phone: "", conveyance_type: "", conveyance_rate: "" });
@@ -132,6 +134,45 @@ const Admin = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["purpose-masters"] });
       toast.success("Purpose deleted!");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  // Fetch Conveyance Settings
+  const { data: conveyanceSettings = [] } = useQuery({
+    queryKey: ["conveyance-settings"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("conveyance_settings").select("*").order("vehicle_type");
+      if (error && error.code !== '42P01') throw error; // Ignore table not found if migration holds
+      return data || [];
+    },
+  });
+
+  const createConveyance = useMutation({
+    mutationFn: async () => {
+      const { error } = await supabase.from("conveyance_settings").insert([{ 
+        vehicle_type: newConveyance.vehicle_type.toLowerCase(), 
+        rate_per_km: Number(newConveyance.rate_per_km) 
+      }]);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conveyance-settings"] });
+      toast.success("Conveyance rate added!");
+      setNewConveyance({ vehicle_type: "", rate_per_km: "" });
+      setCreateConveyanceOpen(false);
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+
+  const deleteConveyance = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("conveyance_settings").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["conveyance-settings"] });
+      toast.success("Conveyance rate deleted!");
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -470,6 +511,51 @@ const Admin = () => {
 
       <div className="border-t my-8" />
 
+      {/* Master Data: Conveyance Settings */}
+      <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-semibold flex items-center gap-2">
+            <Car className="h-5 w-5" /> Conveyance Rates
+          </h2>
+          <Dialog open={createConveyanceOpen} onOpenChange={setCreateConveyanceOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline" size="sm"><Plus className="mr-1 h-4 w-4" /> Add Rate</Button>
+            </DialogTrigger>
+            <DialogContent className="bg-popover">
+              <DialogHeader><DialogTitle>Add Conveyance Rate</DialogTitle></DialogHeader>
+              <form onSubmit={(e) => { e.preventDefault(); createConveyance.mutate(); }} className="space-y-3">
+                <div className="space-y-1"><Label>Vehicle Type</Label><Input value={newConveyance.vehicle_type} onChange={(e) => setNewConveyance({ ...newConveyance, vehicle_type: e.target.value })} required placeholder="e.g. car, bike, bus" /></div>
+                <div className="space-y-1"><Label>Rate per KM (₹)</Label><Input type="number" step="0.5" value={newConveyance.rate_per_km} onChange={(e) => setNewConveyance({ ...newConveyance, rate_per_km: e.target.value })} required placeholder="e.g. 8" /></div>
+                <Button type="submit" className="w-full" disabled={createConveyance.isPending}>Create</Button>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {conveyanceSettings.map((c) => (
+            <Card key={c.id} className="relative group overflow-hidden transition-all shadow-sm border border-primary/20">
+              <CardContent className="p-4 flex flex-col justify-between h-full">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-semibold text-base capitalize">{c.vehicle_type}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 font-mono">₹{c.rate_per_km} / km</p>
+                  </div>
+                  <div className="flex gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => openAlert("Delete Rate", `Are you sure you want to delete the rate for "${c.vehicle_type}"?`, () => deleteConveyance.mutate(c.id))}>
+                        <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+          {conveyanceSettings.length === 0 && <p className="text-muted-foreground text-sm">No conveyance rates defined.</p>}
+        </div>
+      </section>
+
+      <div className="border-t my-8" />
+
       {/* Users Section */}
       <section className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -714,12 +800,29 @@ const Admin = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Vehicle Type</Label>
-                  <Select value={editProfileForm.conveyance_type || "none"} onValueChange={(v) => setEditProfileForm({ ...editProfileForm, conveyance_type: v === "none" ? "" : v, conveyance_rate: v === "car" ? "8" : v === "bike" ? "4" : editProfileForm.conveyance_rate })}>
+                  <Select value={editProfileForm.conveyance_type || "none"} onValueChange={(v) => {
+                    const newRate = conveyanceSettings.find(s => s.vehicle_type === v)?.rate_per_km;
+                    setEditProfileForm({ 
+                      ...editProfileForm, 
+                      conveyance_type: v === "none" ? "" : v, 
+                      conveyance_rate: newRate !== undefined ? String(newRate) : editProfileForm.conveyance_rate 
+                    });
+                  }}>
                     <SelectTrigger><SelectValue placeholder="Select type..." /></SelectTrigger>
                     <SelectContent className="bg-popover">
                       <SelectItem value="none">No Vehicle</SelectItem>
-                      <SelectItem value="car">🚗 Car (₹8/km default)</SelectItem>
-                      <SelectItem value="bike">🏍 Bike (₹4/km default)</SelectItem>
+                      {conveyanceSettings.map(c => (
+                        <SelectItem key={c.vehicle_type} value={c.vehicle_type}>
+                          {c.vehicle_type} (₹{c.rate_per_km}/km)
+                        </SelectItem>
+                      ))}
+                      {/* Fallback items if array empty (temporary until migration) */}
+                      {conveyanceSettings.length === 0 && (
+                        <>
+                          <SelectItem value="car">Car (₹8/km default)</SelectItem>
+                          <SelectItem value="bike">Bike (₹4/km default)</SelectItem>
+                        </>
+                      )}
                     </SelectContent>
                   </Select>
                 </div>

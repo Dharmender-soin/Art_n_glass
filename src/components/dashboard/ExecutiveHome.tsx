@@ -575,10 +575,10 @@ export const ExecutiveHome = () => {
     }, [ownVisits, todayAttendance, endDayRecord, selectedDate, dismissedIds]);
 
     return (
-        <div className="w-full min-h-screen bg-background dark:bg-[#0A0B0F] text-foreground dark:text-white font-sans pb-28 overflow-x-hidden">
+        <div className="w-full min-h-screen bg-background dark:bg-[#0A0B0F] text-foreground dark:text-white font-sans pb-28 overflow-x-hidden pt-16">
 
             {/* ── HEADER ── */}
-            <div className="sticky top-0 z-50 bg-background/90 dark:bg-[#0A0B0F]/90 backdrop-blur-2xl border-b border-border dark:border-white/5 px-4 py-3 flex items-center justify-between w-full max-w-full overflow-hidden">
+            <div className="fixed top-0 left-0 right-0 z-50 bg-background/95 dark:bg-[#0A0B0F]/95 backdrop-blur-2xl border-b border-border dark:border-white/5 px-4 py-3 flex items-center justify-between w-full max-w-full overflow-hidden">
                 <div className="flex items-center gap-3">
                     <div className="relative">
                         <div className="h-9 w-9 rounded-full bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-red-900/40 overflow-hidden border-2 border-red-800/50">

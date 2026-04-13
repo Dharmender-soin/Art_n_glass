@@ -288,16 +288,19 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                         <ShieldCheck className="h-4 w-4" />
                       </Button>
                     )}
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={() => deleteItem.mutate(item.id)}
-                      disabled={!isManager && (verified || item.created_by !== user?.id)}
-                      title={!isManager && verified ? "Cannot delete verified item" : "Delete"}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    {/* Delete — only admins/managers can delete a SOW once added */}
+                    {isManager && (
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={() => deleteItem.mutate(item.id)}
+                        disabled={verified}
+                        title={verified ? "Cannot delete verified item" : "Delete"}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

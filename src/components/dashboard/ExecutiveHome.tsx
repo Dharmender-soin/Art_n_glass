@@ -74,6 +74,15 @@ export const ExecutiveHome = () => {
     const [wosDialogVisit, setWosDialogVisit] = useState<Visit | null>(null);
     const [wosForm, setWosForm] = useState({ work_type_id: "", qty: "", description: "" });
 
+    // ── DONE VISIT PARTNER ACTION POPUP ──
+    const [selectedDoneVisit, setSelectedDoneVisit] = useState<{
+        visitId: string;
+        partnerId: string;
+        partnerName: string;
+        partnerType: string;
+        visitDate: string;
+    } | null>(null);
+
     const { data: workTypes = [] } = useQuery({
         queryKey: ["master-work-types-exec"],
         queryFn: async () => {
@@ -272,6 +281,19 @@ export const ExecutiveHome = () => {
                 return b.daysSince - a.daysSince;
             });
     }, [execPartners, ownVisits, weekStart, weekEnd]);
+
+    // ── PARTNER VISITS DONE THIS WEEK ──────────────────────────────────────
+    const weekPartnerVisitsDone = useMemo(() => {
+        return ownVisits
+            .filter(v =>
+                v.visit_with_type === "partner" &&
+                v.status === "done" &&
+                v.visit_date >= weekStart &&
+                v.visit_date <= weekEnd &&
+                v.partner_id
+            )
+            .sort((a, b) => b.visit_date.localeCompare(a.visit_date));
+    }, [ownVisits, weekStart, weekEnd]);
 
     const handleCheckIn = async () => {
         if (!user) return;
@@ -975,7 +997,7 @@ export const ExecutiveHome = () => {
                         <div className="flex items-center justify-between mb-3">
                             <div className="flex items-center gap-2">
                                 <Handshake className="h-4 w-4 text-amber-500" />
-                                <h3 className="text-sm font-bold text-foreground">Partner Visits This Week</h3>
+                                <h3 className="text-sm font-bold text-foreground">Partners Not Visited This Week</h3>
                             </div>
                             {pendingPartners.length > 0 ? (
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/15 text-red-500 border border-red-500/20">
@@ -1039,6 +1061,90 @@ export const ExecutiveHome = () => {
                         )}
                     </motion.div>
                 )}
+
+                {/* ── PARTNER VISITS DONE THIS WEEK ── */}
+                <motion.div
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4, delay: 0.20 }}
+                    className="bg-white dark:bg-white/[0.03] shadow-sm dark:shadow-none border border-border dark:border-white/5 rounded-2xl p-4"
+                >
+                    <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                            <h3 className="text-sm font-bold text-foreground">Partner Visits This Week</h3>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                                weekPartnerVisitsDone.length > 0
+                                    ? "bg-emerald-500/15 text-emerald-500 border-emerald-500/20"
+                                    : "bg-muted/60 text-muted-foreground border-border"
+                            }`}>
+                                {weekPartnerVisitsDone.length} done
+                            </span>
+                            <button
+                                onClick={() => navigate("/partner-visits")}
+                                className="text-[10px] text-primary font-semibold flex items-center gap-0.5 hover:text-primary/80 transition-colors"
+                            >
+                                View all <ChevronRightIcon className="h-3 w-3" />
+                            </button>
+                        </div>
+                    </div>
+
+                    {weekPartnerVisitsDone.length === 0 ? (
+                        <div className="flex items-center gap-3 py-3 px-3 rounded-xl bg-muted/30 border border-border">
+                            <Handshake className="h-5 w-5 text-muted-foreground shrink-0" />
+                            <p className="text-sm text-muted-foreground font-medium">
+                                No partner visits done yet this week.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {weekPartnerVisitsDone.slice(0, 5).map(v => {
+                                const partner = v.partners as any;
+                                const partnerName = partner?.name || "Unknown Partner";
+                                const daysLabel = v.visit_date === format(new Date(), "yyyy-MM-dd")
+                                    ? "Today"
+                                    : format(new Date(v.visit_date), "EEE, dd MMM");
+                                return (
+                                    <div
+                                        key={v.id}
+                                        className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-emerald-500/5 border border-emerald-500/15 hover:bg-emerald-500/10 hover:border-emerald-500/30 transition-colors cursor-pointer"
+                                        onClick={() => {
+                                            const partner = v.partners as any;
+                                            setSelectedDoneVisit({
+                                                visitId: v.id,
+                                                partnerId: v.partner_id || "",
+                                                partnerName: partner?.name || "Unknown Partner",
+                                                partnerType: partner?.type === "self" ? "Direct" : (partner?.type || ""),
+                                                visitDate: v.visit_date,
+                                            });
+                                        }}
+                                    >
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <div className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-semibold truncate leading-tight">{partnerName}</p>
+                                                <p className="text-[10px] text-muted-foreground capitalize">
+                                                    {(partner?.type === "self" ? "Direct" : partner?.type) || ""}
+                                                    {partner?.city ? ` · ${partner.city}` : ""}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0 whitespace-nowrap">
+                                            {daysLabel}
+                                        </span>
+                                    </div>
+                                );
+                            })}
+                            {weekPartnerVisitsDone.length > 5 && (
+                                <p className="text-[11px] text-muted-foreground text-center pt-1">
+                                    +{weekPartnerVisitsDone.length - 5} more this week
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </motion.div>
 
                 {/* ── TODAY'S VISITS ── */}
                 <motion.div
@@ -1407,6 +1513,58 @@ export const ExecutiveHome = () => {
                 </DialogContent>
             </Dialog>
 
+            {/* ── DONE VISIT PARTNER ACTION DIALOG ── */}
+            <Dialog open={!!selectedDoneVisit} onOpenChange={(o) => !o && setSelectedDoneVisit(null)}>
+                <DialogContent className="max-w-sm rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2 text-base">
+                            <Handshake className="h-5 w-5 text-emerald-500" />
+                            {selectedDoneVisit?.partnerName}
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    {selectedDoneVisit && (
+                        <div className="space-y-3 pt-1">
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-muted/40 border border-border">
+                                <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                                <div>
+                                    <p className="text-xs font-semibold text-foreground">
+                                        Visited on {format(new Date(selectedDoneVisit.visitDate), "EEE, dd MMM yyyy")}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground capitalize">
+                                        {selectedDoneVisit.partnerType}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <p className="text-xs text-muted-foreground px-1">What would you like to do?</p>
+
+                            <button
+                                onClick={() => {
+                                    setSelectedDoneVisit(null);
+                                    navigate(`/visits?partner_id=${selectedDoneVisit.partnerId}&visit_with_type=partner`);
+                                }}
+                                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/90 transition-colors"
+                            >
+                                <CalendarCheck className="h-4 w-4 shrink-0" />
+                                <div className="text-left">
+                                    <p className="font-bold text-sm">Reschedule Visit</p>
+                                    <p className="text-[10px] opacity-80">Plan a new visit — form pre-filled</p>
+                                </div>
+                                <ChevronRightIcon className="h-4 w-4 ml-auto shrink-0" />
+                            </button>
+
+                            <button
+                                onClick={() => setSelectedDoneVisit(null)}
+                                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border text-muted-foreground text-sm font-semibold hover:bg-muted/40 transition-colors"
+                            >
+                                <X className="h-4 w-4" /> Close
+                            </button>
+                        </div>
+                    )}
+                </DialogContent>
+            </Dialog>
+
             {/* ── FAB ── */}
             <FAB navigate={navigate} />
         </div>
@@ -1669,6 +1827,7 @@ const FAB = ({ navigate }: { navigate: (path: string) => void }) => {
                     </motion.div>
                 </motion.button>
             </div>
-        </>
-    );
+
+            </>
+        );
 };

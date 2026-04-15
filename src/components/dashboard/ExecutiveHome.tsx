@@ -240,6 +240,7 @@ export const ExecutiveHome = () => {
                 .from("partners")
                 .select("id, name, type, city")
                 .eq("created_by", user.id)
+                .neq("type", "self")   // exclude Direct / self type
                 .order("name");
             return data || [];
         },
@@ -265,6 +266,7 @@ export const ExecutiveHome = () => {
         );
 
         return execPartners
+            .filter(p => p.type !== "self")  // exclude Direct partners
             .map(p => {
                 const lastDone = allDonePartnerVisits
                     .filter(v => v.partner_id === p.id)

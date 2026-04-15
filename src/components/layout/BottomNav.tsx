@@ -1,5 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
-import { Building2, Users, CalendarCheck, UserCircle, LayoutDashboard, BarChart3, ClipboardList, ShieldCheck, GitBranch } from "lucide-react";
+import { Building2, Users, CalendarCheck, UserCircle, LayoutDashboard, BarChart3, ClipboardList, ShieldCheck, GitBranch, Receipt, Handshake } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -19,6 +19,8 @@ const BottomNav = () => {
       { to: "/daily-visits", label: "Daily", icon: ClipboardList },
       { to: "/verification", label: "Verify", icon: ShieldCheck },
       { to: "/hierarchy", label: "Hierarchy", icon: GitBranch },
+      { to: "/conveyance", label: "Conveyance", icon: Receipt },
+      { to: "/partner-visits", label: "P.Visits", icon: Handshake },
     ] : []),
     { to: "/profile", label: "Profile", icon: UserCircle },
   ];

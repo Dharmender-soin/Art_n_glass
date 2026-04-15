@@ -17,6 +17,8 @@ import DailyVisitDashboard from "./pages/DailyVisitDashboard";
 import Verification from "./pages/Verification";
 import Hierarchy from "./pages/Hierarchy";
 import LiveMapPage from "./pages/LiveMap";
+import Conveyance from "./pages/Conveyance";
+import PartnerVisits from "./pages/PartnerVisits";
 import NotFound from "./pages/NotFound";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AnimatePresence } from "framer-motion";
@@ -75,6 +77,8 @@ const AnimatedRoutes = () => {
         <Route path="/verification" element={<ProtectedRoute><Verification /></ProtectedRoute>} />
         <Route path="/hierarchy" element={<ProtectedRoute><Hierarchy /></ProtectedRoute>} />
         <Route path="/live-map" element={<ProtectedRoute><LiveMapPage /></ProtectedRoute>} />
+        <Route path="/conveyance" element={<ProtectedRoute><Conveyance /></ProtectedRoute>} />
+        <Route path="/partner-visits" element={<ProtectedRoute><PartnerVisits /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AnimatePresence>

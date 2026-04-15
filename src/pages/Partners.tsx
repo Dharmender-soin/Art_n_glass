@@ -31,7 +31,11 @@ const PartnerForm = ({ values, onChange, onSubmit, isPending, submitLabel }: {
       <Label>Type</Label>
       <Select value={values.type} onValueChange={(v) => onChange({ ...values, type: v as PartnerType })}>
         <SelectTrigger><SelectValue /></SelectTrigger>
-        <SelectContent className="bg-popover"><SelectItem value="builder">Builder</SelectItem><SelectItem value="architect">Architect</SelectItem></SelectContent>
+        <SelectContent className="bg-popover">
+          <SelectItem value="builder">Builder</SelectItem>
+          <SelectItem value="architect">Architect</SelectItem>
+          <SelectItem value="self">Self / Direct (My own client)</SelectItem>
+        </SelectContent>
       </Select>
     </div>
     <div className="grid grid-cols-2 gap-3">
@@ -175,6 +179,7 @@ const Partners = () => {
             <SelectItem value="all">All Types</SelectItem>
             <SelectItem value="builder">Builder</SelectItem>
             <SelectItem value="architect">Architect</SelectItem>
+            <SelectItem value="self">Self / Direct</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -203,7 +208,14 @@ const Partners = () => {
                     <h3 className="font-semibold">{p.name}</h3>
                     {p.company_name && <p className="text-sm text-muted-foreground">{p.company_name}</p>}
                   </div>
-                  <Badge variant={p.type === "builder" ? "default" : "secondary"} className="capitalize text-xs">{p.type}</Badge>
+                  <Badge
+                    variant={p.type === "builder" ? "default" : p.type === "self" ? "outline" : "secondary"}
+                    className={`capitalize text-xs ${
+                      p.type === "self" ? "border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400" : ""
+                    }`}
+                  >
+                    {p.type === "self" ? "Direct" : p.type}
+                  </Badge>
                 </div>
                 <div className="space-y-1 text-sm text-muted-foreground">
                   <div className="flex items-center gap-1"><Phone className="h-3 w-3" />{p.mobile}</div>

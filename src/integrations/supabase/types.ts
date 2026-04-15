@@ -597,7 +597,7 @@ export type Database = {
     Enums: {
       app_role: "admin" | "manager" | "executive" | "md"
       client_status: "new" | "hot" | "converted" | "lost"
-      partner_type: "builder" | "architect"
+      partner_type: "builder" | "architect" | "self"
       visit_status: "planned" | "done" | "cancelled"
       visit_with_type: "client" | "partner"
       work_status:
@@ -736,7 +736,7 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "manager", "executive", "md"],
       client_status: ["new", "hot", "converted", "lost"],
-      partner_type: ["builder", "architect"],
+      partner_type: ["builder", "architect", "self"],
       visit_status: ["planned", "done", "cancelled"],
       visit_with_type: ["client", "partner"],
       work_status: ["pending", "won", "lost", "submitted", "draft", "rejected"],

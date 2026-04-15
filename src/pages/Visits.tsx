@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,6 +18,7 @@ import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import type { Database } from "@/integrations/supabase/types";
 import { calculateDistance, calculateRouteDistance } from "@/lib/utils";
 import { useJsApiLoader, Autocomplete } from "@react-google-maps/api";
+import { useSearchParams } from "react-router-dom";
 
 const libraries: ("places")[] = ["places"];
 
@@ -41,6 +42,7 @@ const visitStatusColors: Record<string, string> = {
 const Visits = () => {
   const { user, role, showroomId } = useAuth();
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [doneDialogId, setDoneDialogId] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
@@ -93,6 +95,22 @@ const Visits = () => {
   });
 
   const { data: purposes = [] } = usePurposes(form.visit_with_type);
+
+  // ── Auto-fill from URL params (e.g. from Pending Partners widget) ──────
+  useEffect(() => {
+    const partnerId = searchParams.get("partner_id");
+    const vwt = searchParams.get("visit_with_type");
+    if (partnerId && vwt === "partner") {
+      setForm(prev => ({
+        ...prev,
+        visit_with_type: "partner",
+        partner_id: partnerId,
+      }));
+      setDialogOpen(true);
+      // Clear params so page refresh doesn't re-open
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams]);
 
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["visits"],

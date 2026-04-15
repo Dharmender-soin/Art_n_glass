@@ -7,7 +7,8 @@ import {
     Plus, Bell, ChevronLeft, ChevronRight, AlertCircle,
     Activity, ChevronRight as ChevronRightIcon,
     Clock, History, Play, X, Target, Medal, Building2, Users,
-    TrendingUp, Wallet, Zap, ArrowRight, Star, Loader2, Send
+    TrendingUp, Wallet, Zap, ArrowRight, Star, Loader2, Send,
+    AlertTriangle, Handshake,
 } from "lucide-react";
 import { motion, AnimatePresence, useAnimation, PanInfo } from "framer-motion";
 import { format, isToday, parseISO, addDays, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
@@ -219,6 +220,58 @@ export const ExecutiveHome = () => {
 
     const todayTotalKm = todayConveyance.reduce((s, r) => s + (r.distance_km || 0), 0);
     const todayTotalAmount = todayConveyance.reduce((s, r) => s + (r.amount || 0), 0);
+
+    // ── PENDING PARTNERS THIS WEEK ─────────────────────────────────────
+    const { data: execPartners = [] } = useQuery({
+        queryKey: ["exec-my-partners", user?.id],
+        enabled: !!user,
+        queryFn: async () => {
+            if (!user) return [];
+            const { data } = await supabase
+                .from("partners")
+                .select("id, name, type, city")
+                .eq("created_by", user.id)
+                .order("name");
+            return data || [];
+        },
+    });
+
+    const pendingPartners = useMemo(() => {
+        // Partners this exec has DONE a visit with THIS week
+        const visitedThisWeekIds = new Set(
+            ownVisits
+                .filter(v =>
+                    v.visit_with_type === "partner" &&
+                    v.status === "done" &&
+                    v.visit_date >= weekStart &&
+                    v.visit_date <= weekEnd &&
+                    v.partner_id
+                )
+                .map(v => v.partner_id)
+        );
+
+        // All done partner visits (for last-visit calculation)
+        const allDonePartnerVisits = ownVisits.filter(
+            v => v.visit_with_type === "partner" && v.status === "done" && v.partner_id
+        );
+
+        return execPartners
+            .map(p => {
+                const lastDone = allDonePartnerVisits
+                    .filter(v => v.partner_id === p.id)
+                    .sort((a, b) => b.visit_date.localeCompare(a.visit_date))[0];
+                const daysSince = lastDone
+                    ? Math.floor((Date.now() - new Date(lastDone.visit_date).getTime()) / 86_400_000)
+                    : null;
+                return { ...p, lastVisitDate: lastDone?.visit_date || null, daysSince };
+            })
+            .filter(p => !visitedThisWeekIds.has(p.id))
+            .sort((a, b) => {
+                if (a.daysSince === null) return -1;
+                if (b.daysSince === null) return 1;
+                return b.daysSince - a.daysSince;
+            });
+    }, [execPartners, ownVisits, weekStart, weekEnd]);
 
     const handleCheckIn = async () => {
         if (!user) return;
@@ -910,6 +963,82 @@ export const ExecutiveHome = () => {
                         border="border-red-200 dark:border-red-500/20"
                     />
                 </motion.div>
+
+                {/* ── PENDING PARTNERS THIS WEEK ── */}
+                {execPartners.length > 0 && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: 0.18 }}
+                        className="bg-white dark:bg-white/[0.03] shadow-sm dark:shadow-none border border-border dark:border-white/5 rounded-2xl p-4"
+                    >
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-2">
+                                <Handshake className="h-4 w-4 text-amber-500" />
+                                <h3 className="text-sm font-bold text-foreground">Partner Visits This Week</h3>
+                            </div>
+                            {pendingPartners.length > 0 ? (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-500/15 text-red-500 border border-red-500/20">
+                                    {pendingPartners.length} pending
+                                </span>
+                            ) : (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 border border-emerald-500/20">
+                                    All visited ✓
+                                </span>
+                            )}
+                        </div>
+
+                        {pendingPartners.length === 0 ? (
+                            <div className="flex items-center gap-3 py-3 px-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20">
+                                <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />
+                                <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                                    Great work! You've visited all your partners this week.
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {pendingPartners.slice(0, 5).map(p => {
+                                    const isNeverVisited = p.daysSince === null;
+                                    const isUrgent = p.daysSince !== null && p.daysSince >= 10;
+                                    const dotColor = isNeverVisited || isUrgent ? "bg-red-500" : "bg-amber-400";
+                                    const textColor = isNeverVisited || isUrgent ? "text-red-500" : "text-amber-500";
+                                    return (
+                                        <div
+                                            key={p.id}
+                                            className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-muted/40 border border-border hover:bg-muted/60 hover:border-amber-500/30 transition-colors cursor-pointer"
+                                            onClick={() => navigate(`/visits?partner_id=${p.id}&visit_with_type=partner`)}
+                                            title={`Plan visit with ${p.name}`}
+                                        >
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor} ${isNeverVisited || isUrgent ? "animate-pulse" : ""}`} />
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-semibold truncate leading-tight">{p.name}</p>
+                                                    <p className="text-[10px] text-muted-foreground capitalize">{p.type}{p.city ? ` · ${p.city}` : ""}</p>
+                                                </div>
+                                            </div>
+                                            <div className="text-right shrink-0">
+                                                <p className={`text-[11px] font-bold ${textColor}`}>
+                                                    {isNeverVisited ? "Never visited" : `${p.daysSince}d ago`}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                                {pendingPartners.length > 5 && (
+                                    <p className="text-[11px] text-muted-foreground text-center pt-1">
+                                        +{pendingPartners.length - 5} more pending
+                                    </p>
+                                )}
+                                <button
+                                    onClick={() => navigate("/partners")}
+                                    className="w-full mt-1 text-xs font-bold text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-4 py-2 rounded-xl hover:bg-amber-500/20 transition-colors flex items-center justify-center gap-1.5"
+                                >
+                                    <Handshake className="h-3.5 w-3.5" /> View All Partners
+                                </button>
+                            </div>
+                        )}
+                    </motion.div>
+                )}
 
                 {/* ── TODAY'S VISITS ── */}
                 <motion.div

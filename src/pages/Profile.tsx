@@ -100,18 +100,22 @@ const Profile = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
+  // Default rates — applied every time the vehicle type changes
+  const DEFAULT_RATES: Record<string, string> = { bike: "4", car: "8" };
+
   const handleVehicleChange = (v: string) => {
     setConveyanceType(v === "none" ? "" : v);
     if (v === "none") {
       setConveyanceRate("");
       return;
     }
+    // Prefer admin-configured rate from conveyance_settings, else use system default
     const setting = conveyanceSettings.find(s => s.vehicle_type === v);
     if (setting) {
       setConveyanceRate(setting.rate_per_km.toString());
     } else {
-      if (v === "car" && !conveyanceRate) setConveyanceRate("8");
-      else if (v === "bike" && !conveyanceRate) setConveyanceRate("4");
+      // Always apply the default — even overrides an existing rate
+      setConveyanceRate(DEFAULT_RATES[v] ?? "");
     }
   };
 
@@ -200,20 +204,25 @@ const Profile = () => {
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label>Rate (₹/km)</Label>
+                  <div className="flex items-center justify-between">
+                    <Label>Rate (₹/km)</Label>
+                    {/* Default-rate hint badges */}
+                    <div className="flex items-center gap-1">
+                      <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold bg-blue-500/10 text-blue-500 border border-blue-500/20">🏍 ₹4</span>
+                      <span className="inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold bg-orange-500/10 text-orange-500 border border-orange-500/20">🚗 ₹8</span>
+                    </div>
+                  </div>
                   <Input
                     type="number"
-                    min="0"
-                    step="0.5"
                     value={conveyanceRate}
-                    onChange={(e) => setConveyanceRate(e.target.value)}
-                    placeholder="e.g. 8"
-                    disabled={!conveyanceType || conveyanceType === "none"}
+                    placeholder="Select vehicle"
+                    readOnly
+                    className="bg-muted/40 cursor-not-allowed select-none pointer-events-none"
                   />
                 </div>
               </div>
               <p className="text-xs text-muted-foreground mt-2">
-                These values are used to calculate your conveyance expenses automatically.
+                Default: 🏍 Bike = ₹4/km · 🚗 Car = ₹8/km. You can override this value.
               </p>
             </div>
 

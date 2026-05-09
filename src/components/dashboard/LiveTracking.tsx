@@ -166,7 +166,7 @@ export const LiveTracking = () => {
     const fetchLocations = async () => {
       const { data: locData } = await (supabase as any).from("live_locations").select("*");
       const { data: profiles } = await supabase.from("profiles").select("user_id, full_name");
-      const { data: roles } = await supabase.from("user_roles").select("user_id, showroom_id, showrooms(name)");
+      const { data: roles } = await supabase.from("user_roles").select("user_id, role, showroom_id, showrooms(name)");
 
       const enriched: ExecutiveLocation[] = (locData || []).map((loc: any) => {
         const profile = profiles?.find((p: any) => p.user_id === loc.user_id);
@@ -182,10 +182,15 @@ export const LiveTracking = () => {
           showroom_name: (roleData as any)?.showrooms?.name || "—",
           current_address: undefined,
           is_live: isLive,
+          // Store role so we can filter out md/admin below
+          _role: roleData?.role,
         };
       });
 
-      const filtered = isAdminOrMd ? enriched : enriched.filter(e => e.showroom_id === showroomId);
+      // Never show MD or Admin users on the live map — they are observers, not field staff
+      const withoutAdmins = enriched.filter((e: any) => e._role !== "md" && e._role !== "admin");
+
+      const filtered = isAdminOrMd ? withoutAdmins : withoutAdmins.filter(e => e.showroom_id === showroomId);
       setLiveLocations(filtered);
 
       // Build showroom list

@@ -38,7 +38,8 @@ const vehicleEmoji = (v: string) => {
 const Conveyance = () => {
   const { role, showroomId: myShowroomId, user } = useAuth();
   const canSeeAll = role === "md" || role === "admin";
-  const isManager = role === "manager";
+  // Accountant: read-only view scoped to their own showroom (same as manager)
+  const isManager = role === "manager" || role === "accountant";
 
   // ── UI State ─────────────────────────────────────────────────────────────
   const [viewMode, setViewMode] = useState<ViewMode>("summary");

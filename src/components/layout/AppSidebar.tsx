@@ -38,28 +38,34 @@ const AppSidebar = () => {
   const { role, signOut } = useAuth();
   const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
   const isManagerOrAdmin = role === "admin" || role === "manager" || role === "md";
+  const isAccountant = role === "accountant";
 
-  const links = [
-    { to: "/", label: "Dashboard", icon: LayoutDashboard },
-    { to: "/partners", label: "Partners", icon: Building2 },
-    { to: "/clients", label: "Clients", icon: Users },
-    { to: "/visits", label: "Visits", icon: CalendarCheck },
-    ...(isManagerOrAdmin
-      ? [
-        { to: "/reports", label: "Reports", icon: BarChart3 },
-        { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
-        { to: "/verification", label: "Verification", icon: ShieldCheck },
-        { to: "/hierarchy", label: "Hierarchy", icon: GitBranch },
-        { to: "/live-map", label: "Live Map", icon: Map },
+  const links = isAccountant
+    ? [
         { to: "/conveyance", label: "Conveyance", icon: Receipt },
-        { to: "/partner-visits", label: "Partner Visits", icon: Handshake },
+        { to: "/profile", label: "Profile", icon: UserCircle },
       ]
-      : []),
-    ...(role === "admin"
-      ? [{ to: "/admin", label: "User Management", icon: Shield }]
-      : []),
-    { to: "/profile", label: "Profile", icon: UserCircle },
-  ];
+    : [
+        { to: "/", label: "Dashboard", icon: LayoutDashboard },
+        { to: "/partners", label: "Partners", icon: Building2 },
+        { to: "/clients", label: "Clients", icon: Users },
+        { to: "/visits", label: "Visits", icon: CalendarCheck },
+        ...(isManagerOrAdmin
+          ? [
+            { to: "/reports", label: "Reports", icon: BarChart3 },
+            { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
+            { to: "/verification", label: "Verification", icon: ShieldCheck },
+            { to: "/hierarchy", label: "Hierarchy", icon: GitBranch },
+            { to: "/live-map", label: "Live Map", icon: Map },
+            { to: "/conveyance", label: "Conveyance", icon: Receipt },
+            { to: "/partner-visits", label: "Partner Visits", icon: Handshake },
+          ]
+          : []),
+        ...(role === "admin"
+          ? [{ to: "/admin", label: "User Management", icon: Shield }]
+          : []),
+        { to: "/profile", label: "Profile", icon: UserCircle },
+      ];
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">

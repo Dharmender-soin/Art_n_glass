@@ -378,6 +378,7 @@ const Admin = () => {
     admin: "bg-primary text-primary-foreground",
     manager: "bg-[hsl(var(--status-hot))] text-white",
     executive: "bg-[hsl(var(--status-new))] text-white",
+    accountant: "bg-teal-600 text-white",
   };
 
   return (
@@ -605,6 +606,7 @@ const Admin = () => {
                         <SelectItem value="admin">Admin</SelectItem>
                         <SelectItem value="manager">Manager</SelectItem>
                         <SelectItem value="executive">Executive</SelectItem>
+                        <SelectItem value="accountant">Accountant</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -677,6 +679,7 @@ const Admin = () => {
                             <SelectItem value="admin">Admin</SelectItem>
                             <SelectItem value="manager">Manager</SelectItem>
                             <SelectItem value="executive">Executive</SelectItem>
+                            <SelectItem value="accountant">Accountant</SelectItem>
                           </SelectContent>
                         </Select>
 

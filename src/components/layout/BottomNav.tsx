@@ -8,22 +8,28 @@ const BottomNav = () => {
   const { role } = useAuth();
 
   const isManagerOrAdmin = role === "admin" || role === "manager" || role === "md";
+  const isAccountant = role === "accountant";
 
-  const links = [
-    { to: "/", label: "Home", icon: LayoutDashboard },
-    { to: "/partners", label: "Partners", icon: Building2 },
-    { to: "/clients", label: "Clients", icon: Users },
-    { to: "/visits", label: "Visits", icon: CalendarCheck },
-    ...(isManagerOrAdmin ? [
-      { to: "/reports", label: "Reports", icon: BarChart3 },
-      { to: "/daily-visits", label: "Daily", icon: ClipboardList },
-      { to: "/verification", label: "Verify", icon: ShieldCheck },
-      { to: "/hierarchy", label: "Hierarchy", icon: GitBranch },
-      { to: "/conveyance", label: "Conveyance", icon: Receipt },
-      { to: "/partner-visits", label: "P.Visits", icon: Handshake },
-    ] : []),
-    { to: "/profile", label: "Profile", icon: UserCircle },
-  ];
+  const links = isAccountant
+    ? [
+        { to: "/conveyance", label: "Conveyance", icon: Receipt },
+        { to: "/profile", label: "Profile", icon: UserCircle },
+      ]
+    : [
+        { to: "/", label: "Home", icon: LayoutDashboard },
+        { to: "/partners", label: "Partners", icon: Building2 },
+        { to: "/clients", label: "Clients", icon: Users },
+        { to: "/visits", label: "Visits", icon: CalendarCheck },
+        ...(isManagerOrAdmin ? [
+          { to: "/reports", label: "Reports", icon: BarChart3 },
+          { to: "/daily-visits", label: "Daily", icon: ClipboardList },
+          { to: "/verification", label: "Verify", icon: ShieldCheck },
+          { to: "/hierarchy", label: "Hierarchy", icon: GitBranch },
+          { to: "/conveyance", label: "Conveyance", icon: Receipt },
+          { to: "/partner-visits", label: "P.Visits", icon: Handshake },
+        ] : []),
+        { to: "/profile", label: "Profile", icon: UserCircle },
+      ];
 
   return (
     <>

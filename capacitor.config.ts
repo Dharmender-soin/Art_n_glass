@@ -11,6 +11,9 @@ const config: CapacitorConfig = {
     allowMixedContent: true,
     captureInput: true,
     webContentsDebuggingEnabled: false, // true karo sirf development mein
+    // Required by @capacitor-community/background-geolocation
+    // Prevents location updates from halting after 5 minutes in background
+    useLegacyBridge: true,
   }
 };
 

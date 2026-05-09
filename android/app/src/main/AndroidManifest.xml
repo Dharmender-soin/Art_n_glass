@@ -33,6 +33,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- ── BACKGROUND LOCATION FOREGROUND SERVICE ── -->
+        <!-- Required by @capacitor-community/background-geolocation -->
+        <service
+            android:name="com.equimapper.BackgroundGeolocationService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
+
     </application>
 
     <!-- ── PERMISSIONS ── -->
@@ -45,6 +53,13 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+
+    <!-- Foreground Service (notification shown while tracking is active) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- Wake Lock (keep GPS alive when screen is off) -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <!-- Camera & Storage (required for Visit Photo Upload) -->
     <uses-permission android:name="android.permission.CAMERA" />

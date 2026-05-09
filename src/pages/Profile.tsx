@@ -65,10 +65,10 @@ const Profile = () => {
       if (uploadError) throw uploadError;
 
       const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(filePath);
-      
+
       const { error: updateError } = await supabase.from("profiles").update({ avatar_url: urlData.publicUrl }).eq("user_id", user!.id);
       if (updateError) throw updateError;
-      
+
       setAvatarUrl(urlData.publicUrl);
       queryClient.invalidateQueries({ queryKey: ["profile"] });
       queryClient.invalidateQueries({ queryKey: ["userProfile"] });

@@ -1,9 +1,10 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
+import { useBackgroundTracking } from "@/hooks/useBackgroundTracking";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import {
-    CalendarCheck, MapPin, CheckCircle2, Navigation,
+    CalendarCheck, CheckCircle2, Navigation,
     Plus, Bell, ChevronLeft, ChevronRight, AlertCircle,
     Activity, ChevronRight as ChevronRightIcon,
     Clock, History, Play, X, Target, Medal, Building2, Users,
@@ -44,7 +45,12 @@ export const ExecutiveHome = () => {
         wosCount: number;
         wosWon: number;
         rankingLogic: string;
+        rank: number;
+        activeCategory: 'visits' | 'wosCount' | 'wosWon';
+        isMe: boolean;
+        leaderValue: number;
     } | null>(null);
+    const [leaderboardTab, setLeaderboardTab] = useState<'visits' | 'wosCount' | 'wosWon'>('visits');
 
     const dateStr = format(selectedDate, "yyyy-MM-dd");
     
@@ -392,48 +398,13 @@ export const ExecutiveHome = () => {
         }
     };
 
-    // Live Location Tracking
-    useEffect(() => {
-        let interval: NodeJS.Timeout;
-        let trackingPaused = false;
-
-        const sendLocation = async () => {
-            if (trackingPaused) return;
-            try {
-                const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-                    navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 15000, enableHighAccuracy: true });
-                });
-                if (user?.id) {
-                    await supabase.from("live_locations").upsert({
-                        user_id: user.id,
-                        lat: pos.coords.latitude,
-                        lng: pos.coords.longitude,
-                        updated_at: new Date().toISOString()
-                    });
-                    await supabase.from("location_history").insert({
-                        user_id: user.id,
-                        lat: pos.coords.latitude,
-                        lng: pos.coords.longitude,
-                        timestamp: new Date().toISOString()
-                    });
-                }
-            } catch (err: any) {
-                console.error("Failed to broadcast live location", err);
-                if (err.code === 1) {
-                    trackingPaused = true;
-                    if (interval) clearInterval(interval);
-                    toast.error("GPS Permission Denied! Live tracking paused.");
-                }
-            }
-        };
-
-        if (todayAttendance && !endDayRecord && user) {
-            sendLocation();
-            interval = setInterval(sendLocation, 60000);
-        }
-
-        return () => { if (interval) clearInterval(interval); };
-    }, [todayAttendance, endDayRecord, user]);
+    // ── Live Location Tracking ──
+    // On Android APK: runs in background even when app is minimized/screen off
+    // On Web: runs only while tab is open (browser limitation)
+    useBackgroundTracking({
+        active: !!(todayAttendance && !endDayRecord && user),
+        userId: user?.id,
+    });
 
     // Fetch own WOS
     const { data: ownWorkScopes = [] } = useQuery({
@@ -477,9 +448,9 @@ export const ExecutiveHome = () => {
             wosWon: Number(exec.wos_won_total)
         }));
         return {
-            visits: [...stats].sort((a, b) => b.visits - a.visits).slice(0, 3),
-            wosCount: [...stats].sort((a, b) => b.wosCount - a.wosCount).slice(0, 3),
-            wosWon: [...stats].sort((a, b) => b.wosWon - a.wosWon).slice(0, 3),
+            visits: [...stats].sort((a, b) => b.visits - a.visits),
+            wosCount: [...stats].sort((a, b) => b.wosCount - a.wosCount),
+            wosWon: [...stats].sort((a, b) => b.wosWon - a.wosWon),
         };
     }, [showroomLeaderboard]);
 
@@ -804,56 +775,151 @@ export const ExecutiveHome = () => {
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: 0.05 }}
-                    className="bg-white dark:bg-white/[0.03] shadow-sm dark:shadow-none border border-border dark:border-white/5 rounded-2xl p-4 overflow-hidden"
+                    className="bg-white dark:bg-white/[0.03] shadow-sm dark:shadow-none border border-border dark:border-white/5 rounded-2xl overflow-hidden"
                 >
-                    <div className="flex items-center justify-between mb-4">
-                        <div className="flex items-center gap-2">
-                            <div className="w-7 h-7 rounded-lg bg-yellow-500/15 flex items-center justify-center">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-4 pt-4 pb-3">
+                        <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-yellow-500/20 to-yellow-600/10 border border-yellow-500/20 flex items-center justify-center">
                                 <Medal className="h-4 w-4 text-yellow-500" />
                             </div>
-                            <h3 className="text-sm font-bold text-foreground">Showroom Leaderboard</h3>
+                            <div>
+                                <h3 className="text-sm font-bold text-foreground leading-none">Showroom Leaderboard</h3>
+                                <p className="text-[9px] text-muted-foreground dark:text-white/30 font-medium mt-0.5">This Month · {showroomLeaderboard.length} Executives</p>
+                            </div>
                         </div>
-                        <span className="text-[10px] font-semibold text-muted-foreground dark:text-white/35 bg-muted/60 dark:bg-white/5 px-2 py-0.5 rounded-full">This Month</span>
+                        {/* My rank badge */}
+                        {(() => {
+                            const myRank = leaderboard[leaderboardTab].findIndex(e => e.user_id === user?.id);
+                            return myRank >= 0 ? (
+                                <div className="flex flex-col items-end">
+                                    <span className="text-[9px] text-muted-foreground dark:text-white/30 font-semibold uppercase tracking-wider">Your Rank</span>
+                                    <span className={`text-lg font-extrabold leading-none mt-0.5 ${
+                                        myRank === 0 ? 'text-yellow-400' : myRank === 1 ? 'text-slate-400' : myRank === 2 ? 'text-amber-600' : 'text-foreground'
+                                    }`}>#{myRank + 1}</span>
+                                </div>
+                            ) : null;
+                        })()}
                     </div>
 
-                    <div className="flex gap-2 overflow-x-auto pb-1 snap-x snap-mandatory grid grid-cols-3 overflow-visible no-scrollbar">
-                        {[
-                            { title: "Top Visits", data: leaderboard.visits, key: "visits" as const },
-                            { title: "Top WOS", data: leaderboard.wosCount, key: "wosCount" as const },
-                            { title: "Most Won", data: leaderboard.wosWon, key: "wosWon" as const },
-                        ].map(({ title, data, key }) => (
-                            <div key={title} className="flex-1 min-w-0 snap-center bg-muted/30 dark:bg-white/[0.04] shadow-sm dark:shadow-none rounded-xl border border-border dark:border-white/5 overflow-hidden">
-                                <div className="px-2.5 pt-2.5 pb-1">
-                                    <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground dark:text-white/35 mb-2 text-center">{title}</p>
-                                </div>
-                                <div className="px-2 pb-2 space-y-1">
-                                    {data.map((exec, idx) => (
-                                        <div
-                                            key={exec.user_id}
-                                            className={`flex items-center justify-between px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                                                idx === 0
-                                                    ? "bg-yellow-500/10 dark:bg-yellow-500/10"
-                                                    : exec.user_id === user?.id
-                                                        ? "bg-red-500/10 border border-red-500/20"
-                                                        : "hover:bg-muted/60"
-                                            }`}
-                                            onClick={() => setLeadPopup({ name: exec.full_name || 'Executive', visits: exec.visits, wosCount: exec.wosCount, wosWon: exec.wosWon, rankingLogic: `Ranked by ${title}` })}
-                                        >
-                                            <div className="flex items-center gap-1.5">
-                                                <span className="text-sm w-5 leading-none">{idx === 0 ? "🥇" : idx === 1 ? "🥈" : "🥉"}</span>
-                                                <span className={`text-[11px] truncate max-w-[58px] font-semibold ${idx === 0 ? "text-foreground dark:text-white" : "text-muted-foreground dark:text-white/50"}`}>
+                    {/* Tabs */}
+                    <div className="flex gap-1 px-4 mb-3">
+                        {([
+                            { key: 'visits' as const, label: '🏃 Visits' },
+                            { key: 'wosCount' as const, label: '📋 WOS' },
+                            { key: 'wosWon' as const, label: '🏆 Won' },
+                        ]).map(tab => (
+                            <button
+                                key={tab.key}
+                                onClick={() => setLeaderboardTab(tab.key)}
+                                className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                                    leaderboardTab === tab.key
+                                        ? 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border border-yellow-500/25'
+                                        : 'text-muted-foreground dark:text-white/35 hover:bg-muted/60'
+                                }`}
+                            >
+                                {tab.label}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* List */}
+                    <div className="px-3 pb-4 space-y-1.5">
+                        {(() => {
+                            const data = leaderboard[leaderboardTab];
+                            const topVal = data[0]?.[leaderboardTab] || 1;
+                            if (data.length === 0) return (
+                                <p className="text-[11px] text-muted-foreground dark:text-white/25 text-center py-4">No data yet for this month</p>
+                            );
+
+                            const top3 = data.slice(0, 3);
+                            const myRankIdx = data.findIndex(e => e.user_id === user?.id);
+                            const iAmInTop3 = myRankIdx >= 0 && myRankIdx < 3;
+                            const myEntry = myRankIdx >= 0 ? data[myRankIdx] : null;
+
+                            const renderRow = (exec: typeof data[0], idx: number) => {
+                                const isMe = exec.user_id === user?.id;
+                                const val = exec[leaderboardTab];
+                                const barPct = topVal > 0 ? Math.max(4, Math.round((val / topVal) * 100)) : 4;
+                                const medalEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null;
+                                const rankColor = idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-slate-400' : idx === 2 ? 'text-amber-600' : 'text-muted-foreground dark:text-white/40';
+                                const barColor = idx === 0 ? 'bg-yellow-400' : isMe ? 'bg-red-400' : 'bg-muted-foreground/30 dark:bg-white/10';
+                                return (
+                                    <div
+                                        key={exec.user_id}
+                                        onClick={() => setLeadPopup({
+                                            name: exec.full_name || 'Executive',
+                                            visits: exec.visits,
+                                            wosCount: exec.wosCount,
+                                            wosWon: exec.wosWon,
+                                            rankingLogic: leaderboardTab === 'visits' ? 'Ranked by Visits' : leaderboardTab === 'wosCount' ? 'Ranked by WOS' : 'Ranked by Won',
+                                            rank: idx + 1,
+                                            activeCategory: leaderboardTab,
+                                            isMe,
+                                            leaderValue: topVal,
+                                        })}
+                                        className={`rounded-xl px-3 py-2.5 cursor-pointer transition-all border ${
+                                            isMe
+                                                ? 'bg-red-500/8 border-red-500/20 hover:bg-red-500/12'
+                                                : idx === 0
+                                                    ? 'bg-yellow-500/8 border-yellow-500/15 hover:bg-yellow-500/12'
+                                                    : 'bg-muted/30 dark:bg-white/[0.025] border-border dark:border-white/5 hover:bg-muted/50'
+                                        }`}
+                                    >
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <div className="flex items-center gap-2">
+                                                {medalEmoji ? (
+                                                    <span className="text-base leading-none w-5">{medalEmoji}</span>
+                                                ) : (
+                                                    <span className={`text-[11px] font-bold w-5 text-center ${rankColor}`}>#{idx + 1}</span>
+                                                )}
+                                                <span className={`text-[12px] font-bold truncate max-w-[120px] ${
+                                                    idx === 0 ? 'text-foreground' : isMe ? 'text-red-400' : 'text-foreground/70 dark:text-white/60'
+                                                }`}>
                                                     {exec.full_name?.split(' ')[0]}
                                                 </span>
+                                                {isMe && (
+                                                    <span className="text-[8px] font-bold bg-red-500/15 text-red-400 border border-red-500/25 px-1.5 py-0.5 rounded-full">YOU</span>
+                                                )}
                                             </div>
-                                            <span className={`text-[11px] font-mono font-bold tabular-nums ${idx === 0 ? "text-yellow-500 dark:text-yellow-400" : "text-muted-foreground dark:text-white/35"}`}>
-                                                {exec[key]}
+                                            <span className={`text-sm font-extrabold font-mono tabular-nums ${
+                                                idx === 0 ? 'text-yellow-400' : isMe ? 'text-red-400' : 'text-foreground/60 dark:text-white/40'
+                                            }`}>
+                                                {val}
                                             </span>
                                         </div>
-                                    ))}
-                                    {data.length === 0 && <p className="text-[10px] text-muted-foreground dark:text-white/25 text-center py-2">No data yet</p>}
-                                </div>
-                            </div>
-                        ))}
+                                        <div className="h-1 rounded-full bg-black/10 dark:bg-white/5 overflow-hidden">
+                                            <motion.div
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${barPct}%` }}
+                                                transition={{ duration: 0.8, delay: idx * 0.05, ease: 'easeOut' }}
+                                                className={`h-full rounded-full ${barColor}`}
+                                            />
+                                        </div>
+                                    </div>
+                                );
+                            };
+
+                            return (
+                                <>
+                                    {/* Top 3 */}
+                                    {top3.map((exec, idx) => renderRow(exec, idx))}
+
+                                    {/* Separator + My Rank (only if I'm NOT in top 3) */}
+                                    {!iAmInTop3 && myEntry && (
+                                        <>
+                                            {/* Dotted separator with "your position" label */}
+                                            <div className="flex items-center gap-2 py-1 px-1">
+                                                <div className="flex-1 border-t border-dashed border-border dark:border-white/10" />
+                                                <span className="text-[9px] font-bold text-muted-foreground dark:text-white/25 uppercase tracking-widest whitespace-nowrap">Your Position</span>
+                                                <div className="flex-1 border-t border-dashed border-border dark:border-white/10" />
+                                            </div>
+                                            {renderRow(myEntry, myRankIdx)}
+                                        </>
+                                    )}
+                                </>
+                            );
+                        })()}
                     </div>
                 </motion.div>
 
@@ -1392,27 +1458,125 @@ export const ExecutiveHome = () => {
 
             {/* ── LEADERBOARD POPUP ── */}
             <Dialog open={!!leadPopup} onOpenChange={(open) => !open && setLeadPopup(null)}>
-                <DialogContent className="bg-[#111318] border border-border text-foreground max-w-sm w-[95vw] rounded-2xl p-6 outline-none">
-                    <DialogHeader className="mb-5">
-                        <DialogTitle className="text-xl font-extrabold text-foreground flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-red-500/15 border border-red-500/25 flex items-center justify-center text-sm font-bold text-red-400">
-                                {leadPopup?.name.charAt(0)}
+                <DialogContent className="bg-[#0D0F16] border border-white/8 text-foreground max-w-sm w-[95vw] rounded-2xl p-0 overflow-hidden outline-none">
+                    {/* Top banner with rank */}
+                    <div className={`relative px-5 pt-5 pb-4 ${
+                        leadPopup?.rank === 1
+                            ? 'bg-gradient-to-br from-yellow-900/40 to-yellow-900/10'
+                            : leadPopup?.rank === 2
+                                ? 'bg-gradient-to-br from-slate-700/30 to-slate-800/10'
+                                : leadPopup?.rank === 3
+                                    ? 'bg-gradient-to-br from-amber-900/30 to-amber-900/10'
+                                    : leadPopup?.isMe
+                                        ? 'bg-gradient-to-br from-red-900/25 to-red-900/5'
+                                        : 'bg-white/[0.02]'
+                    }`}>
+                        <div className="flex items-center gap-3">
+                            {/* Avatar */}
+                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-extrabold border ${
+                                leadPopup?.rank === 1 ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-400'
+                                : leadPopup?.rank === 2 ? 'bg-slate-500/20 border-slate-500/30 text-slate-300'
+                                : leadPopup?.rank === 3 ? 'bg-amber-700/20 border-amber-700/30 text-amber-500'
+                                : leadPopup?.isMe ? 'bg-red-500/15 border-red-500/25 text-red-400'
+                                : 'bg-white/5 border-white/10 text-white/50'
+                            }`}>
+                                {leadPopup?.name.charAt(0).toUpperCase()}
                             </div>
-                            {leadPopup?.name}
-                        </DialogTitle>
-                        <p className="text-[10px] text-muted-foreground dark:text-white/30 font-semibold uppercase tracking-widest mt-1">{leadPopup?.rankingLogic}</p>
-                    </DialogHeader>
-                    <div className="space-y-2.5">
-                        {[
-                            { label: "Total Visits Done", value: leadPopup?.visits },
-                            { label: "WOS Items Added", value: leadPopup?.wosCount },
-                            { label: "WOS Value Won", value: leadPopup?.wosWon, highlight: true },
-                        ].map(({ label, value, highlight }) => (
-                            <div key={label} className={`rounded-xl p-4 flex justify-between items-center border ${highlight ? "bg-red-500/8 border-red-500/20" : "bg-muted/50 border-border"}`}>
-                                <span className={`text-xs font-semibold uppercase tracking-wider ${highlight ? "text-red-400/80" : "text-muted-foreground dark:text-white/50"}`}>{label}</span>
-                                <span className={`text-xl font-extrabold font-mono ${highlight ? "text-red-400" : "text-foreground"}`}>{value}</span>
+                            {/* Name & rank */}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                    <h2 className="text-base font-extrabold text-foreground truncate">{leadPopup?.name}</h2>
+                                    {leadPopup?.isMe && (
+                                        <span className="shrink-0 text-[8px] font-bold bg-red-500/15 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded-full">YOU</span>
+                                    )}
+                                </div>
+                                <p className="text-[10px] text-muted-foreground dark:text-white/35 font-medium mt-0.5">{leadPopup?.rankingLogic}</p>
                             </div>
-                        ))}
+                            {/* Big rank badge */}
+                            <div className="text-right shrink-0">
+                                <div className={`text-3xl font-black leading-none ${
+                                    leadPopup?.rank === 1 ? 'text-yellow-400'
+                                    : leadPopup?.rank === 2 ? 'text-slate-400'
+                                    : leadPopup?.rank === 3 ? 'text-amber-600'
+                                    : 'text-foreground/40'
+                                }`}>
+                                    {leadPopup?.rank === 1 ? '🥇' : leadPopup?.rank === 2 ? '🥈' : leadPopup?.rank === 3 ? '🥉' : `#${leadPopup?.rank}`}
+                                </div>
+                                <p className="text-[9px] text-muted-foreground dark:text-white/25 font-semibold uppercase tracking-wider mt-0.5">Rank</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Stats */}
+                    <div className="px-4 py-4 space-y-3">
+                        {([
+                            {
+                                label: 'Visits Done',
+                                icon: '🏃',
+                                value: leadPopup?.visits ?? 0,
+                                leaderVal: leadPopup?.activeCategory === 'visits' ? leadPopup.leaderValue : (leaderboard.visits[0]?.visits ?? 1),
+                                highlight: leadPopup?.activeCategory === 'visits',
+                                color: 'text-blue-400',
+                                barColor: 'bg-blue-400',
+                            },
+                            {
+                                label: 'WOS Added',
+                                icon: '📋',
+                                value: leadPopup?.wosCount ?? 0,
+                                leaderVal: leadPopup?.activeCategory === 'wosCount' ? leadPopup.leaderValue : (leaderboard.wosCount[0]?.wosCount ?? 1),
+                                highlight: leadPopup?.activeCategory === 'wosCount',
+                                color: 'text-orange-400',
+                                barColor: 'bg-orange-400',
+                            },
+                            {
+                                label: 'WOS Won',
+                                icon: '🏆',
+                                value: leadPopup?.wosWon ?? 0,
+                                leaderVal: leadPopup?.activeCategory === 'wosWon' ? leadPopup.leaderValue : (leaderboard.wosWon[0]?.wosWon ?? 1),
+                                highlight: leadPopup?.activeCategory === 'wosWon',
+                                color: 'text-emerald-400',
+                                barColor: 'bg-emerald-400',
+                            },
+                        ] as const).map(({ label, icon, value, leaderVal, highlight, color, barColor }) => {
+                            const safeLeader = Math.max(leaderVal, 1);
+                            const barPct = Math.max(4, Math.round((value / safeLeader) * 100));
+                            const gap = safeLeader - value;
+                            return (
+                                <div key={label} className={`rounded-xl p-3.5 border ${
+                                    highlight ? 'bg-white/[0.04] border-white/10' : 'bg-white/[0.02] border-white/5'
+                                }`}>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div className="flex items-center gap-1.5">
+                                            <span className="text-sm">{icon}</span>
+                                            <span className={`text-[11px] font-bold uppercase tracking-wider ${
+                                                highlight ? color : 'text-muted-foreground dark:text-white/40'
+                                            }`}>{label}</span>
+                                            {highlight && <span className="text-[8px] font-bold bg-yellow-500/15 text-yellow-500 border border-yellow-500/20 px-1.5 py-0.5 rounded-full">ACTIVE CAT</span>}
+                                        </div>
+                                        <span className={`text-xl font-extrabold font-mono ${
+                                            highlight ? color : 'text-foreground/70 dark:text-white/60'
+                                        }`}>{value}</span>
+                                    </div>
+                                    {/* Bar */}
+                                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden mb-1.5">
+                                        <motion.div
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${barPct}%` }}
+                                            transition={{ duration: 0.9, ease: 'easeOut' }}
+                                            className={`h-full rounded-full ${highlight ? barColor : 'bg-white/15'}`}
+                                        />
+                                    </div>
+                                    {/* Gap to leader */}
+                                    {gap > 0 ? (
+                                        <p className="text-[9px] text-muted-foreground dark:text-white/25 font-medium">
+                                            {gap} behind leader · {barPct}% of top
+                                        </p>
+                                    ) : (
+                                        <p className="text-[9px] text-yellow-500/70 font-bold">🏅 Leading this category!</p>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </DialogContent>
             </Dialog>
@@ -1693,8 +1857,8 @@ const VisitCard = ({ visit, onMarkDone, onCancel, onAddWOS, index, navigate }: V
         >
             {/* Swipe indicator bg */}
             <div className={`absolute inset-0 flex items-center justify-between px-5 rounded-2xl transition-colors duration-150 ${action === "done" ? "bg-emerald-700/60" : action === "cancel" ? "bg-red-700/60" : "bg-transparent"}`}>
-                <span className={`text-white font-bold flex items-center gap-1.5 text-sm transition-opacity ${action === "done" ? "opacity-100" : "opacity-0"}`}><CheckCircle2 className="h-4 w-4" /> Done</span>
-                <span className={`text-white font-bold flex items-center gap-1.5 text-sm transition-opacity ${action === "cancel" ? "opacity-100" : "opacity-0"}`}>Cancel <X className="h-4 w-4" /></span>
+                <span className={`text-white font-bold flex items-center gap-1.5 text-xs transition-opacity ${action === "done" ? "opacity-100" : "opacity-0"}`}><CheckCircle2 className="h-3.5 w-3.5" /> Done</span>
+                <span className={`text-white font-bold flex items-center gap-1.5 text-xs transition-opacity ${action === "cancel" ? "opacity-100" : "opacity-0"}`}>Cancel <X className="h-3.5 w-3.5" /></span>
             </div>
 
             <motion.div
@@ -1704,64 +1868,66 @@ const VisitCard = ({ visit, onMarkDone, onCancel, onAddWOS, index, navigate }: V
                 onDrag={handleDrag}
                 onDragEnd={handleDragEnd}
                 animate={controls}
-                className={`relative bg-muted/50 border rounded-2xl p-4 z-10 w-full min-w-0 ${isDone ? "border-emerald-500/15" : isCancelled ? "border-red-500/10" : "border-border"} transition-colors`}
+                className={`relative bg-muted/50 border rounded-2xl px-3 py-3 z-10 w-full min-w-0 ${isDone ? "border-emerald-500/15" : isCancelled ? "border-red-500/10" : "border-border"} transition-colors`}
             >
-                {/* Top row */}
-                <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${sc.dot} shadow-sm`} />
-                        <span className={`text-[10px] font-bold uppercase tracking-widest ${sc.text}`}>{sc.label}</span>
+                {/* Single compact row: status dot + name + time + actions */}
+                <div className="flex items-center gap-2.5 min-w-0">
+                    {/* Status dot */}
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${sc.dot} shadow-sm`} />
+
+                    {/* Name + purpose + address stacked */}
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                            <span className={`text-[9px] font-bold uppercase tracking-widest ${sc.text} shrink-0`}>{sc.label}</span>
+                            <span className="text-[9px] text-muted-foreground dark:text-white/25">·</span>
+                            <span className="text-[9px] text-muted-foreground dark:text-white/25 font-medium">
+                                {format(parseISO(isDone && visit.done_at ? visit.done_at : visit.created_at), "hh:mm a")}
+                            </span>
+                        </div>
+                        <h3 className="text-sm font-bold text-foreground leading-tight truncate">
+                            {visit.clients?.name || visit.partners?.name || "Meeting"}
+                        </h3>
+                        <p className="text-[11px] text-muted-foreground dark:text-white/45 font-medium truncate">
+                            {visit.purpose_masters?.purpose_name || visit.purpose || "Follow-up"}
+                            {visit.address ? ` · ${visit.address}` : ""}
+                        </p>
                     </div>
-                    <span className="text-[10px] text-muted-foreground dark:text-white/25 font-medium">
-                        {format(parseISO(isDone && visit.done_at ? visit.done_at : visit.created_at), "hh:mm a")}
-                    </span>
+
+                    {/* Action buttons — icon only, compact */}
+                    {!isDone && !isCancelled && (
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                                onClick={() => {
+                                    const addr = encodeURIComponent(visit.address || (visit.clients?.name ?? visit.partners?.name ?? 'destination'));
+                                    window.open(`https://www.google.com/maps/search/?api=1&query=${addr}`, '_blank');
+                                }}
+                                className="h-8 w-8 rounded-xl bg-muted/60 hover:bg-muted border border-border text-muted-foreground dark:text-white/50 hover:text-white flex items-center justify-center transition-all"
+                                title="Navigate"
+                            >
+                                <Navigation className="h-3.5 w-3.5" />
+                            </button>
+                            {visit.client_id && (
+                                <button
+                                    onClick={() => onAddWOS(visit)}
+                                    className="h-8 w-8 rounded-xl bg-red-600/80 hover:bg-red-600 text-white flex items-center justify-center transition-all shadow shadow-red-900/30"
+                                    title="Add WOS"
+                                >
+                                    <Plus className="h-3.5 w-3.5" />
+                                </button>
+                            )}
+                        </div>
+                    )}
+
+                    {/* Done / Cancelled icon */}
+                    {isDone && <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />}
+                    {isCancelled && <X className="h-4 w-4 text-red-400 shrink-0" />}
                 </div>
 
-                {/* Client name */}
-                <h3 className="text-base font-bold text-foreground leading-tight mb-0.5 truncate">
-                    {visit.clients?.name || visit.partners?.name || "Meeting"}
-                </h3>
-                <p className="text-xs text-muted-foreground dark:text-white/50 font-medium mb-3 truncate">
-                    {visit.purpose_masters?.purpose_name || visit.purpose || "Follow-up"}
-                </p>
-
-                {/* Address */}
-                {visit.address && (
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground dark:text-white/35 bg-card border border-border rounded-xl px-3 py-2 mb-3 min-w-0 overflow-hidden">
-                        <MapPin className="h-3 w-3 text-red-500/60 shrink-0" />
-                        <span className="truncate min-w-0 flex-1">{visit.address}</span>
-                    </div>
-                )}
-
-                {/* Action buttons - Navigate always shows; Add WOS only for client visits */}
+                {/* Swipe hint — only for active visits, very subtle */}
                 {!isDone && !isCancelled && (
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => {
-                                const addr = encodeURIComponent(visit.address || (visit.clients?.name ?? visit.partners?.name ?? 'destination'));
-                                window.open(`https://www.google.com/maps/search/?api=1&query=${addr}`, '_blank');
-                            }}
-                            className="flex-1 bg-muted/60 hover:bg-muted border border-border text-muted-foreground dark:text-white/50 hover:text-white rounded-xl py-2.5 text-xs font-semibold flex items-center justify-center gap-1.5 transition-all"
-                        >
-                            <Navigation className="h-3.5 w-3.5" /> Navigate
-                        </button>
-                        {visit.client_id && (
-                            <button
-                                onClick={() => onAddWOS(visit)}
-                                className="flex-1 bg-red-600/80 hover:bg-red-600 text-white rounded-xl py-2.5 text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow shadow-red-900/30"
-                            >
-                                <Plus className="h-3.5 w-3.5" /> Add WOS
-                            </button>
-                        )}
-                    </div>
-                )}
-
-                {!isDone && !isCancelled && (
-                    <div className="flex items-center justify-center gap-1.5 mt-3">
-                        <ChevronRightIcon className="h-2.5 w-2.5 text-foreground/15 animate-pulse" />
-                        <span className="text-[9px] text-muted-foreground dark:text-white/20 font-semibold uppercase tracking-widest">Swipe to mark done</span>
-                        <ChevronRightIcon className="h-2.5 w-2.5 text-foreground/15 animate-pulse" />
-                    </div>
+                    <p className="text-[8px] text-muted-foreground/40 dark:text-white/15 font-medium text-center mt-2 tracking-widest uppercase">
+                        ← swipe to act →
+                    </p>
                 )}
             </motion.div>
         </motion.div>

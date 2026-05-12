@@ -5,6 +5,7 @@ import {
   OverlayView,
   DirectionsRenderer,
   TrafficLayer,
+  Polyline,
 } from "@react-google-maps/api";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -595,13 +596,30 @@ export const LiveTracking = () => {
             {/* Traffic Layer */}
             {showTraffic && <TrafficLayer />}
 
-            {/* Road route */}
+            {/* Road route — Google Directions (road-snapped) */}
             {selectedExecId && directions && (
               <DirectionsRenderer
                 directions={directions}
                 options={{
                   suppressMarkers: true,
-                  polylineOptions: { strokeColor: "#dc2626", strokeOpacity: 0.9, strokeWeight: 4 },
+                  polylineOptions: { strokeColor: "#dc2626", strokeOpacity: 0.75, strokeWeight: 4 },
+                }}
+              />
+            )}
+
+            {/* Actual GPS breadcrumb trail — drawn ONLY when location_history has real data */}
+            {selectedExecId && locationHistory.length > 2 && (
+              <Polyline
+                path={locationHistory.map(p => ({ lat: p.lat, lng: p.lng }))}
+                options={{
+                  strokeColor: "#22d3ee",    // cyan — distinct from red route
+                  strokeOpacity: 0.9,
+                  strokeWeight: 3,
+                  icons: [{
+                    icon: { path: window.google?.maps?.SymbolPath?.FORWARD_CLOSED_ARROW, scale: 2.5, strokeColor: "#22d3ee" },
+                    offset: "100%",
+                    repeat: "80px",
+                  }],
                 }}
               />
             )}

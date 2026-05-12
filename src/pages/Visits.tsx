@@ -209,20 +209,31 @@ const Visits = () => {
     mutationFn: async (visitId: string) => {
       if (!remarks.trim()) throw new Error("Remarks are required");
 
-      // GPS is mandatory
+      // GPS is mandatory — force fresh fix, never use cached stale location
       setGpsLoading(true);
       setGpsError("");
       let gpsLat: number;
       let gpsLng: number;
       try {
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 15000, enableHighAccuracy: true })
+        const getGps = () => new Promise<GeolocationPosition>((resolve, reject) =>
+          navigator.geolocation.getCurrentPosition(resolve, reject, {
+            timeout: 20000,
+            enableHighAccuracy: true,
+            maximumAge: 0, // Never use cached GPS — always get a fresh fix
+          })
         );
+        let pos: GeolocationPosition;
+        try {
+          pos = await getGps();
+        } catch {
+          // Retry once — sometimes first attempt fails on mobile due to GPS warmup
+          pos = await getGps();
+        }
         gpsLat = pos.coords.latitude;
         gpsLng = pos.coords.longitude;
       } catch {
         setGpsLoading(false);
-        throw new Error("GPS location is required. Please enable location access and try again.");
+        throw new Error("GPS location is required. Please enable location access, move to an open area, and try again.");
       }
       setGpsLoading(false);
 

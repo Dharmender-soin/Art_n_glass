@@ -76,20 +76,33 @@ const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>(
 // ── Helper: push a location update to Supabase ──────────────────────────────
 async function pushLocation(userId: string, lat: number, lng: number) {
   const now = new Date().toISOString();
-  await Promise.all([
-    supabase.from("live_locations").upsert({
-      user_id: userId,
-      lat,
-      lng,
-      updated_at: now,
-    }),
-    supabase.from("location_history").insert({
-      user_id: userId,
-      lat,
-      lng,
-      timestamp: now,
-    }),
-  ]);
+  try {
+    const [liveResult, histResult] = await Promise.all([
+      supabase.from("live_locations").upsert({
+        user_id: userId,
+        lat,
+        lng,
+        updated_at: now,
+      }),
+      supabase.from("location_history").insert({
+        user_id: userId,
+        lat,
+        lng,
+        timestamp: now,
+      }),
+    ]);
+    if (liveResult.error) {
+      console.error("[BGTracking] live_locations upsert error:", liveResult.error.message);
+    }
+    if (histResult.error) {
+      console.error("[BGTracking] location_history insert error:", histResult.error.message);
+    }
+    if (!liveResult.error && !histResult.error) {
+      console.log(`[BGTracking] ✓ Location saved: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+    }
+  } catch (err: any) {
+    console.error("[BGTracking] pushLocation exception:", err?.message || err);
+  }
 }
 
 // ── Hook options ─────────────────────────────────────────────────────────────

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <application
         android:allowBackup="true"
@@ -36,10 +37,12 @@
 
         <!-- ── BACKGROUND LOCATION FOREGROUND SERVICE ── -->
         <!-- Required by @capacitor-community/background-geolocation -->
+        <!-- Package: com.equimaps.capacitor_background_geolocation (NOT com.equimapper) -->
         <service
-            android:name="com.equimapper.BackgroundGeolocationService"
+            android:name="com.equimaps.capacitor_background_geolocation.BackgroundGeolocationService"
             android:foregroundServiceType="location"
-            android:exported="false" />
+            android:exported="false"
+            tools:replace="android:exported" />
 
     </application>
 

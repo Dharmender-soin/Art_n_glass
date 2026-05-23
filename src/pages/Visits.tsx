@@ -49,6 +49,8 @@ const Visits = () => {
   const [photo, setPhoto] = useState<File | null>(null);
   const [filterStatus, setFilterStatus] = useState("");
   const [search, setSearch] = useState("");
+  const [entitySearch, setEntitySearch] = useState("");
+  const [entityPickerOpen, setEntityPickerOpen] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   const [gpsError, setGpsError] = useState("");
   const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -414,11 +416,12 @@ const Visits = () => {
     return true;
   };
 
-  // Executives can plan today + tomorrow only
+  // Executives can plan today + any future date (not past dates)
   const canPlanDate = (date: string) => {
-    if (role === "admin" || role === "manager") return true;
     const d = parseISO(date);
-    return isToday(d) || isTomorrow(d);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return d >= today;
   };
 
   const filtered = visits.filter((v) => {
@@ -475,8 +478,8 @@ const Visits = () => {
           </DialogTrigger>
           <DialogContent className="bg-popover">
             <DialogHeader><DialogTitle>Plan Visit</DialogTitle></DialogHeader>
-            <form onSubmit={(e) => { e.preventDefault(); if (!canPlanDate(form.visit_date)) { toast.error("You can only plan visits for today or tomorrow"); return; } createVisit.mutate(); }} className="space-y-3">
-              <div className="space-y-1"><Label>Visit Date</Label><Input type="date" value={form.visit_date} onChange={(e) => setForm({ ...form, visit_date: e.target.value })} required /></div>
+            <form onSubmit={(e) => { e.preventDefault(); if (!canPlanDate(form.visit_date)) { toast.error("You cannot plan visits for past dates"); return; } createVisit.mutate(); }} className="space-y-3">
+              <div className="space-y-1"><Label>Visit Date</Label><Input type="date" min={todayStr} value={form.visit_date} onChange={(e) => setForm({ ...form, visit_date: e.target.value })} required /></div>
               <div className="space-y-1">
                 <Label>Visit With</Label>
                 <Select value={form.visit_with_type} onValueChange={(v) => setForm({ ...form, visit_with_type: v as VisitWithType, client_id: "", partner_id: "", address: "", purpose_id: "" })}>
@@ -484,16 +487,89 @@ const Visits = () => {
                   <SelectContent className="bg-popover"><SelectItem value="client">Client</SelectItem><SelectItem value="partner">Partner</SelectItem></SelectContent>
                 </Select>
               </div>
+              {/* ─── Searchable Client / Partner Picker ─── */}
               <div className="space-y-1">
                 <Label>{form.visit_with_type === "client" ? "Select Client" : "Select Partner"}</Label>
-                <Select value={form.visit_with_type === "client" ? form.client_id : form.partner_id} onValueChange={handleSelectEntity}>
-                  <SelectTrigger><SelectValue placeholder="Select..." /></SelectTrigger>
-                  <SelectContent className="bg-popover">
-                    {(form.visit_with_type === "client" ? clients : partners).map((e) => (
-                      <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="relative">
+                  {/* Trigger button */}
+                  <button
+                    type="button"
+                    onClick={() => setEntityPickerOpen(o => !o)}
+                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-input bg-background text-sm transition-colors hover:bg-accent"
+                  >
+                    <span className={`truncate ${
+                      (form.visit_with_type === "client" ? form.client_id : form.partner_id)
+                        ? "text-foreground font-medium"
+                        : "text-muted-foreground"
+                    }`}>
+                      {(form.visit_with_type === "client" ? form.client_id : form.partner_id)
+                        ? (form.visit_with_type === "client" ? clients : partners).find(e => e.id === (form.visit_with_type === "client" ? form.client_id : form.partner_id))?.name
+                        : `Select ${form.visit_with_type === "client" ? "client" : "partner"}...`}
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      {(form.visit_with_type === "client" ? form.client_id : form.partner_id) && (
+                        <span
+                          role="button"
+                          onClick={e => { e.stopPropagation(); setForm({ ...form, client_id: "", partner_id: "", address: "" }); setEntityPickerOpen(false); }}
+                          className="text-muted-foreground hover:text-destructive text-xs font-bold px-1"
+                        >✕</span>
+                      )}
+                      <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${entityPickerOpen ? "rotate-180" : ""}`} />
+                    </div>
+                  </button>
+
+                  {/* Dropdown panel */}
+                  {entityPickerOpen && (
+                    <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-border bg-popover shadow-xl overflow-hidden">
+                      {/* Search */}
+                      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
+                        <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                        <input
+                          type="text"
+                          autoFocus
+                          placeholder={`Search ${form.visit_with_type === "client" ? "client" : "partner"}...`}
+                          value={entitySearch}
+                          onChange={e => setEntitySearch(e.target.value)}
+                          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground text-foreground"
+                        />
+                        {entitySearch && (
+                          <button type="button" onClick={() => setEntitySearch("")} className="text-muted-foreground hover:text-foreground text-xs font-bold">✕</button>
+                        )}
+                      </div>
+                      {/* List */}
+                      <div className="overflow-y-auto" style={{ maxHeight: "200px" }}>
+                        {(form.visit_with_type === "client" ? clients : partners)
+                          .filter(e => e.name.toLowerCase().includes(entitySearch.toLowerCase()))
+                          .map(e => {
+                            const currentId = form.visit_with_type === "client" ? form.client_id : form.partner_id;
+                            const isSelected = currentId === e.id;
+                            return (
+                              <button
+                                key={e.id}
+                                type="button"
+                                onClick={() => {
+                                  handleSelectEntity(e.id);
+                                  setEntitySearch("");
+                                  setEntityPickerOpen(false);
+                                }}
+                                className={`w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-2
+                                  ${isSelected
+                                    ? "bg-primary/10 text-primary font-semibold"
+                                    : "hover:bg-accent text-foreground"}`}
+                              >
+                                {isSelected && <span className="text-primary text-xs">✓</span>}
+                                <span className="truncate">{e.name}</span>
+                              </button>
+                            );
+                          })}
+                        {(form.visit_with_type === "client" ? clients : partners)
+                          .filter(e => e.name.toLowerCase().includes(entitySearch.toLowerCase())).length === 0 && (
+                          <p className="text-center text-xs text-muted-foreground py-5">No results found</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="space-y-1">
                 <Label>Address</Label>
@@ -706,10 +782,10 @@ const Visits = () => {
       <Dialog open={!!editVisitId} onOpenChange={(open) => !open && setEditVisitId(null)}>
         <DialogContent className="bg-popover sm:max-w-md">
           <DialogHeader><DialogTitle>Reschedule Visit</DialogTitle></DialogHeader>
-          <form onSubmit={(e) => { e.preventDefault(); if (!canPlanDate(editVisitDate)) { toast.error("You can only plan visits for today or tomorrow"); return; } if (editVisitId) updateVisitDate.mutate({ id: editVisitId, newDate: editVisitDate }); }} className="space-y-3 py-2">
+          <form onSubmit={(e) => { e.preventDefault(); if (!canPlanDate(editVisitDate)) { toast.error("You cannot reschedule to a past date"); return; } if (editVisitId) updateVisitDate.mutate({ id: editVisitId, newDate: editVisitDate }); }} className="space-y-3 py-2">
             <div className="space-y-1">
               <Label>New Visit Date</Label>
-              <Input type="date" value={editVisitDate} onChange={(e) => setEditVisitDate(e.target.value)} required />
+              <Input type="date" min={todayStr} value={editVisitDate} onChange={(e) => setEditVisitDate(e.target.value)} required />
             </div>
             <Button type="submit" className="w-full" disabled={updateVisitDate.isPending}>
               {updateVisitDate.isPending ? "Saving..." : "Save Changes"}

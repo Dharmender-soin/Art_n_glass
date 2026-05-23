@@ -20,6 +20,7 @@ import LiveMapPage from "./pages/LiveMap";
 import Conveyance from "./pages/Conveyance";
 import PartnerVisits from "./pages/PartnerVisits";
 import NotFound from "./pages/NotFound";
+import MyPipeline from "./pages/MyPipeline";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AnimatePresence } from "framer-motion";
 import PageTransition from "@/components/PageTransition";
@@ -50,7 +51,14 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 const AuthRoute = () => {
   const { user, loading } = useAuth();
-  if (loading) return null;
+  if (loading) return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="flex flex-col items-center gap-4">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <p className="text-sm text-muted-foreground animate-fade-in">Loading...</p>
+      </div>
+    </div>
+  );
   if (user) return <Navigate to="/" replace />;
   return (
     <PageTransition>
@@ -79,6 +87,7 @@ const AnimatedRoutes = () => {
         <Route path="/live-map" element={<ProtectedRoute><LiveMapPage /></ProtectedRoute>} />
         <Route path="/conveyance" element={<ProtectedRoute><Conveyance /></ProtectedRoute>} />
         <Route path="/partner-visits" element={<ProtectedRoute><PartnerVisits /></ProtectedRoute>} />
+        <Route path="/my-pipeline" element={<ProtectedRoute><MyPipeline /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AnimatePresence>

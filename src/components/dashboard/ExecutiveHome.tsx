@@ -421,6 +421,21 @@ export const ExecutiveHome = () => {
         enabled: !!user,
     });
 
+    // Fetch own clients (for smart alert calculations)
+    const { data: ownClients = [] } = useQuery({
+        queryKey: ["executive-own-clients", user?.id],
+        enabled: !!user,
+        queryFn: async () => {
+            if (!user) return [];
+            const { data } = await supabase
+                .from("clients")
+                .select("id, name, partner_id, created_at")
+                .eq("created_by", user.id)
+                .order("created_at", { ascending: false });
+            return data || [];
+        },
+    });
+
     // Fetch Showroom Leaderboard
     const { data: showroomLeaderboard = [] } = useQuery({
         queryKey: ["executive-showroom-leaderboard-rpc", showroomId],
@@ -554,6 +569,112 @@ export const ExecutiveHome = () => {
     const dismissNotif = (id: string) => setDismissedIds(prev => new Set([...prev, id]));
     const dismissAll = () => { setDismissedIds(new Set(notifications.map(n => n.id))); setNotifOpen(false); };
 
+    // ── SMART ALERT COMPUTATIONS ──────────────────────────────────────────
+    const smartAlerts = useMemo(() => {
+        const sevenDaysAgo = format(new Date(Date.now() - 7 * 86_400_000), "yyyy-MM-dd");
+        const tenDaysAgo = format(new Date(Date.now() - 10 * 86_400_000), "yyyy-MM-dd");
+
+        const alerts: {
+            id: string;
+            priority: 'critical' | 'warning' | 'info';
+            emoji: string;
+            title: string;
+            desc: string;
+            action: string;
+            route: string;
+            count?: number;
+        }[] = [];
+
+        // ① Start Day — must be first (critical)
+        if (!todayAttendance && isToday(new Date())) {
+            alerts.push({
+                id: 'start-day',
+                priority: 'critical',
+                emoji: '🌅',
+                title: 'Start Your Day',
+                desc: 'Tap "Start Day" above to activate GPS tracking and begin recording your conveyance for today.',
+                action: 'Start Day',
+                route: '',
+            });
+        }
+
+        // ② Partners not visited in > 7 days
+        const partnersNeedingVisit = execPartners.filter(p => {
+            const lastDone = ownVisits
+                .filter(v => v.visit_with_type === 'partner' && v.status === 'done' && v.partner_id === p.id)
+                .sort((a, b) => b.visit_date.localeCompare(a.visit_date))[0];
+            if (!lastDone) return true;
+            return lastDone.visit_date < sevenDaysAgo;
+        });
+        if (partnersNeedingVisit.length > 0) {
+            alerts.push({
+                id: 'partner-no-visit',
+                priority: 'warning',
+                emoji: '🤝',
+                title: `${partnersNeedingVisit.length} Partner${partnersNeedingVisit.length > 1 ? 's' : ''} Not Visited in a Week`,
+                desc: `${partnersNeedingVisit.slice(0, 3).map(p => p.name).join(', ')}${partnersNeedingVisit.length > 3 ? ` +${partnersNeedingVisit.length - 3} more` : ''} — not visited in over 7 days.`,
+                action: 'Plan Visit',
+                route: '/visits',
+                count: partnersNeedingVisit.length,
+            });
+        }
+
+        // ③ Partners under which no client was added in last 10 days
+        const partnersWithNoRecentClient = execPartners.filter(p => {
+            const clientsUnder = ownClients.filter(c => c.partner_id === p.id);
+            if (clientsUnder.length === 0) return true;
+            const latestClient = clientsUnder.sort((a, b) => b.created_at.localeCompare(a.created_at))[0];
+            return latestClient.created_at.split('T')[0] < tenDaysAgo;
+        });
+        if (partnersWithNoRecentClient.length > 0) {
+            alerts.push({
+                id: 'no-client-under-partner',
+                priority: 'warning',
+                emoji: '👤',
+                title: `No New Client Added in 10 Days`,
+                desc: `${partnersWithNoRecentClient.slice(0, 2).map(p => p.name).join(', ')}${partnersWithNoRecentClient.length > 2 ? ` +${partnersWithNoRecentClient.length - 2} more` : ''} — no client has been added under ${partnersWithNoRecentClient.length > 1 ? 'these partners' : 'this partner'} in the last 10 days.`,
+                action: 'Add Client',
+                route: '/clients',
+                count: partnersWithNoRecentClient.length,
+            });
+        }
+
+        // ④ Clients with no WOS (work scope) added yet
+        const clientIdsWithWos = new Set(ownWorkScopes.map(w => w.client_id));
+        const clientsWithoutWos = ownClients.filter(c => !clientIdsWithWos.has(c.id));
+        if (clientsWithoutWos.length > 0) {
+            alerts.push({
+                id: 'clients-no-wos',
+                priority: 'warning',
+                emoji: '📋',
+                title: `${clientsWithoutWos.length} Client${clientsWithoutWos.length > 1 ? 's' : ''} Without Work Scope`,
+                desc: `${clientsWithoutWos.slice(0, 3).map(c => c.name).join(', ')}${clientsWithoutWos.length > 3 ? ` +${clientsWithoutWos.length - 3} more` : ''} — no work scope added yet. Add scope to track progress.`,
+                action: 'Add Scope',
+                route: '/clients',
+                count: clientsWithoutWos.length,
+            });
+        }
+
+        // ⑤ WOS items still pending status update
+        const pendingWos = ownWorkScopes.filter(
+            w => !['won', 'lost', 'hold'].includes(w.work_status || '')
+        );
+        if (pendingWos.length > 0) {
+            alerts.push({
+                id: 'wos-pending-status',
+                priority: 'info',
+                emoji: '⏳',
+                title: `${pendingWos.length} Scope Item${pendingWos.length > 1 ? 's' : ''} Pending Status Update`,
+                desc: `${pendingWos.length} work scope item${pendingWos.length > 1 ? 's are' : ' is'} still open — update the outcome to Won, Lost, or On Hold to keep records current.`,
+                action: 'Update Now',
+                route: '/clients',
+                count: pendingWos.length,
+            });
+        }
+
+        return alerts;
+    }, [ownVisits, execPartners, ownClients, ownWorkScopes, todayAttendance]);
+
     const notifications = useMemo(() => {
         const items: { id: string; type: 'danger' | 'warning' | 'info'; title: string; desc: string }[] = [];
         const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -620,7 +741,7 @@ export const ExecutiveHome = () => {
         }
 
         return items.filter(i => !dismissedIds.has(i.id));
-    }, [ownVisits, todayAttendance, endDayRecord, selectedDate, dismissedIds]);
+    }, [ownVisits, todayAttendance, endDayRecord, selectedDate, dismissedIds, smartAlerts]);
 
     return (
         <div className="w-full min-h-screen bg-background dark:bg-[#0A0B0F] text-foreground dark:text-white font-sans pb-28 overflow-x-hidden pt-16">
@@ -647,11 +768,11 @@ export const ExecutiveHome = () => {
                 <div className="flex items-center gap-2">
                     {/* Date Navigator */}
                     <div className="flex items-center gap-1 bg-muted/60 rounded-full px-2 py-1.5 border border-border">
-                        <button onClick={handlePrevDay} className="p-0.5 text-muted-foreground dark:text-white/50 hover:text-white transition-colors">
+                        <button onClick={handlePrevDay} className="p-0.5 text-muted-foreground hover:text-foreground dark:hover:text-white transition-colors">
                             <ChevronLeft className="h-3.5 w-3.5" />
                         </button>
                         <span className="text-[10px] font-bold tracking-wide uppercase w-auto max-w-[80px] text-center text-foreground truncate">{displayDate}</span>
-                        <button onClick={handleNextDay} className="p-0.5 text-muted-foreground dark:text-white/50 hover:text-white transition-colors">
+                        <button onClick={handleNextDay} className="p-0.5 text-muted-foreground hover:text-foreground dark:hover:text-white transition-colors">
                             <ChevronRight className="h-3.5 w-3.5" />
                         </button>
                     </div>
@@ -814,8 +935,8 @@ export const ExecutiveHome = () => {
                                 onClick={() => setLeaderboardTab(tab.key)}
                                 className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
                                     leaderboardTab === tab.key
-                                        ? 'bg-yellow-500/15 text-yellow-600 dark:text-yellow-400 border border-yellow-500/25'
-                                        : 'text-muted-foreground dark:text-white/35 hover:bg-muted/60'
+                                        ? 'bg-yellow-500/15 text-yellow-700 dark:text-yellow-400 border border-yellow-500/25'
+                                        : 'text-gray-500 dark:text-white/35 hover:bg-gray-100 dark:hover:bg-muted/60'
                                 }`}
                             >
                                 {tab.label}
@@ -829,7 +950,7 @@ export const ExecutiveHome = () => {
                             const data = leaderboard[leaderboardTab];
                             const topVal = data[0]?.[leaderboardTab] || 1;
                             if (data.length === 0) return (
-                                <p className="text-[11px] text-muted-foreground dark:text-white/25 text-center py-4">No data yet for this month</p>
+                                <p className="text-[11px] text-gray-400 dark:text-white/25 text-center py-4">No data yet for this month</p>
                             );
 
                             const top3 = data.slice(0, 3);
@@ -842,8 +963,48 @@ export const ExecutiveHome = () => {
                                 const val = exec[leaderboardTab];
                                 const barPct = topVal > 0 ? Math.max(4, Math.round((val / topVal) * 100)) : 4;
                                 const medalEmoji = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : null;
-                                const rankColor = idx === 0 ? 'text-yellow-400' : idx === 1 ? 'text-slate-400' : idx === 2 ? 'text-amber-600' : 'text-muted-foreground dark:text-white/40';
-                                const barColor = idx === 0 ? 'bg-yellow-400' : isMe ? 'bg-red-400' : 'bg-muted-foreground/30 dark:bg-white/10';
+
+                                // ── Row background + border (works on white card bg)
+                                const rowBg = isMe
+                                    ? 'bg-red-50 dark:bg-red-500/10 border-red-300 dark:border-red-500/25 hover:bg-red-100 dark:hover:bg-red-500/15'
+                                    : idx === 0
+                                        ? 'bg-yellow-50 dark:bg-yellow-500/10 border-yellow-300 dark:border-yellow-500/20 hover:bg-yellow-100 dark:hover:bg-yellow-500/15'
+                                        : idx === 1
+                                            ? 'bg-slate-100 dark:bg-slate-500/10 border-slate-300 dark:border-slate-400/15 hover:bg-slate-200 dark:hover:bg-slate-500/15'
+                                            : idx === 2
+                                                ? 'bg-orange-50 dark:bg-amber-600/10 border-orange-200 dark:border-amber-500/15 hover:bg-orange-100 dark:hover:bg-amber-600/15'
+                                                : 'bg-gray-50 dark:bg-white/[0.025] border-gray-200 dark:border-white/[0.06] hover:bg-gray-100 dark:hover:bg-white/[0.04]';
+
+                                // ── Name color: dark in light mode, light in dark mode
+                                const nameColor = isMe
+                                    ? 'text-red-700 dark:text-red-300'
+                                    : idx === 0
+                                        ? 'text-yellow-700 dark:text-yellow-300'
+                                        : idx === 1
+                                            ? 'text-slate-700 dark:text-slate-200'
+                                            : idx === 2
+                                                ? 'text-amber-700 dark:text-amber-300'
+                                                : 'text-gray-700 dark:text-white/85';
+
+                                // ── Value color
+                                const valColor = isMe
+                                    ? 'text-red-600 dark:text-red-400'
+                                    : idx === 0
+                                        ? 'text-yellow-600 dark:text-yellow-300'
+                                        : idx === 1
+                                            ? 'text-slate-600 dark:text-slate-300'
+                                            : idx === 2
+                                                ? 'text-amber-600 dark:text-amber-400'
+                                                : 'text-gray-600 dark:text-white/80';
+
+                                // ── Rank number color (non-medal ranks)
+                                const rankNumColor = isMe
+                                    ? 'text-red-500 dark:text-red-400'
+                                    : 'text-gray-400 dark:text-white/50';
+
+                                // ── Bar color
+                                const barColor = idx === 0 ? 'bg-yellow-500' : idx === 1 ? 'bg-slate-400' : idx === 2 ? 'bg-amber-500' : isMe ? 'bg-red-500' : 'bg-gray-400 dark:bg-white/20';
+
                                 return (
                                     <div
                                         key={exec.user_id}
@@ -858,37 +1019,27 @@ export const ExecutiveHome = () => {
                                             isMe,
                                             leaderValue: topVal,
                                         })}
-                                        className={`rounded-xl px-3 py-2.5 cursor-pointer transition-all border ${
-                                            isMe
-                                                ? 'bg-red-500/8 border-red-500/20 hover:bg-red-500/12'
-                                                : idx === 0
-                                                    ? 'bg-yellow-500/8 border-yellow-500/15 hover:bg-yellow-500/12'
-                                                    : 'bg-muted/30 dark:bg-white/[0.025] border-border dark:border-white/5 hover:bg-muted/50'
-                                        }`}
+                                        className={`rounded-xl px-3 py-2.5 cursor-pointer transition-all border ${rowBg}`}
                                     >
                                         <div className="flex items-center justify-between mb-1.5">
                                             <div className="flex items-center gap-2">
                                                 {medalEmoji ? (
                                                     <span className="text-base leading-none w-5">{medalEmoji}</span>
                                                 ) : (
-                                                    <span className={`text-[11px] font-bold w-5 text-center ${rankColor}`}>#{idx + 1}</span>
+                                                    <span className={`text-[11px] font-bold w-5 text-center ${rankNumColor}`}>#{idx + 1}</span>
                                                 )}
-                                                <span className={`text-[12px] font-bold truncate max-w-[120px] ${
-                                                    idx === 0 ? 'text-foreground' : isMe ? 'text-red-400' : 'text-foreground/70 dark:text-white/60'
-                                                }`}>
-                                                    {exec.full_name?.split(' ')[0]}
+                                                <span className={`text-[13px] font-bold truncate max-w-[130px] ${nameColor}`}>
+                                                    {exec.full_name || 'Executive'}
                                                 </span>
                                                 {isMe && (
-                                                    <span className="text-[8px] font-bold bg-red-500/15 text-red-400 border border-red-500/25 px-1.5 py-0.5 rounded-full">YOU</span>
+                                                    <span className="text-[8px] font-bold bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-400/30 px-1.5 py-0.5 rounded-full">YOU</span>
                                                 )}
                                             </div>
-                                            <span className={`text-sm font-extrabold font-mono tabular-nums ${
-                                                idx === 0 ? 'text-yellow-400' : isMe ? 'text-red-400' : 'text-foreground/60 dark:text-white/40'
-                                            }`}>
+                                            <span className={`text-sm font-extrabold font-mono tabular-nums ${valColor}`}>
                                                 {val}
                                             </span>
                                         </div>
-                                        <div className="h-1 rounded-full bg-black/10 dark:bg-white/5 overflow-hidden">
+                                        <div className="h-1.5 rounded-full bg-gray-200 dark:bg-white/5 overflow-hidden">
                                             <motion.div
                                                 initial={{ width: 0 }}
                                                 animate={{ width: `${barPct}%` }}
@@ -900,6 +1051,7 @@ export const ExecutiveHome = () => {
                                 );
                             };
 
+
                             return (
                                 <>
                                     {/* Top 3 */}
@@ -910,9 +1062,9 @@ export const ExecutiveHome = () => {
                                         <>
                                             {/* Dotted separator with "your position" label */}
                                             <div className="flex items-center gap-2 py-1 px-1">
-                                                <div className="flex-1 border-t border-dashed border-border dark:border-white/10" />
-                                                <span className="text-[9px] font-bold text-muted-foreground dark:text-white/25 uppercase tracking-widest whitespace-nowrap">Your Position</span>
-                                                <div className="flex-1 border-t border-dashed border-border dark:border-white/10" />
+                                            <div className="flex-1 border-t border-dashed border-gray-300 dark:border-white/10" />
+                                                <span className="text-[9px] font-bold text-gray-400 dark:text-white/25 uppercase tracking-widest whitespace-nowrap">Your Position</span>
+                                            <div className="flex-1 border-t border-dashed border-gray-300 dark:border-white/10" />
                                             </div>
                                             {renderRow(myEntry, myRankIdx)}
                                         </>
@@ -1089,27 +1241,46 @@ export const ExecutiveHome = () => {
                             <div className="space-y-2">
                                 {pendingPartners.slice(0, 5).map(p => {
                                     const isNeverVisited = p.daysSince === null;
-                                    const isUrgent = p.daysSince !== null && p.daysSince >= 10;
-                                    const dotColor = isNeverVisited || isUrgent ? "bg-red-500" : "bg-amber-400";
-                                    const textColor = isNeverVisited || isUrgent ? "text-red-500" : "text-amber-500";
+                                    const days = p.daysSince ?? 999;
+                                    // Heat-map coloring: green(<7) → amber(7-10) → orange(10-14) → red(14+)
+                                    const urgencyTier = isNeverVisited
+                                        ? 4
+                                        : days >= 14 ? 4 : days >= 10 ? 3 : days >= 7 ? 2 : 1;
+                                    const dotColor = urgencyTier === 4 ? 'bg-red-500' : urgencyTier === 3 ? 'bg-orange-500' : urgencyTier === 2 ? 'bg-amber-500' : 'bg-emerald-500';
+                                    const textColor = urgencyTier === 4 ? 'text-red-600 dark:text-red-400' : urgencyTier === 3 ? 'text-orange-600 dark:text-orange-400' : urgencyTier === 2 ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400';
+                                    const rowBg = urgencyTier === 4
+                                        ? 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 hover:bg-red-100 dark:hover:bg-red-500/15'
+                                        : urgencyTier === 3
+                                            ? 'bg-orange-50 dark:bg-orange-500/10 border-orange-200 dark:border-orange-500/20 hover:bg-orange-100 dark:hover:bg-orange-500/15'
+                                            : urgencyTier === 2
+                                                ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-200 dark:border-amber-500/20 hover:bg-amber-100 dark:hover:bg-amber-500/15'
+                                                : 'bg-muted/40 border-border hover:bg-muted/60';
+                                    const urgencyLabel = isNeverVisited
+                                        ? 'Never visited'
+                                        : days >= 14
+                                            ? `${days}d — CRITICAL`
+                                            : days >= 10
+                                                ? `${days}d — Overdue`
+                                                : `${days}d ago`;
                                     return (
                                         <div
                                             key={p.id}
-                                            className="flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-muted/40 border border-border hover:bg-muted/60 hover:border-amber-500/30 transition-colors cursor-pointer"
+                                            className={`flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl border transition-colors cursor-pointer ${rowBg}`}
                                             onClick={() => navigate(`/visits?partner_id=${p.id}&visit_with_type=partner`)}
                                             title={`Plan visit with ${p.name}`}
                                         >
                                             <div className="flex items-center gap-2.5 min-w-0">
-                                                <div className={`w-2 h-2 rounded-full shrink-0 ${dotColor} ${isNeverVisited || isUrgent ? "animate-pulse" : ""}`} />
+                                                <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${dotColor} ${urgencyTier >= 3 ? 'animate-pulse' : ''}`} />
                                                 <div className="min-w-0">
-                                                    <p className="text-sm font-semibold truncate leading-tight">{p.name}</p>
-                                                    <p className="text-[10px] text-muted-foreground capitalize">{p.type}{p.city ? ` · ${p.city}` : ""}</p>
+                                                    <p className="text-sm font-semibold truncate leading-tight text-gray-800 dark:text-foreground">{p.name}</p>
+                                                    <p className="text-[10px] text-muted-foreground capitalize">{p.type}{p.city ? ` · ${p.city}` : ''}</p>
                                                 </div>
                                             </div>
                                             <div className="text-right shrink-0">
-                                                <p className={`text-[11px] font-bold ${textColor}`}>
-                                                    {isNeverVisited ? "Never visited" : `${p.daysSince}d ago`}
-                                                </p>
+                                                <p className={`text-[11px] font-bold ${textColor}`}>{urgencyLabel}</p>
+                                                {urgencyTier >= 3 && (
+                                                    <p className="text-[9px] text-gray-400 dark:text-white/30 mt-0.5">Tap to plan visit</p>
+                                                )}
                                             </div>
                                         </div>
                                     );
@@ -1213,6 +1384,107 @@ export const ExecutiveHome = () => {
                         </div>
                     )}
                 </motion.div>
+
+                {/* ── SMART ACTION CENTER ── */}
+                {smartAlerts.length > 0 && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: 0.22 }}
+                        className="bg-white dark:bg-white/[0.03] shadow-sm dark:shadow-none border border-border dark:border-white/5 rounded-2xl overflow-hidden"
+                    >
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border dark:border-white/5">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-red-500/20 to-orange-500/10 border border-red-500/20 flex items-center justify-center">
+                                    <AlertTriangle className="h-4 w-4 text-red-500" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-foreground leading-none">Action Required</h3>
+                                    <p className="text-[9px] text-muted-foreground dark:text-white/30 font-medium mt-0.5">
+                                        {smartAlerts.length} item{smartAlerts.length > 1 ? 's' : ''} need your attention
+                                    </p>
+                                </div>
+                            </div>
+                            <span className="min-w-[22px] h-[22px] bg-red-500 rounded-full flex items-center justify-center">
+                                <span className="text-[10px] font-extrabold text-white">{smartAlerts.length}</span>
+                            </span>
+                        </div>
+
+                        {/* Alert rows */}
+                        <div className="divide-y divide-border dark:divide-white/5">
+                            {smartAlerts.map((alert, idx) => {
+                                const cfg = {
+                                    critical: {
+                                        leftBar: 'bg-red-500',
+                                        rowBg: 'bg-red-500/[0.04]',
+                                        badge: 'bg-red-500/15 text-red-500 border-red-500/25',
+                                        badgeLabel: 'URGENT',
+                                        btn: 'bg-red-500/10 text-red-500 border-red-500/20 hover:bg-red-500/20',
+                                    },
+                                    warning: {
+                                        leftBar: 'bg-amber-400',
+                                        rowBg: 'bg-amber-500/[0.03]',
+                                        badge: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25',
+                                        badgeLabel: 'ACTION',
+                                        btn: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 hover:bg-amber-500/20',
+                                    },
+                                    info: {
+                                        leftBar: 'bg-blue-400',
+                                        rowBg: 'bg-blue-500/[0.03]',
+                                        badge: 'bg-blue-500/15 text-blue-500 border-blue-500/25',
+                                        badgeLabel: 'INFO',
+                                        btn: 'bg-blue-500/10 text-blue-500 border-blue-500/20 hover:bg-blue-500/20',
+                                    },
+                                }[alert.priority];
+
+                                return (
+                                    <motion.div
+                                        key={alert.id}
+                                        initial={{ opacity: 0, x: -6 }}
+                                        animate={{ opacity: 1, x: 0 }}
+                                        transition={{ delay: 0.24 + idx * 0.06 }}
+                                        className={`relative flex items-start gap-3 px-4 py-3.5 ${cfg.rowBg}`}
+                                    >
+                                        {/* Left accent bar */}
+                                        <div className={`absolute left-0 top-0 bottom-0 w-[3px] ${cfg.leftBar} rounded-r-sm`} />
+
+                                        {/* Emoji */}
+                                        <span className="text-xl leading-none shrink-0 mt-0.5 ml-1">{alert.emoji}</span>
+
+                                        {/* Content */}
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                                                <p className="text-[12px] font-bold text-foreground leading-tight">{alert.title}</p>
+                                                <span className={`text-[8px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${cfg.badge} shrink-0`}>
+                                                    {cfg.badgeLabel}
+                                                </span>
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground dark:text-white/40 leading-snug">{alert.desc}</p>
+                                            {alert.route && (
+                                                <button
+                                                    onClick={() => navigate(alert.route)}
+                                                    className={`mt-2 text-[10px] font-bold px-3 py-1 rounded-lg border transition-colors ${cfg.btn} inline-flex items-center gap-1`}
+                                                >
+                                                    {alert.action} <ChevronRightIcon className="h-2.5 w-2.5" />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {/* Count */}
+                                        {alert.count !== undefined && (
+                                            <div className="shrink-0 self-center">
+                                                <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full text-sm font-extrabold font-mono border ${cfg.badge}`}>
+                                                    {alert.count}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </motion.div>
+                                );
+                            })}
+                        </div>
+                    </motion.div>
+                )}
 
                 {/* ── TODAY'S VISITS ── */}
                 <motion.div
@@ -1458,56 +1730,64 @@ export const ExecutiveHome = () => {
 
             {/* ── LEADERBOARD POPUP ── */}
             <Dialog open={!!leadPopup} onOpenChange={(open) => !open && setLeadPopup(null)}>
-                <DialogContent className="bg-[#0D0F16] border border-white/8 text-foreground max-w-sm w-[95vw] rounded-2xl p-0 overflow-hidden outline-none">
-                    {/* Top banner with rank */}
-                    <div className={`relative px-5 pt-5 pb-4 ${
+                <DialogContent className="bg-[#131620] border border-white/10 text-white max-w-sm w-[95vw] rounded-2xl p-0 overflow-hidden outline-none">
+
+                    {/* ── TOP BANNER ── */}
+                    <div className={`relative px-5 pt-5 pb-5 ${
                         leadPopup?.rank === 1
-                            ? 'bg-gradient-to-br from-yellow-900/40 to-yellow-900/10'
+                            ? 'bg-gradient-to-br from-yellow-800/50 via-yellow-900/30 to-transparent'
                             : leadPopup?.rank === 2
-                                ? 'bg-gradient-to-br from-slate-700/30 to-slate-800/10'
+                                ? 'bg-gradient-to-br from-slate-600/40 via-slate-700/20 to-transparent'
                                 : leadPopup?.rank === 3
-                                    ? 'bg-gradient-to-br from-amber-900/30 to-amber-900/10'
+                                    ? 'bg-gradient-to-br from-amber-800/40 via-amber-900/20 to-transparent'
                                     : leadPopup?.isMe
-                                        ? 'bg-gradient-to-br from-red-900/25 to-red-900/5'
-                                        : 'bg-white/[0.02]'
-                    }`}>
-                        <div className="flex items-center gap-3">
+                                        ? 'bg-gradient-to-br from-red-800/35 via-red-900/15 to-transparent'
+                                        : 'bg-white/[0.03]'
+                    } border-b border-white/10`}>
+                        <div className="flex items-center gap-4">
                             {/* Avatar */}
-                            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-lg font-extrabold border ${
-                                leadPopup?.rank === 1 ? 'bg-yellow-500/20 border-yellow-500/30 text-yellow-400'
-                                : leadPopup?.rank === 2 ? 'bg-slate-500/20 border-slate-500/30 text-slate-300'
-                                : leadPopup?.rank === 3 ? 'bg-amber-700/20 border-amber-700/30 text-amber-500'
-                                : leadPopup?.isMe ? 'bg-red-500/15 border-red-500/25 text-red-400'
-                                : 'bg-white/5 border-white/10 text-white/50'
+                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black border-2 shrink-0 ${
+                                leadPopup?.rank === 1 ? 'bg-yellow-500/25 border-yellow-400/50 text-yellow-300'
+                                : leadPopup?.rank === 2 ? 'bg-slate-400/20 border-slate-300/40 text-slate-200'
+                                : leadPopup?.rank === 3 ? 'bg-amber-600/25 border-amber-500/40 text-amber-300'
+                                : leadPopup?.isMe ? 'bg-red-500/20 border-red-400/40 text-red-300'
+                                : 'bg-white/10 border-white/15 text-white/80'
                             }`}>
                                 {leadPopup?.name.charAt(0).toUpperCase()}
                             </div>
-                            {/* Name & rank */}
+
+                            {/* Name & subtitle */}
                             <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                    <h2 className="text-base font-extrabold text-foreground truncate">{leadPopup?.name}</h2>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <h2 className={`text-lg font-black leading-tight truncate ${
+                                        leadPopup?.rank === 1 ? 'text-yellow-200'
+                                        : leadPopup?.rank === 2 ? 'text-slate-100'
+                                        : leadPopup?.rank === 3 ? 'text-amber-200'
+                                        : leadPopup?.isMe ? 'text-red-200'
+                                        : 'text-white'
+                                    }`}>{leadPopup?.name}</h2>
                                     {leadPopup?.isMe && (
-                                        <span className="shrink-0 text-[8px] font-bold bg-red-500/15 text-red-400 border border-red-500/20 px-1.5 py-0.5 rounded-full">YOU</span>
+                                        <span className="shrink-0 text-[9px] font-black bg-red-500/30 text-red-200 border border-red-400/40 px-2 py-0.5 rounded-full">YOU</span>
                                     )}
                                 </div>
-                                <p className="text-[10px] text-muted-foreground dark:text-white/35 font-medium mt-0.5">{leadPopup?.rankingLogic}</p>
+                                <p className="text-[11px] text-white/60 font-semibold mt-1">{leadPopup?.rankingLogic}</p>
                             </div>
-                            {/* Big rank badge */}
-                            <div className="text-right shrink-0">
-                                <div className={`text-3xl font-black leading-none ${
-                                    leadPopup?.rank === 1 ? 'text-yellow-400'
-                                    : leadPopup?.rank === 2 ? 'text-slate-400'
-                                    : leadPopup?.rank === 3 ? 'text-amber-600'
-                                    : 'text-foreground/40'
-                                }`}>
-                                    {leadPopup?.rank === 1 ? '🥇' : leadPopup?.rank === 2 ? '🥈' : leadPopup?.rank === 3 ? '🥉' : `#${leadPopup?.rank}`}
+
+                            {/* Rank badge */}
+                            <div className="text-center shrink-0">
+                                <div className="text-3xl font-black leading-none">
+                                    {leadPopup?.rank === 1 ? '🥇' : leadPopup?.rank === 2 ? '🥈' : leadPopup?.rank === 3 ? '🥉' : (
+                                        <span className={`text-2xl font-black ${leadPopup?.isMe ? 'text-red-300' : 'text-white/80'}`}>
+                                            #{leadPopup?.rank}
+                                        </span>
+                                    )}
                                 </div>
-                                <p className="text-[9px] text-muted-foreground dark:text-white/25 font-semibold uppercase tracking-wider mt-0.5">Rank</p>
+                                <p className="text-[9px] text-white/50 font-bold uppercase tracking-widest mt-1">RANK</p>
                             </div>
                         </div>
                     </div>
 
-                    {/* Stats */}
+                    {/* ── STATS ── */}
                     <div className="px-4 py-4 space-y-3">
                         {([
                             {
@@ -1516,8 +1796,11 @@ export const ExecutiveHome = () => {
                                 value: leadPopup?.visits ?? 0,
                                 leaderVal: leadPopup?.activeCategory === 'visits' ? leadPopup.leaderValue : (leaderboard.visits[0]?.visits ?? 1),
                                 highlight: leadPopup?.activeCategory === 'visits',
-                                color: 'text-blue-400',
+                                color: 'text-blue-300',
                                 barColor: 'bg-blue-400',
+                                trackColor: 'bg-blue-400/20',
+                                cardBg: 'bg-blue-500/10 border-blue-400/20',
+                                dimCardBg: 'bg-white/[0.03] border-white/10',
                             },
                             {
                                 label: 'WOS Added',
@@ -1525,8 +1808,11 @@ export const ExecutiveHome = () => {
                                 value: leadPopup?.wosCount ?? 0,
                                 leaderVal: leadPopup?.activeCategory === 'wosCount' ? leadPopup.leaderValue : (leaderboard.wosCount[0]?.wosCount ?? 1),
                                 highlight: leadPopup?.activeCategory === 'wosCount',
-                                color: 'text-orange-400',
+                                color: 'text-orange-300',
                                 barColor: 'bg-orange-400',
+                                trackColor: 'bg-orange-400/20',
+                                cardBg: 'bg-orange-500/10 border-orange-400/20',
+                                dimCardBg: 'bg-white/[0.03] border-white/10',
                             },
                             {
                                 label: 'WOS Won',
@@ -1534,45 +1820,52 @@ export const ExecutiveHome = () => {
                                 value: leadPopup?.wosWon ?? 0,
                                 leaderVal: leadPopup?.activeCategory === 'wosWon' ? leadPopup.leaderValue : (leaderboard.wosWon[0]?.wosWon ?? 1),
                                 highlight: leadPopup?.activeCategory === 'wosWon',
-                                color: 'text-emerald-400',
+                                color: 'text-emerald-300',
                                 barColor: 'bg-emerald-400',
+                                trackColor: 'bg-emerald-400/20',
+                                cardBg: 'bg-emerald-500/10 border-emerald-400/20',
+                                dimCardBg: 'bg-white/[0.03] border-white/10',
                             },
-                        ] as const).map(({ label, icon, value, leaderVal, highlight, color, barColor }) => {
+                        ]).map(({ label, icon, value, leaderVal, highlight, color, barColor, trackColor, cardBg, dimCardBg }) => {
                             const safeLeader = Math.max(leaderVal, 1);
                             const barPct = Math.max(4, Math.round((value / safeLeader) * 100));
                             const gap = safeLeader - value;
                             return (
-                                <div key={label} className={`rounded-xl p-3.5 border ${
-                                    highlight ? 'bg-white/[0.04] border-white/10' : 'bg-white/[0.02] border-white/5'
-                                }`}>
-                                    <div className="flex items-center justify-between mb-2">
-                                        <div className="flex items-center gap-1.5">
-                                            <span className="text-sm">{icon}</span>
-                                            <span className={`text-[11px] font-bold uppercase tracking-wider ${
-                                                highlight ? color : 'text-muted-foreground dark:text-white/40'
+                                <div key={label} className={`rounded-2xl p-4 border ${highlight ? cardBg : dimCardBg}`}>
+                                    {/* Label row */}
+                                    <div className="flex items-center justify-between mb-3">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-base leading-none">{icon}</span>
+                                            <span className={`text-[12px] font-extrabold uppercase tracking-wider ${
+                                                highlight ? color : 'text-white/75'
                                             }`}>{label}</span>
-                                            {highlight && <span className="text-[8px] font-bold bg-yellow-500/15 text-yellow-500 border border-yellow-500/20 px-1.5 py-0.5 rounded-full">ACTIVE CAT</span>}
+                                            {highlight && (
+                                                <span className="text-[8px] font-black bg-yellow-400/20 text-yellow-300 border border-yellow-400/30 px-1.5 py-0.5 rounded-full">ACTIVE</span>
+                                            )}
                                         </div>
-                                        <span className={`text-xl font-extrabold font-mono ${
-                                            highlight ? color : 'text-foreground/70 dark:text-white/60'
+                                        {/* Value — always bold & visible */}
+                                        <span className={`text-2xl font-black font-mono tabular-nums ${
+                                            highlight ? color : 'text-white/90'
                                         }`}>{value}</span>
                                     </div>
-                                    {/* Bar */}
-                                    <div className="h-1.5 rounded-full bg-white/5 overflow-hidden mb-1.5">
+
+                                    {/* Progress bar */}
+                                    <div className={`h-2 rounded-full overflow-hidden mb-2 ${highlight ? trackColor : 'bg-white/10'}`}>
                                         <motion.div
                                             initial={{ width: 0 }}
                                             animate={{ width: `${barPct}%` }}
                                             transition={{ duration: 0.9, ease: 'easeOut' }}
-                                            className={`h-full rounded-full ${highlight ? barColor : 'bg-white/15'}`}
+                                            className={`h-full rounded-full ${highlight ? barColor : 'bg-white/30'}`}
                                         />
                                     </div>
-                                    {/* Gap to leader */}
+
+                                    {/* Gap / leader text */}
                                     {gap > 0 ? (
-                                        <p className="text-[9px] text-muted-foreground dark:text-white/25 font-medium">
+                                        <p className="text-[10px] text-white/60 font-semibold">
                                             {gap} behind leader · {barPct}% of top
                                         </p>
                                     ) : (
-                                        <p className="text-[9px] text-yellow-500/70 font-bold">🏅 Leading this category!</p>
+                                        <p className="text-[10px] text-yellow-300 font-bold">🏅 Leading this category!</p>
                                     )}
                                 </div>
                             );
@@ -1582,6 +1875,7 @@ export const ExecutiveHome = () => {
             </Dialog>
 
             {/* ── ADD WOS DIALOG ── */}
+
             <Dialog open={!!wosDialogVisit} onOpenChange={(o) => { if (!o) setWosDialogVisit(null); }}>
                 <DialogContent className="max-w-sm mx-4">
                     <DialogHeader>

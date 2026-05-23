@@ -42,34 +42,108 @@ interface ClientFormProps {
 }
 
 const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partners }: ClientFormProps) => (
-  <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="space-y-3">
+  <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="space-y-4 pt-1">
+
+    {/* ── Mandatory Fields ── */}
     <div className="grid grid-cols-2 gap-3">
-      <div className="space-y-1"><Label>Name</Label><Input value={values.name} onChange={(e) => onChange({ ...values, name: e.target.value })} required /></div>
-      <div className="space-y-1"><Label>Mobile</Label><Input value={values.mobile} onChange={(e) => onChange({ ...values, mobile: e.target.value })} required /></div>
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-foreground flex items-center gap-1">
+          Name <span className="text-red-500">*</span>
+        </Label>
+        <Input
+          placeholder="Client name"
+          value={values.name}
+          onChange={(e) => onChange({ ...values, name: e.target.value })}
+          required
+          className="h-9 text-sm"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-foreground flex items-center gap-1">
+          Mobile <span className="text-red-500">*</span>
+        </Label>
+        <Input
+          placeholder="Phone number"
+          value={values.mobile}
+          onChange={(e) => onChange({ ...values, mobile: e.target.value })}
+          required
+          className="h-9 text-sm"
+          type="tel"
+        />
+      </div>
     </div>
-    <div className="space-y-1"><Label>Address</Label><Input value={values.address} onChange={(e) => onChange({ ...values, address: e.target.value })} /></div>
-    <div className="space-y-1"><Label>City</Label><Input value={values.city} onChange={(e) => onChange({ ...values, city: e.target.value })} /></div>
-    <div className="space-y-1">
-      <Label>Lead Source (Partner)</Label>
+
+    <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-foreground">Address <span className="text-[10px] text-muted-foreground font-normal">(optional)</span></Label>
+        <Input placeholder="Street / area" value={values.address} onChange={(e) => onChange({ ...values, address: e.target.value })} className="h-9 text-sm" />
+      </div>
+      <div className="space-y-1.5">
+        <Label className="text-xs font-semibold text-foreground">City <span className="text-[10px] text-muted-foreground font-normal">(optional)</span></Label>
+        <Input placeholder="City" value={values.city} onChange={(e) => onChange({ ...values, city: e.target.value })} className="h-9 text-sm" />
+      </div>
+    </div>
+
+    {/* ── Status selector — pill buttons ── */}
+    <div className="space-y-2">
+      <Label className="text-xs font-semibold text-foreground flex items-center gap-1">
+        Status <span className="text-red-500">*</span>
+      </Label>
+      <div className="grid grid-cols-4 gap-1.5">
+        {([
+          { value: 'new',       label: 'New',       active: 'bg-blue-600 text-white border-blue-600',       idle: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30' },
+          { value: 'hot',       label: 'Hot 🔥',    active: 'bg-orange-500 text-white border-orange-500',     idle: 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-500/10 dark:text-orange-300 dark:border-orange-500/30' },
+          { value: 'converted', label: 'Won ✅',    active: 'bg-emerald-600 text-white border-emerald-600',  idle: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30' },
+          { value: 'lost',      label: 'Lost',      active: 'bg-red-600 text-white border-red-600',          idle: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-500/10 dark:text-red-300 dark:border-red-500/30' },
+        ] as const).map(opt => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange({ ...values, status: opt.value as ClientStatus })}
+            className={`py-1.5 rounded-lg border text-[11px] font-bold transition-all ${values.status === opt.value ? opt.active : opt.idle}`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </div>
+
+    {/* ── Lead Source ── */}
+    <div className="space-y-1.5">
+      <Label className="text-xs font-semibold text-foreground">Lead Source / Partner <span className="text-[10px] text-muted-foreground font-normal">(optional)</span></Label>
       <Select value={values.partner_id} onValueChange={(v) => onChange({ ...values, partner_id: v })}>
-        <SelectTrigger><SelectValue placeholder="Select partner..." /></SelectTrigger>
-        <SelectContent className="bg-popover">{partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} ({p.type})</SelectItem>)}</SelectContent>
-      </Select>
-    </div>
-    <div className="space-y-1">
-      <Label>Status</Label>
-      <Select value={values.status} onValueChange={(v) => onChange({ ...values, status: v as ClientStatus })}>
-        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectTrigger className="h-9 text-sm text-foreground">
+          <SelectValue placeholder="Select partner..." />
+        </SelectTrigger>
         <SelectContent className="bg-popover">
-          <SelectItem value="new">New</SelectItem><SelectItem value="hot">Hot</SelectItem>
-          <SelectItem value="converted">Converted</SelectItem><SelectItem value="lost">Lost</SelectItem>
+          <SelectItem value="none">— None —</SelectItem>
+          {partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} ({p.type})</SelectItem>)}
         </SelectContent>
       </Select>
     </div>
-    <div className="space-y-1"><Label>Notes</Label><Textarea value={values.notes} onChange={(e) => onChange({ ...values, notes: e.target.value })} /></div>
-    <Button type="submit" className="w-full" disabled={isPending}>{isPending ? "Saving..." : submitLabel}</Button>
+
+    {/* ── Notes ── */}
+    <div className="space-y-1.5">
+      <Label className="text-xs font-semibold text-foreground">
+        Notes <span className="text-[10px] text-muted-foreground font-normal">(optional)</span>
+      </Label>
+      <Textarea
+        placeholder="Any additional notes about this client..."
+        value={values.notes}
+        onChange={(e) => onChange({ ...values, notes: e.target.value })}
+        className="text-sm resize-none min-h-[72px]"
+      />
+    </div>
+
+    <div className="pt-1">
+      <p className="text-[10px] text-muted-foreground mb-2"><span className="text-red-500">*</span> Required fields</p>
+      <Button type="submit" className="w-full h-10 font-bold" disabled={isPending}>
+        {isPending ? "Saving..." : submitLabel}
+      </Button>
+    </div>
   </form>
 );
+
 
 const Clients = () => {
   const { user } = useAuth();
@@ -101,21 +175,37 @@ const Clients = () => {
     },
   });
 
-  const { data: workScopeCounts = {} } = useQuery({
-    queryKey: ["work-scope-counts"],
+  const { data: workScopeByClient = {} } = useQuery({
+    queryKey: ["work-scope-items-with-names"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("work_scope_items").select("client_id");
+      const { data, error } = await supabase
+        .from("work_scope_items")
+        .select("client_id, work_status, master_work_types(type_of_work, sub_work)");
       if (error) throw error;
-      const counts: Record<string, number> = {};
-      data.forEach((item) => { counts[item.client_id] = (counts[item.client_id] || 0) + 1; });
-      return counts;
+      // Group by client_id: { [clientId]: [{name, status}] }
+      const grouped: Record<string, { name: string; status: string }[]> = {};
+      (data || []).forEach((item: any) => {
+        if (!item.client_id) return;
+        const typeName = item.master_work_types?.type_of_work || "Work";
+        const subWork = item.master_work_types?.sub_work;
+        const label = subWork ? `${typeName} – ${subWork}` : typeName;
+        if (!grouped[item.client_id]) grouped[item.client_id] = [];
+        grouped[item.client_id].push({ name: label, status: item.work_status || "pending" });
+      });
+      return grouped;
     },
+  });
+
+  // Keep backward-compat count reference
+  const workScopeCounts: Record<string, number> = {};
+  Object.entries(workScopeByClient).forEach(([cid, items]) => {
+    workScopeCounts[cid] = items.length;
   });
 
   const createClientMutation = useMutation({
     mutationFn: async () => {
       const insertData: any = { ...form, created_by: user!.id };
-      if (!insertData.partner_id) delete insertData.partner_id;
+      if (!insertData.partner_id || insertData.partner_id === 'none') delete insertData.partner_id;
       const { error } = await supabase.from("clients").insert(insertData);
       if (error) throw error;
     },
@@ -132,7 +222,7 @@ const Clients = () => {
     mutationFn: async () => {
       if (!editClient) return;
       const updateData: any = { ...editForm };
-      if (!updateData.partner_id) updateData.partner_id = null;
+      if (!updateData.partner_id || updateData.partner_id === 'none') updateData.partner_id = null;
       const { error } = await supabase.from("clients").update(updateData).eq("id", editClient.id);
       if (error) throw error;
     },
@@ -220,7 +310,11 @@ const Clients = () => {
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {filtered.map((c) => (
-            <Card key={c.id} className="hover:shadow-md transition-shadow cursor-pointer group relative" onClick={() => setSelectedClient(c.id)}>
+            <Card key={c.id} className={`hover:shadow-md transition-shadow cursor-pointer group relative border-2 ${
+                  !(workScopeCounts as any)[c.id]
+                    ? 'border-red-400 dark:border-red-500/30'
+                    : 'border-border'
+                }`} onClick={() => setSelectedClient(c.id)}>
               {/* Action buttons — visible on hover */}
               <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                 <Button variant="ghost" size="icon" className="h-7 w-7 bg-background/80 hover:bg-muted" onClick={(e) => openEdit(c, e)} title="Edit">
@@ -240,9 +334,53 @@ const Clients = () => {
                   {(c.address || c.city) && <div className="flex items-center gap-1"><MapPin className="h-3 w-3" />{[c.address, c.city].filter(Boolean).join(", ")}</div>}
                   {c.partners && <div className="flex items-center gap-1"><Briefcase className="h-3 w-3" />{c.partners.name}</div>}
                 </div>
-                {(workScopeCounts as any)[c.id] && (
-                  <div className="mt-2 text-xs font-medium text-primary">{(workScopeCounts as any)[c.id]} work scope items</div>
-                )}
+                {/* WOS Tags */}
+                <div className="mt-3">
+                  {(workScopeByClient[c.id] && workScopeByClient[c.id].length > 0) ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {workScopeByClient[c.id].slice(0, 3).map((wos, i) => {
+                        const statusStyle =
+                          wos.status === 'won'
+                            ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-500/25'
+                            : wos.status === 'lost'
+                              ? 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-300 dark:border-red-500/25'
+                              : wos.status === 'hold'
+                                ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-500/25'
+                                : wos.status === 'submitted'
+                                  ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-500/25'
+                                  : 'bg-slate-50 dark:bg-white/[0.04] text-slate-600 dark:text-white/70 border-slate-200 dark:border-white/10';
+                        return (
+                          <span
+                            key={i}
+                            className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border truncate max-w-[140px] ${statusStyle}`}
+                            title={wos.name}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor:
+                                wos.status === 'won' ? '#22c55e'
+                                : wos.status === 'lost' ? '#ef4444'
+                                : wos.status === 'hold' ? '#f59e0b'
+                                : wos.status === 'submitted' ? '#3b82f6'
+                                : '#94a3b8'
+                              }}
+                            />
+                            <span className="truncate">{wos.name}</span>
+                          </span>
+                        );
+                      })}
+                      {workScopeByClient[c.id].length > 3 && (
+                        <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40 border border-gray-200 dark:border-white/10">
+                          +{workScopeByClient[c.id].length - 3} more
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-300 dark:border-red-500/25 animate-pulse">
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+                      No WOS Added
+                    </span>
+                  )}
+                </div>
               </CardContent>
             </Card>
           ))}

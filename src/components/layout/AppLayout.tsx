@@ -19,6 +19,7 @@ const pageTitles: Record<string, string> = {
   "/daily-visits": "Daily Visits",
   "/verification": "Verification",
   "/hierarchy": "Hierarchy",
+  "/my-pipeline": "My Pipeline",
 };
 
 const AppLayoutContent = ({ children }: { children: ReactNode }) => {
@@ -69,7 +70,7 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
             {isMobile && <SidebarTrigger className="-ml-1" />}
 
             {/* Breadcrumb / Page Title - Hidden on pages with rich headers */}
-            {!["/verification", "/hierarchy"].includes(pathname) && (
+            {!["/verification", "/hierarchy", "/my-pipeline"].includes(pathname) && (
               <div className="flex items-center gap-2">
                 {!isMobile && (
                   <span className="text-xs text-muted-foreground hidden md:inline">
@@ -93,7 +94,7 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
         {/* — Main Content — */}
         <div className={cn(
           "flex flex-1 flex-col overflow-y-auto h-full",
-          pathname === "/" ? "p-0 pb-20 md:pb-0 gap-0" : "gap-6 p-4 md:p-6 lg:p-8 pb-20 md:pb-8"
+          pathname === "/" || pathname === "/my-pipeline" ? "p-0 pb-20 md:pb-0 gap-0" : "gap-6 p-4 md:p-6 lg:p-8 pb-20 md:pb-8"
         )}>
           {children}
         </div>

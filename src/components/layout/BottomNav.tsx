@@ -2,7 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import {
   Building2, Users, CalendarCheck, UserCircle,
   LayoutDashboard, BarChart3, ClipboardList,
-  ShieldCheck, GitBranch, Receipt, Handshake, TrendingUp,
+  ShieldCheck, GitBranch, Receipt, Handshake, TrendingUp, Eye,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -88,6 +88,9 @@ const BottomNav = () => {
       ]
     : [
         { to: "/",        label: "Home",     icon: LayoutDashboard },
+        ...(isManagerOrAdmin
+          ? [{ to: "/md-dashboard", label: "Command", icon: Eye }]
+          : []),
         { to: "/partners", label: "Partners", icon: Building2 },
         { to: "/clients",  label: "Clients",  icon: Users },
         { to: "/visits",   label: "Visits",   icon: CalendarCheck },

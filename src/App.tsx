@@ -21,6 +21,7 @@ import Conveyance from "./pages/Conveyance";
 import PartnerVisits from "./pages/PartnerVisits";
 import NotFound from "./pages/NotFound";
 import MyPipeline from "./pages/MyPipeline";
+import MDDashboard from "./pages/MDDashboard";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AnimatePresence } from "framer-motion";
 import PageTransition from "@/components/PageTransition";
@@ -88,6 +89,7 @@ const AnimatedRoutes = () => {
         <Route path="/conveyance" element={<ProtectedRoute><Conveyance /></ProtectedRoute>} />
         <Route path="/partner-visits" element={<ProtectedRoute><PartnerVisits /></ProtectedRoute>} />
         <Route path="/my-pipeline" element={<ProtectedRoute><MyPipeline /></ProtectedRoute>} />
+        <Route path="/md-dashboard" element={<ProtectedRoute><MDDashboard /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AnimatePresence>

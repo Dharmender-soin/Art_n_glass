@@ -221,6 +221,7 @@ const Admin = () => {
           phone: userProfile?.phone,
           role: r.role || "executive",
           showroom_id: r.showroom_id,
+          reports_to: (r as any).reports_to ?? null,
           created_at: r.created_at,
           role_id: r.id
         };
@@ -229,26 +230,27 @@ const Admin = () => {
     enabled: role === "admin",
   });
 
-  // Mutation: Update Role/Showroom
+  // Mutation: Update Role/Showroom/ReportsTo
   const updateUserRole = useMutation({
-    mutationFn: async ({ id, roleId, newRole, showroomId }: { id: string; roleId?: string; newRole?: AppRole; showroomId?: string | null }) => {
-      const updateData: any = {};
-
-      // If user has no role entry yet, we might need to insert, but for now assuming update
-      // Actually, if roleId is missing, we need upsert logic. 
-      // But typically all users have a role if created via our flow.
+    mutationFn: async ({ id, roleId, newRole, showroomId, reportsTo }: {
+      id: string;
+      roleId?: string;
+      newRole?: AppRole;
+      showroomId?: string | null;
+      reportsTo?: string | null;
+    }) => {
+      const updateData: Record<string, unknown> = {};
 
       if (newRole) updateData.role = newRole;
       if (showroomId !== undefined) updateData.showroom_id = showroomId || null;
+      if (reportsTo !== undefined) updateData.reports_to = reportsTo || null;
 
-      // If no existing role entry, verify handling:
       if (!roleId) {
-        // This case might happen if user was created outside app flow.
-        // Upsert based on user_id
         const { error } = await supabase.from("user_roles").upsert({
           user_id: id,
           role: newRole || "executive",
-          showroom_id: showroomId || null
+          showroom_id: showroomId || null,
+          reports_to: reportsTo || null,
         }, { onConflict: "user_id" });
         if (error) throw error;
       } else {
@@ -377,8 +379,10 @@ const Admin = () => {
     md: "bg-primary text-primary-foreground",
     admin: "bg-primary text-primary-foreground",
     manager: "bg-[hsl(var(--status-hot))] text-white",
+    tl: "bg-indigo-600 text-white",
     executive: "bg-[hsl(var(--status-new))] text-white",
     accountant: "bg-teal-600 text-white",
+    backhand_executive: "bg-slate-600 text-white",
   };
 
   return (
@@ -604,9 +608,11 @@ const Admin = () => {
                       <SelectContent className="bg-popover">
                         <SelectItem value="md">MD</SelectItem>
                         <SelectItem value="admin">Admin</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
+                        <SelectItem value="manager">Manager / GM</SelectItem>
+                        <SelectItem value="tl">Team Leader (TL)</SelectItem>
                         <SelectItem value="executive">Executive</SelectItem>
                         <SelectItem value="accountant">Accountant</SelectItem>
+                        <SelectItem value="backhand_executive">Backhand Executive</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -677,9 +683,11 @@ const Admin = () => {
                           <SelectContent className="bg-popover">
                             <SelectItem value="md">MD</SelectItem>
                             <SelectItem value="admin">Admin</SelectItem>
-                            <SelectItem value="manager">Manager</SelectItem>
+                            <SelectItem value="manager">Manager / GM</SelectItem>
+                            <SelectItem value="tl">Team Leader (TL)</SelectItem>
                             <SelectItem value="executive">Executive</SelectItem>
                             <SelectItem value="accountant">Accountant</SelectItem>
+                            <SelectItem value="backhand_executive">Backhand Executive</SelectItem>
                           </SelectContent>
                         </Select>
 
@@ -695,6 +703,41 @@ const Admin = () => {
                             ))}
                           </SelectContent>
                         </Select>
+
+                        {/* Reports To — only for executive (pick TL) or tl (pick Manager) */}
+                        {(u.role === "executive" || u.role === "tl") && (() => {
+                          const supervisorRole = u.role === "executive" ? "tl" : "manager";
+                          const supervisors = (users as any[]).filter(
+                            (su) => su.role === supervisorRole && su.showroom_id === u.showroom_id
+                          );
+                          if (supervisors.length === 0) return null;
+                          return (
+                            <Select
+                              value={u.reports_to || "none"}
+                              onValueChange={(v) =>
+                                updateUserRole.mutate({
+                                  id: u.id,
+                                  roleId: u.role_id,
+                                  reportsTo: v === "none" ? null : v,
+                                })
+                              }
+                            >
+                              <SelectTrigger className="w-[140px] h-8 text-xs bg-indigo-500/10 border-indigo-500/30 text-indigo-400">
+                                <SelectValue placeholder={u.role === "executive" ? "Assign TL…" : "Assign Manager…"} />
+                              </SelectTrigger>
+                              <SelectContent className="bg-popover">
+                                <SelectItem value="none">
+                                  {u.role === "executive" ? "No TL assigned" : "No Manager assigned"}
+                                </SelectItem>
+                                {supervisors.map((su: any) => (
+                                  <SelectItem key={su.id} value={su.id}>
+                                    {su.full_name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          );
+                        })()}
 
                         <Button
                           variant="ghost"

@@ -116,9 +116,10 @@ const AnalyticsDashboard = () => {
   const isMd = role === "md";
   const isAdmin = role === "admin";
   const isManager = role === "manager";
+  const isTL = role === "tl";
   const isExec = role === "executive";
   const canSeeAll = isMd || isAdmin;
-  const canSeeShowroom = isManager || canSeeAll;
+  const canSeeShowroom = isManager || isTL || canSeeAll;
 
   const [selectedShowroom, setSelectedShowroom] = useState<string>("all");
   const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
@@ -447,7 +448,7 @@ const AnalyticsDashboard = () => {
   }
 
   // ── Role Label ───────────────────────────────────
-  const roleLabel = isMd ? "Managing Director" : isAdmin ? "Admin" : isManager ? "Showroom Manager" : "Executive";
+  const roleLabel = isMd ? "Managing Director" : isAdmin ? "Admin" : isManager ? "Showroom Manager" : isTL ? "Team Leader" : role === "accountant" ? "Accountant" : role === "backhand_executive" ? "Backhand Executive" : "Executive";
 
   // ═══════════════════════════════════════════════════
   // ─── RENDER ─────────────────────────────────────

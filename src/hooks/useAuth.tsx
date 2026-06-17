@@ -10,6 +10,7 @@ interface AuthContextType {
   session: Session | null;
   role: AppRole | null;
   showroomId: string | null;
+  reportsTo: string | null;   // TL's user_id (for exec), Manager's user_id (for TL)
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   role: null,
   showroomId: null,
+  reportsTo: null,
   loading: true,
   signOut: async () => {},
 });
@@ -28,15 +30,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [showroomId, setShowroomId] = useState<string | null>(null);
+  const [reportsTo, setReportsTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const rolePriority: Record<AppRole, number> = { md: 4, admin: 3, manager: 2, executive: 1, accountant: 1 };
+  const rolePriority: Record<AppRole, number> = {
+    md: 6,
+    admin: 5,
+    manager: 4,
+    tl: 3,
+    accountant: 2,  // Higher than executive so accountant wins if both exist
+    executive: 1,
+    backhand_executive: 1,
+  };
 
   const fetchRole = async (userId: string) => {
-    const { data, error } = await supabase
+    // Cast to unknown[] to handle reports_to column before DB migration
+    const { data: rawData, error } = await supabase
       .from("user_roles")
       .select("role, showroom_id")
       .eq("user_id", userId);
+
+    type RoleRow = { role: AppRole; showroom_id: string | null; reports_to?: string | null };
+    const data = rawData as RoleRow[] | null;
 
     if (error) {
       console.error("Error fetching role:", error);
@@ -50,6 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       );
       setRole(best.role);
       setShowroomId(best.showroom_id);
+      setReportsTo(best.reports_to ?? null);
     } else {
       // Auto-assign executive role for new users
       await supabase.from("user_roles").insert({
@@ -57,6 +73,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: "executive" as AppRole,
       });
       setRole("executive");
+      setReportsTo(null);
     }
   };
 
@@ -88,6 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setRole(null);
           setShowroomId(null);
+          setReportsTo(null);
         }
         setLoading(false);
       }
@@ -111,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, role, showroomId, loading, signOut }}>
+    <AuthContext.Provider value={{ user, session, role, showroomId, reportsTo, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

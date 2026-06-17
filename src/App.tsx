@@ -51,7 +51,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 const AuthRoute = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, role } = useAuth();
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">
@@ -60,7 +60,11 @@ const AuthRoute = () => {
       </div>
     </div>
   );
-  if (user) return <Navigate to="/" replace />;
+  if (user) {
+    // Accountant lands on Conveyance page by default
+    if (role === "accountant") return <Navigate to="/conveyance" replace />;
+    return <Navigate to="/" replace />;
+  }
   return (
     <PageTransition>
       <Auth />
@@ -68,14 +72,27 @@ const AuthRoute = () => {
   );
 };
 
+// Accountant ko / route pe Conveyance dikhao, baaki ko Dashboard
+const RoleBasedHome = () => {
+  const { role } = useAuth();
+  if (role === "accountant") return <Navigate to="/conveyance" replace />;
+  return <Dashboard />;
+};
+
 const AnimatedRoutes = () => {
+
   const location = useLocation();
 
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
         <Route path="/auth" element={<AuthRoute />} />
-        <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/" element={
+          <ProtectedRoute>
+            {/* Accountant defaults to Conveyance page */}
+            <RoleBasedHome />
+          </ProtectedRoute>
+        } />
         <Route path="/partners" element={<ProtectedRoute><Partners /></ProtectedRoute>} />
         <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
         <Route path="/visits" element={<ProtectedRoute><Visits /></ProtectedRoute>} />

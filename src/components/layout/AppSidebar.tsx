@@ -29,6 +29,7 @@ import {
   Map,
   Receipt,
   Handshake,
+  Eye,
 } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
@@ -38,28 +39,45 @@ const AppSidebar = () => {
   const { role, signOut } = useAuth();
   const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
   const isManagerOrAdmin = role === "admin" || role === "manager" || role === "md";
+  const isTL = role === "tl";
   const isAccountant = role === "accountant";
+  const isBackhand = role === "backhand_executive";
+  const isSupportRole = isAccountant || isBackhand;
 
-  const links = isAccountant
+  const links = isSupportRole
     ? [
-        { to: "/conveyance", label: "Conveyance", icon: Receipt },
+        { to: "/daily-visits",  label: "Daily Visits",  icon: ClipboardList },
+        { to: "/reports",       label: "Reports",        icon: BarChart3 },
+        ...(isAccountant
+          ? [{ to: "/conveyance", label: "Conveyance", icon: Receipt }]
+          : []),
         { to: "/profile", label: "Profile", icon: UserCircle },
       ]
     : [
         { to: "/", label: "Dashboard", icon: LayoutDashboard },
+        ...(isManagerOrAdmin
+          ? [{ to: "/md-dashboard", label: "Command Center", icon: Eye }]
+          : []),
         { to: "/partners", label: "Partners", icon: Building2 },
-        { to: "/clients", label: "Clients", icon: Users },
-        { to: "/visits", label: "Visits", icon: CalendarCheck },
+        { to: "/clients",  label: "Clients",  icon: Users },
+        { to: "/visits",   label: "Visits",   icon: CalendarCheck },
         ...(isManagerOrAdmin
           ? [
-            { to: "/reports", label: "Reports", icon: BarChart3 },
-            { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
-            { to: "/verification", label: "Verification", icon: ShieldCheck },
-            { to: "/hierarchy", label: "Hierarchy", icon: GitBranch },
-            { to: "/live-map", label: "Live Map", icon: Map },
-            { to: "/conveyance", label: "Conveyance", icon: Receipt },
-            { to: "/partner-visits", label: "Partner Visits", icon: Handshake },
-          ]
+              { to: "/reports",        label: "Reports",        icon: BarChart3 },
+              { to: "/daily-visits",   label: "Daily Visits",   icon: ClipboardList },
+              { to: "/verification",   label: "Verification",   icon: ShieldCheck },
+              { to: "/hierarchy",      label: "Hierarchy",      icon: GitBranch },
+              { to: "/live-map",       label: "Live Map",       icon: Map },
+              { to: "/conveyance",     label: "Conveyance",     icon: Receipt },
+              { to: "/partner-visits", label: "Partner Visits", icon: Handshake },
+            ]
+          : []),
+        ...(isTL
+          ? [
+              { to: "/reports",      label: "Reports",      icon: BarChart3 },
+              { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
+              { to: "/hierarchy",    label: "My Team",      icon: GitBranch },
+            ]
           : []),
         ...(role === "admin"
           ? [{ to: "/admin", label: "User Management", icon: Shield }]

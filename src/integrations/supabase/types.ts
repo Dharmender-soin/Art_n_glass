@@ -250,6 +250,7 @@ export type Database = {
           id: string
           mobile: string
           name: string
+          showroom_id: string | null
           type: Database["public"]["Enums"]["partner_type"]
           updated_at: string
         }
@@ -262,6 +263,7 @@ export type Database = {
           id?: string
           mobile: string
           name: string
+          showroom_id?: string | null
           type: Database["public"]["Enums"]["partner_type"]
           updated_at?: string
         }
@@ -274,10 +276,19 @@ export type Database = {
           id?: string
           mobile?: string
           name?: string
+          showroom_id?: string | null
           type?: Database["public"]["Enums"]["partner_type"]
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "partners_showroom_id_fkey"
+            columns: ["showroom_id"]
+            isOneToOne: false
+            referencedRelation: "showrooms"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -595,7 +606,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "manager" | "executive" | "md" | "accountant"
+      app_role: "admin" | "manager" | "tl" | "executive" | "md" | "accountant" | "backhand_executive"
       client_status: "new" | "hot" | "converted" | "lost"
       partner_type: "builder" | "architect" | "self"
       visit_status: "planned" | "done" | "cancelled"
@@ -734,7 +745,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "manager", "executive", "md", "accountant"],
+      app_role: ["admin", "manager", "tl", "executive", "md", "accountant", "backhand_executive"],
       client_status: ["new", "hot", "converted", "lost"],
       partner_type: ["builder", "architect", "self"],
       visit_status: ["planned", "done", "cancelled"],

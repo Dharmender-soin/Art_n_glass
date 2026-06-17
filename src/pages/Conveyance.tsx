@@ -90,7 +90,7 @@ const Conveyance = () => {
   const { data: userRoles = [] } = useQuery({
     queryKey: ["conv2-roles", myShowroomId, selectedShowroom, role],
     queryFn: async () => {
-      let q = supabase.from("user_roles").select("user_id, role, showroom_id").eq("role", "executive");
+      let q = supabase.from("user_roles").select("user_id, role, showroom_id").in("role", ["executive", "backhand_executive", "tl"]);
       if (isManager && myShowroomId) q = q.eq("showroom_id", myShowroomId);
       else if (canSeeAll && selectedShowroom !== "all") q = q.eq("showroom_id", selectedShowroom);
       const { data } = await q;
@@ -120,9 +120,10 @@ const Conveyance = () => {
   }, [role, user, selectedExec, execUserIds]);
 
   // ── Conveyance records ────────────────────────────────────────────────────
+  // For accountants: enabled even if targetUserIds is empty — RLS scopes to their showroom
   const { data: rawRecords = [], isLoading } = useQuery({
-    queryKey: ["conv2-records", fromDate, toDate, targetUserIds],
-    enabled: targetUserIds.length > 0 || canSeeAll,
+    queryKey: ["conv2-records", fromDate, toDate, targetUserIds, isManager],
+    enabled: targetUserIds.length > 0 || canSeeAll || isManager,
     queryFn: async () => {
       let q = supabase
         .from("conveyance_records")
@@ -131,11 +132,32 @@ const Conveyance = () => {
         .lte("date", toDate)
         .order("date", { ascending: false })
         .order("created_at", { ascending: true });
+      // Only filter by user_id when we have specific targets; otherwise let RLS handle it
       if (targetUserIds.length > 0) q = q.in("user_id", targetUserIds);
       const { data } = await q;
       return data || [];
     },
   });
+
+  // For accountants whose user_roles query returns empty: fetch names from record user_ids
+  const recordUserIds = useMemo(() => [...new Set(rawRecords.map((r) => r.user_id))], [rawRecords]);
+  const fallbackProfileIds = useMemo(
+    () => (execUserIds.length === 0 && recordUserIds.length > 0 ? recordUserIds : []),
+    [execUserIds, recordUserIds]
+  );
+  const { data: fallbackProfiles = [] } = useQuery({
+    queryKey: ["conv2-profiles-fallback", fallbackProfileIds],
+    enabled: fallbackProfileIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase.from("profiles").select("user_id, full_name").in("user_id", fallbackProfileIds);
+      return data || [];
+    },
+  });
+  // Merge both profile sources into one map
+  const mergedProfileMap = useMemo(() => ({
+    ...Object.fromEntries(profiles.map((p) => [p.user_id, p.full_name])),
+    ...Object.fromEntries(fallbackProfiles.map((p) => [p.user_id, p.full_name])),
+  }), [profiles, fallbackProfiles]);
 
   // ── Client-side filter ────────────────────────────────────────────────────
   const records = useMemo(() => {
@@ -146,13 +168,13 @@ const Conveyance = () => {
     if (search) {
       const s = search.toLowerCase();
       r = r.filter((rec) =>
-        (profileMap[rec.user_id] || "").toLowerCase().includes(s) ||
+        (mergedProfileMap[rec.user_id] || "").toLowerCase().includes(s) ||
         (rec.from_location_name || "").toLowerCase().includes(s) ||
         (rec.to_location_name || "").toLowerCase().includes(s)
       );
     }
     return r;
-  }, [rawRecords, selectedVehicle, search, profileMap]);
+  }, [rawRecords, selectedVehicle, search, mergedProfileMap]);
 
   // ── Summary KPIs ──────────────────────────────────────────────────────────
   const summary = useMemo(() => {
@@ -180,7 +202,7 @@ const Conveyance = () => {
       if (!map.has(r.user_id)) {
         const sid = execShowroomIdMap[r.user_id];
         map.set(r.user_id, {
-          name: profileMap[r.user_id] || "Unknown",
+          name: mergedProfileMap[r.user_id] || "Unknown",
           showroomName: sid ? (showroomMap[sid] || "—") : "—",
           byDate: new Map(),
           totalKm: 0, totalAmt: 0, tripCount: 0,
@@ -205,7 +227,7 @@ const Conveyance = () => {
       if (sortField === "trips") return b.tripCount - a.tripCount;
       return b.totalAmt - a.totalAmt;
     });
-  }, [records, profileMap, execShowroomIdMap, showroomMap, sortField]);
+  }, [records, mergedProfileMap, execShowroomIdMap, showroomMap, sortField]);
 
   // ── Flat table rows ───────────────────────────────────────────────────────
   const tableRows = useMemo(() => {
@@ -214,7 +236,7 @@ const Conveyance = () => {
       return {
         id: r.id,
         date: r.date,
-        execName: profileMap[r.user_id] || "Unknown",
+        execName: mergedProfileMap[r.user_id] || "Unknown",
         showroomName: sid ? (showroomMap[sid] || "—") : "—",
         from: r.from_location_name || "—",
         to: r.to_location_name || (r.visit_id ? "Visit Location" : "End Day"),
@@ -235,7 +257,7 @@ const Conveyance = () => {
       if (f === "amount") return mul * (a.amount - b.amount);
       return 0;
     });
-  }, [records, profileMap, execShowroomIdMap, showroomMap, tableSort]);
+  }, [records, mergedProfileMap, execShowroomIdMap, showroomMap, tableSort]);
 
   // ── CSV Export ────────────────────────────────────────────────────────────
   const exportCSV = () => {

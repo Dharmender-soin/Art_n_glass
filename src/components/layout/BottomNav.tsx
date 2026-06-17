@@ -79,12 +79,19 @@ const BottomNav = () => {
   const { role } = useAuth();
 
   const isManagerOrAdmin = role === "admin" || role === "manager" || role === "md";
+  const isTL = role === "tl";
   const isAccountant = role === "accountant";
+  const isBackhand = role === "backhand_executive";
+  const isSupportRole = isAccountant || isBackhand;
 
-  const links: NavItem[] = isAccountant
+  const links: NavItem[] = isSupportRole
     ? [
-        { to: "/conveyance", label: "Conveyance", icon: Receipt },
-        { to: "/profile",    label: "Profile",    icon: UserCircle },
+        { to: "/daily-visits", label: "Daily",    icon: ClipboardList },
+        { to: "/reports",      label: "Reports",  icon: BarChart3 },
+        ...(isAccountant
+          ? [{ to: "/conveyance", label: "Conveyance", icon: Receipt }]
+          : []),
+        { to: "/profile", label: "Profile", icon: UserCircle },
       ]
     : [
         { to: "/",        label: "Home",     icon: LayoutDashboard },
@@ -103,9 +110,17 @@ const BottomNav = () => {
               { to: "/conveyance",     label: "Conveyance",icon: Receipt },
               { to: "/partner-visits", label: "P.Visits",  icon: Handshake },
             ]
-          : [
-              { to: "/my-pipeline", label: "Pipeline", icon: TrendingUp },
-            ]),
+          : []),
+        ...(isTL
+          ? [
+              { to: "/reports",      label: "Reports",  icon: BarChart3 },
+              { to: "/daily-visits", label: "Daily",    icon: ClipboardList },
+              { to: "/hierarchy",    label: "My Team",  icon: GitBranch },
+            ]
+          : []),
+        ...(!isManagerOrAdmin && !isTL
+          ? [{ to: "/my-pipeline", label: "Pipeline", icon: TrendingUp }]
+          : []),
         { to: "/profile", label: "Profile", icon: UserCircle },
       ];
 

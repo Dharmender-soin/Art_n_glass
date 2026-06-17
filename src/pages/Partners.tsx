@@ -285,7 +285,7 @@ const EmptyState = ({ isFiltered, onAdd }: { isFiltered: boolean; onAdd: () => v
 
 /* ─── Main Component ───────────────────────────────────────── */
 const Partners = () => {
-  const { user } = useAuth();
+  const { user, role, showroomId, reportsTo } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [filterCity, setFilterCity] = useState("");
@@ -300,9 +300,34 @@ const Partners = () => {
   const [clientForm, setClientForm] = useState({ name: "", mobile: "", address: "", city: "", notes: "", status: "new" as const });
 
   const { data: partners = [], isLoading } = useQuery({
-    queryKey: ["partners"],
+    queryKey: ["partners", user?.id, role],
     queryFn: async () => {
-      const { data, error } = await supabase.from("partners").select("*").order("created_at", { ascending: false });
+      let q = supabase.from("partners").select("*").order("created_at", { ascending: false });
+
+      if (role === "executive" && user) {
+        const ids = [user.id, ...(reportsTo ? [reportsTo] : [])];
+        q = q.in("created_by", ids);
+
+      } else if (role === "tl" && user) {
+        const { data: myExecs } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .eq("reports_to", user.id)
+          .eq("role", "executive");
+        const execIds = (myExecs || []).map((r: any) => r.user_id);
+        q = q.in("created_by", [user.id, ...execIds]);
+
+      } else if (role === "manager" && showroomId) {
+        const { data: teamRoles } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .eq("showroom_id", showroomId);
+        const teamIds = (teamRoles || []).map((r: any) => r.user_id);
+        if (teamIds.length > 0) q = q.in("created_by", teamIds);
+      }
+      // MD / Admin: no filter
+
+      const { data, error } = await q;
       if (error) throw error;
       return data;
     },

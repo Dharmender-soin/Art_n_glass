@@ -21,6 +21,7 @@ export function ScheduledNotificationsPanel() {
   const [clickActionPath, setClickActionPath] = useState<string>("/");
   const [scheduledFor, setScheduledFor] = useState("");
   const [saving, setSaving] = useState(false);
+  const [recurrence, setRecurrence] = useState<string>("one_time");
 
   // 1. Fetch Showrooms for dropdown
   const { data: showrooms = [] } = useQuery({
@@ -90,6 +91,7 @@ export function ScheduledNotificationsPanel() {
         target_url: clickActionPath,
         scheduled_for: scheduleDate.toISOString(),
         status: "pending",
+        recurrence: recurrence,
       };
 
       if (targetType === "showroom") {
@@ -108,6 +110,7 @@ export function ScheduledNotificationsPanel() {
       setTitle("");
       setBody("");
       setScheduledFor("");
+      setRecurrence("one_time");
       queryClient.invalidateQueries({ queryKey: ["scheduled-notifications"] });
     },
     onError: (err: any) => {
@@ -271,6 +274,23 @@ export function ScheduledNotificationsPanel() {
               </Select>
             </div>
 
+            {/* Recurrence Selector */}
+            <div className="space-y-2">
+              <Label htmlFor="sched-notif-recurrence">Recurrence</Label>
+              <Select value={recurrence} onValueChange={setRecurrence}>
+                <SelectTrigger id="sched-notif-recurrence">
+                  <SelectValue placeholder="Select frequency..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="one_time">One-time</SelectItem>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="fifteen_days">Every 15 Days</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Date-Time Picker */}
             <div className="space-y-2">
               <Label htmlFor="sched-notif-time">Send At (Date & Time)</Label>
@@ -320,6 +340,11 @@ export function ScheduledNotificationsPanel() {
                       <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1.5 text-[11px] text-muted-foreground/80">
                         <span className="capitalize">Target: {item.target_type}</span>
                         <span>Open path: {item.target_url}</span>
+                        {item.recurrence && item.recurrence !== 'one_time' && (
+                          <span className="bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px] capitalize font-medium">
+                            🔄 {item.recurrence.replace('_', ' ')}
+                          </span>
+                        )}
                         <span className="font-semibold text-primary">
                           Scheduled for: {format(parseISO(item.scheduled_for), "dd MMM yyyy, hh:mm a")}
                         </span>
@@ -380,6 +405,11 @@ export function ScheduledNotificationsPanel() {
                         )}
                         <div className="flex flex-wrap gap-x-3 gap-y-1 pt-1.5 text-[10px] text-muted-foreground/80">
                           <span className="capitalize">Target: {item.target_type}</span>
+                          {item.recurrence && item.recurrence !== 'one_time' && (
+                            <span className="bg-muted text-muted-foreground px-1 py-0.5 rounded text-[9px] capitalize font-medium">
+                              🔄 {item.recurrence.replace('_', ' ')}
+                            </span>
+                          )}
                           <span>Dispatched: {format(parseISO(item.scheduled_for), "dd MMM, hh:mm a")}</span>
                         </div>
                       </div>

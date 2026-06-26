@@ -27,6 +27,28 @@ import { TripMap } from "@/components/TripMap";
 type VisitStatus = Database["public"]["Enums"]["visit_status"];
 type VisitWithType = Database["public"]["Enums"]["visit_with_type"];
 
+// Local types for Supabase joined/extended rows
+type UserIdRow = { user_id: string };
+type VisitRow = Database["public"]["Tables"]["visits"]["Row"] & {
+  clients?: { name: string; address: string } | null;
+  partners?: { name: string; address: string } | null;
+  _signed_photo_url?: string | null;
+  travel_mode?: string;
+  check_in_at?: string | null;
+};
+type InsertVisitData = {
+  visit_date: string;
+  visit_with_type: string;
+  address: string;
+  purpose_id: string;
+  purpose: string;
+  created_by: string;
+  travel_mode: string;
+  pooled_with_user_id: string | null;
+  client_id?: string;
+  partner_id?: string;
+};
+
 const visitStatusColors: Record<string, string> = {
   planned: "bg-[hsl(var(--status-new))] text-white",
   in_progress: "bg-blue-500 text-white",
@@ -133,7 +155,7 @@ const Visits = () => {
           .select("user_id")
           .eq("reports_to", user.id)
           .eq("role", "executive");
-        const execIds = (myExecs || []).map((r: any) => r.user_id);
+        const execIds = (myExecs || []).map((r: UserIdRow) => r.user_id);
         q = q.in("created_by", [user.id, ...execIds]);
 
       } else if (role === "manager" && showroomIds.length > 0) {
@@ -141,7 +163,7 @@ const Visits = () => {
           .from("user_roles")
           .select("user_id")
           .in("showroom_id", showroomIds);  // multi-showroom
-        const teamIds = (teamRoles || []).map((r: any) => r.user_id);
+        const teamIds = (teamRoles || []).map((r: UserIdRow) => r.user_id);
         if (teamIds.length > 0) q = q.in("created_by", teamIds);
       }
       // MD / Admin: no filter
@@ -176,12 +198,12 @@ const Visits = () => {
         const { data: myExecs } = await supabase
           .from("user_roles").select("user_id")
           .eq("reports_to", user.id).eq("role", "executive");
-        const execIds = (myExecs || []).map((r: any) => r.user_id);
+        const execIds = (myExecs || []).map((r: UserIdRow) => r.user_id);
         q = q.in("created_by", [user.id, ...execIds]);
       } else if (role === "manager" && showroomIds.length > 0) {
         const { data: teamRoles } = await supabase
           .from("user_roles").select("user_id").in("showroom_id", showroomIds);
-        const teamIds = (teamRoles || []).map((r: any) => r.user_id);
+        const teamIds = (teamRoles || []).map((r: UserIdRow) => r.user_id);
         if (teamIds.length > 0) q = q.in("created_by", teamIds);
       }
 
@@ -189,6 +211,34 @@ const Visits = () => {
       if (error) throw error;
       return data;
     },
+  });
+
+  const { data: partners = [] } = useQuery({
+    queryKey: ["partners-list", user?.id, role],
+    queryFn: async () => {
+      let q = supabase.from("partners").select("id, name, address, city");
+
+      if (role === "executive" && user) {
+        const ids = [user.id, ...(reportsTo ? [reportsTo] : [])];
+        q = q.in("created_by", ids);
+      } else if (role === "tl" && user) {
+        const { data: myExecs } = await supabase
+          .from("user_roles").select("user_id")
+          .eq("reports_to", user.id).eq("role", "executive");
+        const execIds = (myExecs || []).map((r: UserIdRow) => r.user_id);
+        q = q.in("created_by", [user.id, ...execIds]);
+      } else if (role === "manager" && showroomIds.length > 0) {
+        const { data: teamRoles } = await supabase
+          .from("user_roles").select("user_id").in("showroom_id", showroomIds);
+        const teamIds = (teamRoles || []).map((r: UserIdRow) => r.user_id);
+        if (teamIds.length > 0) q = q.in("created_by", teamIds);
+      }
+
+      const { data, error } = await q;
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!user,
   });
 
   // Fetch same-showroom colleagues via SECURITY DEFINER RPC (bypasses RLS on profiles)
@@ -218,7 +268,7 @@ const Visits = () => {
 
   const createVisit = useMutation({
     mutationFn: async () => {
-      const insertData: any = {
+      const insertData: InsertVisitData = {
         visit_date: form.visit_date,
         visit_with_type: form.visit_with_type,
         address: form.address,
@@ -443,7 +493,7 @@ const Visits = () => {
     }
   };
 
-  const canMarkDone = (visit: any) => {
+  const canMarkDone = (visit: VisitRow) => {
     // Allow marking done if planned or in_progress
     if (visit.status !== "planned" && visit.status !== "in_progress") return false;
     // Only allow marking done if visit date is today
@@ -461,8 +511,8 @@ const Visits = () => {
 
   const filtered = visits.filter((v) => {
     const matchStatus = !filterStatus || filterStatus === "all" || v.status === filterStatus;
-    const clientName = (v as any).clients?.name || "";
-    const partnerName = (v as any).partners?.name || "";
+    const clientName = (v as VisitRow).clients?.name || "";
+    const partnerName = (v as VisitRow).partners?.name || "";
     const address = v.address || "";
     const remarks = v.remarks || "";
     const purpose = v.purpose || "";
@@ -764,7 +814,7 @@ const Visits = () => {
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between mb-2">
                           <div>
-                            <p className="font-semibold">{(v as any).clients?.name || (v as any).partners?.name || "—"}</p>
+                            <p className="font-semibold">{(v as VisitRow).clients?.name || (v as VisitRow).partners?.name || "—"}</p>
                             <p className="text-xs text-muted-foreground capitalize">{v.visit_with_type}</p>
                           </div>
                           <Badge className={`${visitStatusColors[v.status]} capitalize text-xs border-0`}>{v.status}</Badge>
@@ -772,7 +822,7 @@ const Visits = () => {
                         <div className="space-y-1 text-sm text-muted-foreground">
                           {v.address && <div className="flex items-center gap-1"><MapPin className="h-3 w-3" />{v.address}</div>}
                           <p className="text-xs">Purpose: {v.purpose}</p>
-                          {(v as any).travel_mode === "pooled" && (
+                          {(v as VisitRow).travel_mode === "pooled" && (
                             <p className="text-[10px] font-semibold text-amber-500 flex items-center gap-1">
                               🚗 Pooled — no conveyance claimed
                             </p>
@@ -782,7 +832,7 @@ const Visits = () => {
                         {((v.status as string) === "planned" || (v.status as string) === "in_progress") && (
                           <div className="flex gap-2 mt-3 flex-wrap">
                             {/* Check In — capture arrival time */}
-                            {(v.status as string) === "planned" && isToday(parseISO(v.visit_date)) && !(v as any).check_in_at && (
+                            {(v.status as string) === "planned" && isToday(parseISO(v.visit_date)) && !(v as VisitRow).check_in_at && (
                               <Button size="sm" variant="outline" className="border-green-600/50 text-green-400 hover:bg-green-900/20" onClick={() => checkIn.mutate(v.id)} disabled={checkIn.isPending}>
                                 📍 Check In
                               </Button>
@@ -798,9 +848,9 @@ const Visits = () => {
                             )}
                           </div>
                         )}
-                        {(v as any)._signed_photo_url && (
+                        {(v as VisitRow)._signed_photo_url && (
                           <div className="mt-2">
-                            <img src={(v as any)._signed_photo_url} alt="Visit photo" className="h-20 w-20 rounded-lg object-cover" />
+                            <img src={(v as VisitRow)._signed_photo_url ?? ""} alt="Visit photo" className="h-20 w-20 rounded-lg object-cover" />
                           </div>
                         )}
                       </CardContent>

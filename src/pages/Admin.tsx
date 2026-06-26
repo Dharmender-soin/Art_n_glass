@@ -12,8 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
-import { Shield, MapPin, Users, UserPlus, Eye, EyeOff, Key, Trash2, Building, Plus, Search, Tag, Power, PowerOff, Pencil, Car } from "lucide-react";
+import { Shield, MapPin, Users, UserPlus, Eye, EyeOff, Key, Trash2, Building, Plus, Search, Tag, Power, PowerOff, Pencil, Car, Send } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
+import { SendNotificationForm } from "@/components/dashboard/SendNotificationForm";
+import { ScheduledNotificationsPanel } from "@/components/dashboard/ScheduledNotificationsPanel";
 
 type AppRole = Database["public"]["Enums"]["app_role"];
 type VisitWithType = Database["public"]["Enums"]["visit_with_type"];
@@ -223,7 +225,8 @@ const Admin = () => {
           showroom_id: r.showroom_id,
           reports_to: (r as any).reports_to ?? null,
           created_at: r.created_at,
-          role_id: r.id
+          role_id: r.id,
+          is_active: (r as any).is_active !== false, // default true if column not yet migrated
         };
       }).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     },
@@ -335,10 +338,22 @@ const Admin = () => {
     onError: (e: Error) => toast.error(e.message),
   });
 
-
-
-
-
+  // Mutation: Toggle Employee Active/Inactive
+  const toggleUserActive = useMutation({
+    mutationFn: async ({ roleId, is_active }: { roleId: string; is_active: boolean }) => {
+      const { error } = await supabase
+        .from("user_roles")
+        .update({ is_active: !is_active } as any)
+        .eq("id", roleId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["all-users-details"] });
+      queryClient.invalidateQueries({ queryKey: ["md-roles"] });
+      toast.success("Employee status updated!");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
 
 
   // Mutation: Update Profile (name, phone, conveyance)
@@ -653,12 +668,17 @@ const Admin = () => {
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05, duration: 0.3 }}
-                      className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-muted/30 transition-colors"
+                      className={`p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-muted/30 transition-colors ${
+                        !u.is_active ? "opacity-50 bg-muted/20" : ""
+                      }`}
                     >
                       <div className="flex-1 space-y-1.5">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium text-base">{u.full_name}</span>
+                          <span className={`font-medium text-base ${!u.is_active ? "line-through text-muted-foreground" : ""}`}>{u.full_name}</span>
                           <Badge className={`${roleColor[u.role] || ""} text-[10px] border-0 capitalize px-2 py-0.5 h-5 shadow-none`}>{u.role}</Badge>
+                          {!u.is_active && (
+                            <Badge variant="outline" className="text-[10px] px-2 py-0.5 h-5 text-orange-500 border-orange-400">Inactive</Badge>
+                          )}
                           {showroom && (
                             <Badge variant="outline" className="text-[10px] px-2 py-0.5 h-5 font-normal text-muted-foreground">
                               <MapPin className="h-3 w-3 mr-1" />{showroom.name}
@@ -670,7 +690,7 @@ const Admin = () => {
                             <span className="w-1.5 h-1.5 rounded-full bg-primary/40" />
                             {u.email}
                           </span>
-                          {u.phone && <span className="flex items-center gap-1 border-l pl-4 border-border/50 hidden sm:flex">{u.phone}</span>}
+                          {u.phone && <span className="border-l pl-4 border-border/50 hidden sm:flex sm:items-center sm:gap-1">{u.phone}</span>}
                         </div>
                       </div>
 
@@ -771,6 +791,26 @@ const Admin = () => {
                         <Button
                           variant="ghost"
                           size="sm"
+                          className={`h-8 w-8 p-0 ${
+                            u.is_active
+                              ? "text-orange-500 hover:bg-orange-500/10 hover:text-orange-600"
+                              : "text-green-500 hover:bg-green-500/10 hover:text-green-600"
+                          }`}
+                          title={u.is_active ? "Deactivate Employee" : "Activate Employee"}
+                          onClick={() => openAlert(
+                            u.is_active ? "Deactivate Employee" : "Activate Employee",
+                            u.is_active
+                              ? `${u.full_name} ko deactivate karo? Ye Command Centre aur leaderboard se hide ho jaayega.`
+                              : `${u.full_name} ko wapas activate karo?`,
+                            () => toggleUserActive.mutate({ roleId: u.role_id, is_active: u.is_active })
+                          )}
+                        >
+                          {u.is_active ? <PowerOff className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                        </Button>
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           className="h-8 w-8 p-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
                           title="Delete User"
                           onClick={() => openAlert(
@@ -789,6 +829,15 @@ const Admin = () => {
             )}
           </CardContent>
         </Card>
+      </section>
+
+      <div className="border-t my-8" />
+
+      {/* Push Notifications Section */}
+      <section className="space-y-6">
+        <SendNotificationForm />
+        <div className="border-t border-border/40 my-6" />
+        <ScheduledNotificationsPanel />
       </section>
 
       {/* Reset Password Dialog */}

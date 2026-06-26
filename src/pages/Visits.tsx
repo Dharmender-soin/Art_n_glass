@@ -40,7 +40,7 @@ const visitStatusColors: Record<string, string> = {
 };
 
 const Visits = () => {
-  const { user, role, showroomId, reportsTo } = useAuth();
+  const { user, role, showroomId, showroomIds, reportsTo } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -136,11 +136,11 @@ const Visits = () => {
         const execIds = (myExecs || []).map((r: any) => r.user_id);
         q = q.in("created_by", [user.id, ...execIds]);
 
-      } else if (role === "manager" && showroomId) {
+      } else if (role === "manager" && showroomIds.length > 0) {
         const { data: teamRoles } = await supabase
           .from("user_roles")
           .select("user_id")
-          .eq("showroom_id", showroomId);
+          .in("showroom_id", showroomIds);  // multi-showroom
         const teamIds = (teamRoles || []).map((r: any) => r.user_id);
         if (teamIds.length > 0) q = q.in("created_by", teamIds);
       }
@@ -178,36 +178,9 @@ const Visits = () => {
           .eq("reports_to", user.id).eq("role", "executive");
         const execIds = (myExecs || []).map((r: any) => r.user_id);
         q = q.in("created_by", [user.id, ...execIds]);
-      } else if (role === "manager" && showroomId) {
+      } else if (role === "manager" && showroomIds.length > 0) {
         const { data: teamRoles } = await supabase
-          .from("user_roles").select("user_id").eq("showroom_id", showroomId);
-        const teamIds = (teamRoles || []).map((r: any) => r.user_id);
-        if (teamIds.length > 0) q = q.in("created_by", teamIds);
-      }
-
-      const { data, error } = await q;
-      if (error) throw error;
-      return data;
-    },
-  });
-
-  const { data: partners = [] } = useQuery({
-    queryKey: ["partners-list", user?.id, role],
-    queryFn: async () => {
-      let q = supabase.from("partners").select("id, name, address, city");
-
-      if (role === "executive" && user) {
-        const ids = [user.id, ...(reportsTo ? [reportsTo] : [])];
-        q = q.in("created_by", ids);
-      } else if (role === "tl" && user) {
-        const { data: myExecs } = await supabase
-          .from("user_roles").select("user_id")
-          .eq("reports_to", user.id).eq("role", "executive");
-        const execIds = (myExecs || []).map((r: any) => r.user_id);
-        q = q.in("created_by", [user.id, ...execIds]);
-      } else if (role === "manager" && showroomId) {
-        const { data: teamRoles } = await supabase
-          .from("user_roles").select("user_id").eq("showroom_id", showroomId);
+          .from("user_roles").select("user_id").in("showroom_id", showroomIds);
         const teamIds = (teamRoles || []).map((r: any) => r.user_id);
         if (teamIds.length > 0) q = q.in("created_by", teamIds);
       }

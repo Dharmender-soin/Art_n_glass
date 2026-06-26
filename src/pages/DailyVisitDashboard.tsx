@@ -373,16 +373,17 @@ const ExecutiveCard = ({ exec, showroomName, getEntityName }: { exec: any, showr
         <div className="grid grid-cols-1 md:grid-cols-3 divide-y md:divide-y-0 md:divide-x divide-[#F5F5F7]/5">
 
           <VisitColumn
-            title="Missed / Overdue"
-            subtitle="Pending from yesterday"
-            visits={exec.ydayVisits.filter((v: any) => v.status === "planned")}
+            title="Yesterday Planned"
+            subtitle="All scheduled stops"
+            visits={exec.ydayVisits}
             type="pending"
             getEntityName={getEntityName}
+            showStatus
           />
 
           <VisitColumn
-            title="Yesterday Done"
-            subtitle="Completed tasks"
+            title="Yesterday Actual"
+            subtitle="Completed visits"
             visits={exec.ydayVisits.filter((v: any) => v.status === "done")}
             type="success"
             getEntityName={getEntityName}
@@ -395,6 +396,7 @@ const ExecutiveCard = ({ exec, showroomName, getEntityName }: { exec: any, showr
             visits={exec.todayVisits}
             type="info"
             getEntityName={getEntityName}
+            showStatus
           />
 
         </div>
@@ -403,8 +405,8 @@ const ExecutiveCard = ({ exec, showroomName, getEntityName }: { exec: any, showr
   );
 };
 
-const VisitColumn = ({ title, subtitle, visits, type, getEntityName, showRemarks }: {
-  title: string, subtitle: string, visits: any[], type: 'pending' | 'success' | 'info', getEntityName: (v: any) => string, showRemarks?: boolean
+const VisitColumn = ({ title, subtitle, visits, type, getEntityName, showRemarks, showStatus }: {
+  title: string, subtitle: string, visits: any[], type: 'pending' | 'success' | 'info', getEntityName: (v: any) => string, showRemarks?: boolean, showStatus?: boolean
 }) => {
   const styles = {
     pending: { header: "text-amber-400", bg: "bg-amber-500/5", badge: "text-amber-400 bg-amber-500/15" },
@@ -448,9 +450,20 @@ const VisitColumn = ({ title, subtitle, visits, type, getEntityName, showRemarks
 
                 <div className="flex justify-between items-start gap-2 pl-2">
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm text-[#F5F5F7] truncate leading-tight group-hover:text-primary transition-colors">
-                      {getEntityName(v)}
-                    </p>
+                    <div className="flex items-center justify-between gap-1.5 flex-wrap w-full">
+                      <p className="font-semibold text-sm text-[#F5F5F7] truncate leading-tight group-hover:text-primary transition-colors flex-1">
+                        {getEntityName(v)}
+                      </p>
+                      {showStatus && v.status && (
+                        <span className={`text-[8px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full border shrink-0 ${
+                          v.status === 'done'
+                            ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                            : 'bg-red-500/10 text-red-400 border-red-500/20'
+                        }`}>
+                          {v.status === 'done' ? 'Done' : 'Pending'}
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-[#8E939D] mt-0.5 line-clamp-1">{v.purpose}</p>
 
                     {showRemarks && v.remarks && (

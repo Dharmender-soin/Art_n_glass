@@ -244,11 +244,12 @@ const PivotTable = ({
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 const Hierarchy = () => {
-  const { role } = useAuth();
+  const { role, user, showroomIds } = useAuth();
   const queryClient = useQueryClient();
-  const canAccess = role==="admin"||role==="manager"||role==="md";
+  const canAccess = role==="admin"||role==="manager"||role==="md"||role==="tl";
   const isMdOrAdmin = role==="admin"||role==="md";
   const isManager = role==="manager"||role==="admin"||role==="md";
+  const isTL = role==="tl";
 
   const [fExec, setFExec]       = useState("all");
   const [fStatus, setFStatus]   = useState("all");
@@ -268,11 +269,32 @@ const Hierarchy = () => {
     queryFn: async()=>{ const{data}=await supabase.from("profiles").select("user_id,full_name"); return data||[]; } });
   const { data: allWorkTypes=[] } = useQuery({ queryKey:["wt-h3"], enabled:canAccess,
     queryFn: async()=>{ const{data}=await supabase.from("master_work_types").select("id,type_of_work,sub_work").order("type_of_work"); return data||[]; } });
-  const { data: rawWOS=[], isLoading } = useQuery({ queryKey:["wos-h3"], enabled:canAccess,
+  const { data: rawWOS=[], isLoading } = useQuery({ queryKey:["wos-h3", user?.id, role], enabled:canAccess && !!user,
     queryFn: async()=>{
-      const{data,error}=await supabase.from("work_scope_items")
-        .select(`id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile,project_status,partners(name)),master_work_types(type_of_work,sub_work)`)
-        .order("created_at",{ascending:false});
+      let q = supabase.from("work_scope_items")
+        .select(`id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile,project_status,partners(name)),master_work_types(type_of_work,sub_work)`);
+
+      if (role === "tl" && user) {
+        // TL: own WOS + all executives who report to this TL
+        const { data: myExecs } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .eq("reports_to", user.id)
+          .eq("role", "executive");
+        const execIds = (myExecs || []).map((r: any) => r.user_id);
+        const ids = [user.id, ...execIds];
+        q = q.in("created_by", ids);
+      } else if (role === "manager" && showroomIds.length > 0) {
+        // Manager: WOS of all users in their showrooms
+        const { data: teamRoles } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .in("showroom_id", showroomIds);
+        const teamIds = (teamRoles || []).map((r: any) => r.user_id);
+        if (teamIds.length > 0) q = q.in("created_by", teamIds);
+      }
+
+      const {data,error} = await q.order("created_at",{ascending:false});
       if(error) throw error;
       return (data||[]) as unknown as RawWOS[];
     }
@@ -441,7 +463,7 @@ const Hierarchy = () => {
   if(!canAccess) return (
     <div className="flex flex-col items-center justify-center min-h-screen gap-3">
       <GitBranch className="h-12 w-12 text-slate-300"/>
-      <p className="text-slate-500 font-semibold">Manager / MD / Admin only.</p>
+      <p className="text-slate-500 font-semibold">TL / Manager / MD / Admin only.</p>
     </div>
   );
 

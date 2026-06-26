@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "902985990691",
+    "project_id": "artnglass-ab844",
+    "storage_bucket": "artnglass-ab844.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:902985990691:android:ab34a6d2a01fcc0828a796",
+        "android_client_info": {
+          "package_name": "com.artnglasss.visitwiz"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCclArhx3_i4GunDNJRiRr2E8PtkDoGPNM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

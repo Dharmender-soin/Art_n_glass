@@ -11,6 +11,7 @@ import {
   Award, Handshake, EyeOff, Star, TrendingDown, Flame, Download,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { SendNotificationForm } from "@/components/dashboard/SendNotificationForm";
 
 /* ═══════════════════════════ TYPES ═══════════════════════════ */
 type DateRange = "today" | "7d" | "month";
@@ -1129,7 +1130,7 @@ const ShowroomFunnelBlock = ({ fd }: { fd: SRFunnelData }) => {
 
 /* ═══════════════════════════════ MAIN ═══════════════════════════════ */
 const MDDashboard = () => {
-  const { role, showroomId } = useAuth();
+  const { role, showroomId, showroomIds } = useAuth();
   const isMdOrAdmin = role === "md" || role === "admin";
 
   /* ── UI State ── */
@@ -1161,8 +1162,11 @@ const MDDashboard = () => {
   const { data: userRoles = [] } = useQuery<UserRoleRow[]>({
     queryKey: ["md-roles", isMdOrAdmin, showroomId],
     queryFn: async () => {
-      let q = supabase.from("user_roles").select("user_id, role, showroom_id").in("role", ["executive", "manager", "tl"]);
-      if (!isMdOrAdmin && showroomId) q = q.eq("showroom_id", showroomId);
+      let q = supabase.from("user_roles")
+        .select("user_id, role, showroom_id")
+        .in("role", ["executive", "manager", "tl"])
+        .eq("is_active" as any, true); // Only show active employees
+      if (!isMdOrAdmin && showroomIds.length > 0) q = q.in("showroom_id", showroomIds);
       const { data } = await q; return data || [];
     },
   });
@@ -1413,7 +1417,9 @@ const MDDashboard = () => {
 
   /* ── Showroom Stats (with scoring & ranking) ── */
   const showroomStats = useMemo((): ShowroomStat[] => {
-    const srList = isMdOrAdmin ? showrooms : showrooms.filter(s => s.id === showroomId);
+    const srList = isMdOrAdmin
+      ? showrooms
+      : showrooms.filter(s => showroomIds.includes(s.id));  // multi-showroom managers
     const raw = srList.map(s => {
       const ids = userRoles.filter(r => r.showroom_id === s.id).map(r => r.user_id);
       const sv = visits.filter(v => ids.includes(v.created_by));
@@ -2101,7 +2107,7 @@ const MDDashboard = () => {
             ))}
             <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 self-center shrink-0 mx-1" />
             <Chip label="All" active={showroomFilter === "all"} onClick={() => setShowroomFilter("all")} />
-            {showrooms.filter(s => isMdOrAdmin || s.id === showroomId).map(s => (
+            {showrooms.filter(s => isMdOrAdmin || showroomIds.includes(s.id)).map(s => (
               <Chip key={s.id} label={s.name} active={showroomFilter === s.id} onClick={() => setShowroomFilter(s.id)} />
             ))}
           </div>
@@ -2955,6 +2961,11 @@ const MDDashboard = () => {
             )}
           </div>
         </Card>
+
+        {/* Push Notifications Broadcast form */}
+        <div className="mt-6">
+          <SendNotificationForm />
+        </div>
 
         <div className="h-4" />
       </div>

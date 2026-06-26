@@ -9,9 +9,10 @@ import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ExecutiveHome } from "@/components/dashboard/ExecutiveHome";
 import { LiveTracking } from "@/components/dashboard/LiveTracking";
+import { ChampionBanner, HallOfFame } from "@/components/dashboard/ChampionBanner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
-  Building2, Users, CalendarCheck, Briefcase, Activity, TrendingUp, ArrowUpRight,
+  Building2, Users, CalendarCheck, Briefcase, Activity, TrendingUp, TrendingDown, ArrowUpRight,
   Trophy, Star, UserCheck, ShoppingCart, CheckCircle2, Clock, XCircle, BarChart3,
   UserPlus, GitCompare, Award, Target, Sparkles, Crown, MapPin
 } from "lucide-react";
@@ -21,7 +22,7 @@ import {
   PieChart, Pie, Cell, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis,
   PolarRadiusAxis
 } from "recharts";
-import { format, subDays, startOfMonth } from "date-fns";
+import { format, subDays, startOfMonth, startOfWeek, differenceInDays } from "date-fns";
 
 // ─── Types ────────────────────────────────────────
 interface ShowroomMetrics {
@@ -69,34 +70,156 @@ const itemVariants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.35 } },
 };
 
-const StatCard = ({ label, value, icon: Icon, color, bg, trend, sub }: {
-  label: string; value: string | number; icon: any; color: string; bg: string;
-  trend?: string; sub?: string;
+// ─── Clickable Score Card (Premium Design) ───────────
+interface DrawerItem {
+  id: string;
+  primary: string;
+  secondary?: string;
+  badge?: string;
+  badgeColor?: string;
+  amount?: string;
+}
+
+const ClickableStatCard = ({ label, value, icon: Icon, gradient, sub, onClick, accent, change }: {
+  label: string; value: string | number; icon: any; gradient: string;
+  sub?: string; onClick: () => void; accent: string; change?: number;
 }) => (
-  <motion.div variants={itemVariants} whileHover={{ y: -4 }} transition={{ type: "spring", stiffness: 300 }}>
-    <Card className="bg-[#12141A] border-[#F5F5F7]/5 shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden relative h-full">
-      <div className={`absolute top-0 right-0 p-3 opacity-10 ${color}`}>
-        <Icon className="h-16 w-16 -mr-4 -mt-4 transform rotate-12" />
+  <motion.button
+    variants={itemVariants}
+    whileHover={{ y: -2, scale: 1.005 }}
+    whileTap={{ scale: 0.98 }}
+    onClick={onClick}
+    className="w-full text-left focus:outline-none"
+  >
+    <div
+      className="relative overflow-hidden border border-white/[0.06] bg-[#12141A] transition-all duration-250 group"
+      style={{
+        height: '124px',
+        padding: '18px',
+        borderRadius: '14px',
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'space-between',
+      }}
+    >
+      {/* Glow on hover */}
+      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+        style={{ borderRadius: '14px', background: `radial-gradient(ellipse at top left, ${accent}14 0%, transparent 65%)` }}
+      />
+      {/* Background watermark icon */}
+      <div className={`absolute -right-2 -bottom-2 opacity-[0.05] ${gradient} bg-clip-text pointer-events-none`}>
+        <Icon className="h-16 w-16" />
       </div>
-      <CardContent className="p-5 relative z-10">
-        <div className={`w-9 h-9 rounded-lg ${bg} ${color} flex items-center justify-center mb-3 border border-[#F5F5F7]/5 shadow-inner`}>
-          <Icon className="h-4 w-4" />
+
+      {/* TOP ROW — icon + arrow */}
+      <div className="relative z-10 flex items-start justify-between">
+        {/* Icon badge */}
+        <div className={`w-8 h-8 rounded-lg ${gradient} flex items-center justify-center shadow-md shrink-0`}>
+          <Icon className="h-4 w-4 text-white" />
         </div>
-        <div className="space-y-0.5">
-          <div className="flex items-baseline gap-2">
-            <p className="text-2xl font-bold tracking-tight text-[#F5F5F7] font-mono">{value}</p>
-            {trend && (
-              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-[#2E7D32]">
-                <ArrowUpRight className="h-2.5 w-2.5" />{trend}
-              </span>
+        {/* Arrow click indicator */}
+        <div className="h-6 w-6 rounded-full bg-white/[0.06] flex items-center justify-center group-hover:bg-white/[0.12] transition-colors shrink-0">
+          <ArrowUpRight className="h-3 w-3 text-[#8E939D] group-hover:text-white transition-colors" />
+        </div>
+      </div>
+
+      {/* BOTTOM ROW — value + label + sub + badge */}
+      <div className="relative z-10 min-w-0">
+        <p
+          className="text-[#F5F5F7] font-mono font-bold leading-none tabular-nums truncate"
+          style={{ fontSize: '30px', fontWeight: 700 }}
+        >{value}</p>
+        <p
+          className="text-[#A1A5AE] uppercase truncate mt-1"
+          style={{ fontSize: '12px', fontWeight: 600, letterSpacing: '0.04em' }}
+        >{label}</p>
+        {/* Sub + comparison on same line */}
+        <div className="flex items-center gap-2 mt-0.5 min-w-0">
+          {sub && (
+            <span className="text-[#8E939D] truncate" style={{ fontSize: '11px', opacity: 0.8 }}>{sub}</span>
+          )}
+          {change !== undefined && (
+            <span className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-full shrink-0 font-bold ${
+              change > 0 ? 'bg-emerald-500/15 text-emerald-400' :
+              change < 0 ? 'bg-red-500/15 text-red-400' :
+              'bg-white/8 text-[#8E939D]'
+            }`} style={{ fontSize: '10px' }}>
+              {change > 0 ? <TrendingUp className="h-2 w-2" /> : change < 0 ? <TrendingDown className="h-2 w-2" /> : null}
+              {change > 0 ? `+${change}%` : change < 0 ? `${change}%` : '—'}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  </motion.button>
+);
+
+// ─── Detail Drawer (Bottom Sheet) ────────────────────
+const DetailDrawer = ({ open, onClose, title, items, emptyMsg }: {
+  open: boolean; onClose: () => void; title: string;
+  items: DrawerItem[]; emptyMsg?: string;
+}) => (
+  <AnimatePresence>
+    {open && (
+      <>
+        {/* Backdrop */}
+        <motion.div
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 bg-black/70 z-40 backdrop-blur-sm"
+        />
+        {/* Sheet */}
+        <motion.div
+          initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+          transition={{ type: "spring", damping: 28, stiffness: 300 }}
+          className="fixed bottom-0 left-0 right-0 z-50 bg-[#12141A] rounded-t-3xl border-t border-white/10 shadow-2xl max-h-[80vh] flex flex-col"
+        >
+          {/* Handle */}
+          <div className="flex justify-center pt-3 pb-1 shrink-0">
+            <div className="w-10 h-1 rounded-full bg-white/20" />
+          </div>
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-3 border-b border-white/5 shrink-0">
+            <h3 className="text-base font-extrabold text-[#F5F5F7]">{title}</h3>
+            <button onClick={onClose} className="h-8 w-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center transition-colors">
+              <XCircle className="h-4 w-4 text-[#A1A5AE]" />
+            </button>
+          </div>
+          {/* List */}
+          <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2 pb-8">
+            {items.length === 0 ? (
+              <div className="py-12 text-center">
+                <p className="text-sm text-[#8E939D]">{emptyMsg || "Koi data nahi mila."}</p>
+              </div>
+            ) : (
+              items.map((item, i) => (
+                <motion.div
+                  key={item.id + i}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.03 }}
+                  className="flex items-center gap-3 bg-[#1A1D24] rounded-xl px-4 py-3 border border-white/5"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[13px] font-bold text-[#F5F5F7] truncate leading-tight">{item.primary}</p>
+                    {item.secondary && <p className="text-[11px] text-[#8E939D] mt-0.5 truncate">{item.secondary}</p>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {item.amount && <span className="text-[11px] font-bold text-emerald-400">{item.amount}</span>}
+                    {item.badge && (
+                      <span className={`text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full ${item.badgeColor || "bg-white/10 text-white"}`}>
+                        {item.badge}
+                      </span>
+                    )}
+                  </div>
+                </motion.div>
+              ))
             )}
           </div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-[#A1A5AE]">{label}</p>
-          {sub && <p className="text-[10px] text-[#8E939D] mt-1 font-medium">{sub}</p>}
-        </div>
-      </CardContent>
-    </Card>
-  </motion.div>
+        </motion.div>
+      </>
+    )}
+  </AnimatePresence>
 );
 
 // ─── Ranking Badge ─────────────────────────────────
@@ -113,16 +236,48 @@ const RankBadge = ({ rank }: { rank: number }) => {
 const AnalyticsDashboard = () => {
   const { user, role, showroomId: myShowroomId } = useAuth();
 
+  // ── Drawer State ─────────────────────────────────
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerTitle, setDrawerTitle] = useState("");
+  const [drawerItems, setDrawerItems] = useState<DrawerItem[]>([]);
+
+  const openDrawer = (title: string, items: DrawerItem[]) => {
+    setDrawerTitle(title);
+    setDrawerItems(items);
+    setDrawerOpen(true);
+  };
+
   const isMd = role === "md";
   const isAdmin = role === "admin";
   const isManager = role === "manager";
   const isTL = role === "tl";
   const isExec = role === "executive";
   const canSeeAll = isMd || isAdmin;
-  const canSeeShowroom = isManager || isTL || canSeeAll;
+  const canSeeShowroom = isManager || isTL || isExec || canSeeAll; // Executive can now see team leaderboard
 
   const [selectedShowroom, setSelectedShowroom] = useState<string>("all");
   const monthStart = format(startOfMonth(new Date()), "yyyy-MM-dd");
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+
+  // ── Filter State ─────────────────────────────────
+  type DateFilter = 'all' | 'today' | 'yesterday' | 'this_week' | 'this_month' | 'custom';
+  const [dateFilter, setDateFilter] = useState<DateFilter>('this_month');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
+  const [selectedExecutive, setSelectedExecutive] = useState('all');
+
+  const dateRange = useMemo(() => {
+    const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
+    const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
+    switch (dateFilter) {
+      case 'today':      return { from: todayStr, to: todayStr };
+      case 'yesterday':  return { from: yesterday, to: yesterday };
+      case 'this_week':  return { from: weekStart, to: todayStr };
+      case 'this_month': return { from: monthStart, to: todayStr };
+      case 'custom':     return customFrom && customTo ? { from: customFrom, to: customTo } : null;
+      default:           return null; // 'all' - no date filter
+    }
+  }, [dateFilter, customFrom, customTo, monthStart, todayStr]);
 
   // ── Fetch Showrooms ──────────────────────────────
   const { data: showrooms = [] } = useQuery({
@@ -192,7 +347,7 @@ const AnalyticsDashboard = () => {
       if (targetUserIds.length > 0) {
         q = q.in("created_by", targetUserIds);
       }
-      const { data, error } = await q;
+      const { data, error } = await q.limit(10000); // bypass default 1000 row limit
       if (error) throw error;
       return data || [];
     },
@@ -206,7 +361,7 @@ const AnalyticsDashboard = () => {
       if (targetUserIds.length > 0) {
         q = q.in("created_by", targetUserIds);
       }
-      const { data, error } = await q;
+      const { data, error } = await q.limit(10000); // bypass default 1000 row limit
       if (error) throw error;
       return data || [];
     },
@@ -220,7 +375,7 @@ const AnalyticsDashboard = () => {
       if (targetUserIds.length > 0) {
         q = q.in("created_by", targetUserIds);
       }
-      const { data, error } = await q;
+      const { data, error } = await q.limit(10000); // bypass default 1000 row limit
       if (error) throw error;
       return data || [];
     },
@@ -234,41 +389,131 @@ const AnalyticsDashboard = () => {
       if (targetUserIds.length > 0) {
         q = q.in("created_by", targetUserIds);
       }
-      const { data, error } = await q;
+      const { data, error } = await q.limit(10000); // bypass default 1000 row limit
       if (error) throw error;
       return data || [];
     },
   });
 
+
   // ═══════════════════════════════════════════════════
   // ─── Computed Metrics ─────────────────────────────
-  // ═══════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════  // ── Filtered Datasets (date + executive) ───────────────
+  const filteredVisits = useMemo(() => {
+    let d = visits;
+    if (selectedExecutive !== 'all') d = d.filter(v => v.created_by === selectedExecutive);
+    if (dateRange) d = d.filter(v => v.visit_date >= dateRange.from && v.visit_date <= dateRange.to);
+    return d;
+  }, [visits, selectedExecutive, dateRange]);
+
+  const filteredClients = useMemo(() => {
+    let d = clients;
+    if (selectedExecutive !== 'all') d = d.filter(c => c.created_by === selectedExecutive);
+    if (dateRange) d = d.filter(c => { const dt = c.created_at.split('T')[0]; return dt >= dateRange.from && dt <= dateRange.to; });
+    return d;
+  }, [clients, selectedExecutive, dateRange]);
+
+  const filteredPartners = useMemo(() => {
+    let d = partners;
+    if (selectedExecutive !== 'all') d = d.filter(p => p.created_by === selectedExecutive);
+    if (dateRange) d = d.filter(p => { const dt = p.created_at.split('T')[0]; return dt >= dateRange.from && dt <= dateRange.to; });
+    return d;
+  }, [partners, selectedExecutive, dateRange]);
+
+  const filteredWorkItems = useMemo(() => {
+    let d = workItems;
+    if (selectedExecutive !== 'all') d = d.filter(w => w.created_by === selectedExecutive);
+    if (dateRange) d = d.filter(w => { const dt = w.created_at.split('T')[0]; return dt >= dateRange.from && dt <= dateRange.to; });
+    return d;
+  }, [workItems, selectedExecutive, dateRange]);
+
   const metrics = useMemo(() => {
-    const totalVisits = visits.length;
-    const completedVisits = visits.filter(v => v.status === "done").length;
-    const plannedVisits = visits.filter(v => v.status === "planned").length;
-    const cancelledVisits = visits.filter(v => v.status === "cancelled").length;
+    const totalVisits = filteredVisits.length;
+    const completedVisits = filteredVisits.filter(v => v.status === "done").length;
+    const plannedVisits = filteredVisits.filter(v => v.status === "planned").length;
+    const cancelledVisits = filteredVisits.filter(v => v.status === "cancelled").length;
     const completionRate = totalVisits > 0 ? Math.round((completedVisits / totalVisits) * 100) : 0;
 
-    const totalClients = clients.length;
-    const totalPartners = partners.length;
-    const newClientsThisMonth = clients.filter(c => c.created_at >= monthStart).length;
-    const newPartnersThisMonth = partners.filter(p => p.created_at >= monthStart).length;
+    const totalClients = filteredClients.length;
+    const totalPartners = filteredPartners.length;
+    // When a date filter is active, filteredClients is already scoped — use count directly
+    const newClientsThisMonth = dateRange ? filteredClients.length : filteredClients.filter(c => c.created_at >= monthStart).length;
+    const newPartnersThisMonth = dateRange ? filteredPartners.length : filteredPartners.filter(p => p.created_at >= monthStart).length;
 
-    const totalOrders = workItems.length;
-    const ordersWon = workItems.filter(w => w.work_status === "won").length;
-    const ordersLost = workItems.filter(w => w.work_status === "lost").length;
-    const ordersPending = workItems.filter(w => w.work_status === "pending").length;
-    const totalOrderValue = workItems.reduce((s, w) => s + (w.amount_in_lac || 0), 0);
-    const wonOrderValue = workItems.filter(w => w.work_status === "won").reduce((s, w) => s + (w.amount_in_lac || 0), 0);
-    const verifiedCount = workItems.filter(w => w.is_verified).length;
+    const totalOrders = filteredWorkItems.length;
+    const ordersWon = filteredWorkItems.filter(w => w.work_status === "won").length;
+    const ordersLost = filteredWorkItems.filter(w => w.work_status === "lost").length;
+    // Pending = explicitly "pending" OR null/undefined status (unclassified orders)
+    const ordersPending = filteredWorkItems.filter(w => w.work_status === "pending" || !w.work_status).length;
+    const totalOrderValue = filteredWorkItems.reduce((s, w) => s + (w.amount_in_lac || 0), 0);
+    const wonOrderValue = filteredWorkItems.filter(w => w.work_status === "won").reduce((s, w) => s + (w.amount_in_lac || 0), 0);
+    const verifiedCount = filteredWorkItems.filter(w => w.is_verified).length;
 
     return {
       totalVisits, completedVisits, plannedVisits, cancelledVisits, completionRate,
       totalClients, totalPartners, newClientsThisMonth, newPartnersThisMonth,
       totalOrders, ordersWon, ordersLost, ordersPending, totalOrderValue, wonOrderValue, verifiedCount,
     };
-  }, [visits, clients, partners, workItems, monthStart]);
+  }, [filteredVisits, filteredClients, filteredPartners, filteredWorkItems, monthStart, dateRange]);
+
+  // ── Previous Period (for % comparison) ───────────
+  const prevDateRange = useMemo(() => {
+    if (!dateRange) return null;
+    const from = new Date(dateRange.from);
+    const to   = new Date(dateRange.to);
+    const days = differenceInDays(to, from) + 1;
+    const prevTo   = format(subDays(from, 1), 'yyyy-MM-dd');
+    const prevFrom = format(subDays(from, days), 'yyyy-MM-dd');
+    return { from: prevFrom, to: prevTo };
+  }, [dateRange]);
+
+  const prevVisits = useMemo(() => {
+    if (!prevDateRange) return visits;
+    let d = visits;
+    if (selectedExecutive !== 'all') d = d.filter(v => v.created_by === selectedExecutive);
+    return d.filter(v => v.visit_date >= prevDateRange.from && v.visit_date <= prevDateRange.to);
+  }, [visits, selectedExecutive, prevDateRange]);
+
+  const prevClients = useMemo(() => {
+    if (!prevDateRange) return clients;
+    let d = clients;
+    if (selectedExecutive !== 'all') d = d.filter(c => c.created_by === selectedExecutive);
+    return d.filter(c => { const dt = c.created_at.split('T')[0]; return dt >= prevDateRange.from && dt <= prevDateRange.to; });
+  }, [clients, selectedExecutive, prevDateRange]);
+
+  const prevPartners = useMemo(() => {
+    if (!prevDateRange) return partners;
+    let d = partners;
+    if (selectedExecutive !== 'all') d = d.filter(p => p.created_by === selectedExecutive);
+    return d.filter(p => { const dt = p.created_at.split('T')[0]; return dt >= prevDateRange.from && dt <= prevDateRange.to; });
+  }, [partners, selectedExecutive, prevDateRange]);
+
+  const prevWorkItems = useMemo(() => {
+    if (!prevDateRange) return workItems;
+    let d = workItems;
+    if (selectedExecutive !== 'all') d = d.filter(w => w.created_by === selectedExecutive);
+    return d.filter(w => { const dt = w.created_at.split('T')[0]; return dt >= prevDateRange.from && dt <= prevDateRange.to; });
+  }, [workItems, selectedExecutive, prevDateRange]);
+
+  const prevMetrics = useMemo(() => ({
+    totalVisits:   prevVisits.length,
+    completedVisits: prevVisits.filter(v => v.status === 'done').length,
+    plannedVisits:   prevVisits.filter(v => v.status === 'planned').length,
+    cancelledVisits: prevVisits.filter(v => v.status === 'cancelled').length,
+    totalClients:  prevClients.length,
+    totalPartners: prevPartners.length,
+    totalOrders:   prevWorkItems.length,
+    ordersWon:     prevWorkItems.filter(w => w.work_status === 'won').length,
+    ordersLost:    prevWorkItems.filter(w => w.work_status === 'lost').length,
+    ordersPending: prevWorkItems.filter(w => w.work_status === 'pending' || !w.work_status).length,
+  }), [prevVisits, prevClients, prevPartners, prevWorkItems]);
+
+  // % change helper — returns undefined when no date filter active (no comparison)
+  const pctChange = (curr: number, prev: number): number | undefined => {
+    if (!dateRange) return undefined;        // "All" → no comparison
+    if (prev === 0) return curr > 0 ? 100 : 0;
+    return Math.round(((curr - prev) / prev) * 100);
+  };
 
   // ── Pie Chart Data ───────────────────────────────
   const visitPieData = useMemo(() => [
@@ -288,10 +533,10 @@ const AnalyticsDashboard = () => {
     const last7 = Array.from({ length: 7 }, (_, i) => format(subDays(new Date(), 6 - i), "yyyy-MM-dd"));
     return last7.map(date => ({
       date: format(new Date(date), "MMM dd"),
-      visits: visits.filter(v => v.visit_date === date).length,
-      done: visits.filter(v => v.visit_date === date && v.status === "done").length,
+      visits: filteredVisits.filter(v => v.visit_date === date).length,
+      done: filteredVisits.filter(v => v.visit_date === date && v.status === "done").length,
     }));
-  }, [visits]);
+  }, [filteredVisits]);
 
   // ── Top Visited Partners ─────────────────────────
   const topPartners = useMemo(() => {
@@ -317,24 +562,29 @@ const AnalyticsDashboard = () => {
     return Array.from(map.values()).sort((a, b) => b.count - a.count).slice(0, 10);
   }, [visits]);
 
-  // ── Executive Performance ────────────────────────
+  // ── Performance Leaderboard (Executive + Manager + TL) ─
   const execPerformance: ExecutivePerf[] = useMemo(() => {
     if (isExec) return [];
-    const execIds = [...new Set(allUserRoles.filter(r => r.role === "executive").map(r => r.user_id))];
+    const fieldRoles = ["executive", "manager", "tl"];
+    const fieldUsers = allUserRoles.filter(r => fieldRoles.includes(r.role));
+    const fieldIds = [...new Set(fieldUsers.map(r => r.user_id))];
     const showroomMap = Object.fromEntries(showrooms.map(s => [s.id, s.name]));
-    const execShowroomMap = Object.fromEntries(allUserRoles.filter(r => r.role === "executive").map(r => [r.user_id, r.showroom_id]));
+    const fieldShowroomMap = Object.fromEntries(fieldUsers.map(r => [r.user_id, r.showroom_id]));
+    const fieldRoleMap = Object.fromEntries(fieldUsers.map(r => [r.user_id, r.role]));
 
-    return execIds.map(uid => {
+    return fieldIds.map(uid => {
       const uVisits = visits.filter(v => v.created_by === uid);
       const uCompleted = uVisits.filter(v => v.status === "done").length;
       const uClients = clients.filter(c => c.created_by === uid).length;
       const uPartners = partners.filter(p => p.created_by === uid).length;
       const uWon = workItems.filter(w => w.created_by === uid && w.work_status === "won").length;
       const uValue = workItems.filter(w => w.created_by === uid && w.work_status === "won").reduce((s, w) => s + (w.amount_in_lac || 0), 0);
-      const sr = execShowroomMap[uid];
+      const sr = fieldShowroomMap[uid];
+      const userRole = fieldRoleMap[uid];
+      const roleLabel = userRole === "manager" ? "Manager" : userRole === "tl" ? "TL" : "Executive";
       return {
         userId: uid,
-        name: profileMap[uid] || "Unknown",
+        name: (profileMap[uid] || "Unknown") + ` (${roleLabel})`,
         showroomName: sr ? (showroomMap[sr] || "—") : "—",
         totalVisits: uVisits.length,
         completedVisits: uCompleted,
@@ -346,6 +596,7 @@ const AnalyticsDashboard = () => {
       };
     }).sort((a, b) => b.completedVisits - a.completedVisits);
   }, [isExec, allUserRoles, visits, clients, partners, workItems, profileMap, showrooms]);
+
 
   // ── Showroom Comparison ──────────────────────────
   const showroomComparison: ShowroomMetrics[] = useMemo(() => {
@@ -404,7 +655,7 @@ const AnalyticsDashboard = () => {
 
   // ── Recent Activity ──────────────────────────────
   const recentActivity = useMemo(() =>
-    [...visits]
+    [...filteredVisits]
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 8)
       .map(v => ({
@@ -414,7 +665,7 @@ const AnalyticsDashboard = () => {
         time: new Date(v.created_at).toLocaleDateString(),
         statusLabel: v.status.charAt(0).toUpperCase() + v.status.slice(1),
       })),
-    [visits]
+    [filteredVisits]
   );
 
   const statusColor: Record<string, string> = {
@@ -425,6 +676,82 @@ const AnalyticsDashboard = () => {
     rescheduled: "bg-orange-500",
     cancelled: "bg-red-500",
   };
+
+  // ── Drawer item datasets (precomputed for clean JSX) ──
+  const visitsBadge = (status: string) =>
+    status === "done" ? { badge: "Done", color: "bg-emerald-500/20 text-emerald-400" } :
+    status === "planned" ? { badge: "Planned", color: "bg-sky-500/20 text-sky-400" } :
+    status === "cancelled" ? { badge: "Cancelled", color: "bg-red-500/20 text-red-400" } :
+    { badge: status, color: "bg-white/10 text-white" };
+
+  const allVisitsItems: DrawerItem[] = useMemo(() =>
+    [...filteredVisits].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map(v => {
+        const vb = visitsBadge(v.status);
+        return { id: v.id, primary: (v.partner as any)?.name || (v.client as any)?.name || "Visit", secondary: v.visit_date, badge: vb.badge, badgeColor: vb.color };
+      }), [filteredVisits]);
+
+  const completedItems: DrawerItem[] = useMemo(() =>
+    [...filteredVisits].filter(v => v.status === "done").sort((a, b) => new Date(b.visit_date).getTime() - new Date(a.visit_date).getTime())
+      .map(v => ({ id: v.id, primary: (v.partner as any)?.name || (v.client as any)?.name || "Visit", secondary: v.visit_date, badge: "Done", badgeColor: "bg-emerald-500/20 text-emerald-400" })), [filteredVisits]);
+
+  const plannedItems: DrawerItem[] = useMemo(() =>
+    [...filteredVisits].filter(v => v.status === "planned").sort((a, b) => new Date(b.visit_date).getTime() - new Date(a.visit_date).getTime())
+      .map(v => ({ id: v.id, primary: (v.partner as any)?.name || (v.client as any)?.name || "Visit", secondary: v.visit_date, badge: "Planned", badgeColor: "bg-sky-500/20 text-sky-400" })), [filteredVisits]);
+
+  const cancelledItems: DrawerItem[] = useMemo(() =>
+    [...filteredVisits].filter(v => v.status === "cancelled").sort((a, b) => new Date(b.visit_date).getTime() - new Date(a.visit_date).getTime())
+      .map(v => ({ id: v.id, primary: (v.partner as any)?.name || (v.client as any)?.name || "Visit", secondary: v.visit_date, badge: "Cancelled", badgeColor: "bg-red-500/20 text-red-400" })), [filteredVisits]);
+
+  const clientItems: DrawerItem[] = useMemo(() =>
+    [...filteredClients].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map(c => ({
+        id: c.id, primary: c.name || "Client", secondary: new Date(c.created_at).toLocaleDateString("en-IN"),
+        badge: c.status ? c.status.charAt(0).toUpperCase() + c.status.slice(1) : undefined,
+        badgeColor: c.status === "converted" ? "bg-emerald-500/20 text-emerald-400" : c.status === "hot" ? "bg-orange-500/20 text-orange-400" : c.status === "lost" ? "bg-red-500/20 text-red-400" : "bg-blue-500/20 text-blue-400",
+      })), [filteredClients]);
+
+  const partnerItems: DrawerItem[] = useMemo(() =>
+    [...filteredPartners].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map(p => ({
+        id: p.id, primary: p.name || "Partner",
+        secondary: `${p.type || ""} · ${new Date(p.created_at).toLocaleDateString("en-IN")}`,
+        badge: p.type || undefined, badgeColor: "bg-purple-500/20 text-purple-400",
+      })), [filteredPartners]);
+
+  const wosItemsBadge = (status: string) =>
+    status === "won" ? { badge: "Won", color: "bg-emerald-500/20 text-emerald-400" } :
+    status === "lost" ? { badge: "Lost", color: "bg-red-500/20 text-red-400" } :
+    { badge: "Pending", color: "bg-amber-500/20 text-amber-400" };
+
+  const allWosItems: DrawerItem[] = useMemo(() =>
+    [...filteredWorkItems].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map(w => {
+        const wb = wosItemsBadge(w.work_status || "");
+        return { id: w.id, primary: `Order — ${wb.badge}`, secondary: new Date(w.created_at).toLocaleDateString("en-IN"), amount: w.amount_in_lac ? `₹${w.amount_in_lac}L` : undefined, badge: wb.badge, badgeColor: wb.color };
+      }), [filteredWorkItems]);
+
+  const wonItems: DrawerItem[] = useMemo(() =>
+    [...filteredWorkItems].filter(w => w.work_status === "won").sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map(w => ({ id: w.id, primary: "Won Order", secondary: new Date(w.created_at).toLocaleDateString("en-IN"), amount: w.amount_in_lac ? `₹${w.amount_in_lac}L` : undefined, badge: "Won", badgeColor: "bg-emerald-500/20 text-emerald-400" })), [filteredWorkItems]);
+
+  const lostItems: DrawerItem[] = useMemo(() =>
+    [...filteredWorkItems].filter(w => w.work_status === "lost").sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map(w => ({ id: w.id, primary: "Lost Order", secondary: new Date(w.created_at).toLocaleDateString("en-IN"), amount: w.amount_in_lac ? `₹${w.amount_in_lac}L` : undefined, badge: "Lost", badgeColor: "bg-red-500/20 text-red-400" })), [filteredWorkItems]);
+
+  const pendingItems: DrawerItem[] = useMemo(() =>
+    [...filteredWorkItems].filter(w => w.work_status === "pending").sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map(w => ({ id: w.id, primary: "Pending Order", secondary: new Date(w.created_at).toLocaleDateString("en-IN"), amount: w.amount_in_lac ? `₹${w.amount_in_lac}L` : undefined, badge: "Pending", badgeColor: "bg-amber-500/20 text-amber-400" })), [filteredWorkItems]);
+
+  // ── Executive List for filter dropdown ───────────────
+  const execList = useMemo(() => {
+    const fieldRoles = ['executive', 'manager', 'tl'];
+    const seen = new Set<string>();
+    return allUserRoles
+      .filter(r => fieldRoles.includes(r.role))
+      .filter(r => { if (seen.has(r.user_id)) return false; seen.add(r.user_id); return true; })
+      .map(r => ({ id: r.user_id, name: profileMap[r.user_id] || 'Unknown', role: r.role }));
+  }, [allUserRoles, profileMap]);
 
   // ── Loading State ────────────────────────────────
   if (visitsLoading) {
@@ -454,7 +781,7 @@ const AnalyticsDashboard = () => {
   // ─── RENDER ─────────────────────────────────────
   // ═══════════════════════════════════════════════════
   return (
-    <div className="-m-4 md:-m-6 lg:-m-8 -mb-20 md:-mb-8 min-h-[calc(100vh-3.5rem)] bg-[#0A0B0E] text-[#F5F5F7] font-sans pb-24 selection:bg-[#A6192E]/30 relative overflow-x-hidden">
+    <div className="min-h-screen bg-[#0A0B0E] text-[#F5F5F7] font-sans pb-28 selection:bg-[#A6192E]/30 relative overflow-x-hidden">
       <motion.div
         variants={containerVariants}
         initial="hidden"
@@ -473,46 +800,205 @@ const AnalyticsDashboard = () => {
             </p>
           </motion.div>
 
-          {/* Showroom Filter (Admin / MD only) */}
-          {canSeeAll && showrooms.length > 0 && (
+          {/* Start Day shortcut for Executives */}
+          {isExec && (
             <motion.div variants={itemVariants}>
-              <div className="flex items-center gap-2 bg-card border rounded-xl p-2 shadow-sm">
-                <Building2 className="h-4 w-4 text-muted-foreground ml-2" />
+              <a
+                href="/visits"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white shadow-md transition-all hover:scale-105"
+                style={{ background: "linear-gradient(135deg, #C21833 0%, #A6192E 100%)" }}
+              >
+                <Target className="h-4 w-4" />
+                Start Day / Visits
+              </a>
+            </motion.div>
+          )}
+        </div>
+
+        {/* ── Filter Bar — single scrollable row ── */}
+        <motion.div variants={itemVariants}>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {/* Date pills */}
+            {([
+              { key: 'all',        label: 'All' },
+              { key: 'today',      label: 'Today' },
+              { key: 'yesterday',  label: 'Yesterday' },
+              { key: 'this_week',  label: 'This Week' },
+              { key: 'this_month', label: 'This Month' },
+              { key: 'custom',     label: '📅 Custom' },
+            ] as { key: typeof dateFilter; label: string }[]).map(opt => (
+              <button
+                key={opt.key}
+                onClick={() => setDateFilter(opt.key)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-[11px] font-bold tracking-wide transition-all border ${
+                  dateFilter === opt.key
+                    ? 'bg-[#A6192E] text-white border-[#A6192E] shadow-md'
+                    : 'bg-white/5 text-[#A1A5AE] border-white/10 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+
+            {/* Custom date inputs inline */}
+            {dateFilter === 'custom' && (
+              <>
+                <input
+                  type="date" value={customFrom}
+                  onChange={e => setCustomFrom(e.target.value)}
+                  className="shrink-0 bg-[#1A1D24] border border-white/10 rounded-lg px-2 py-1 text-[11px] text-[#F5F5F7] focus:outline-none focus:border-[#A6192E] w-[120px]"
+                />
+                <span className="text-[#8E939D] text-[11px] shrink-0">→</span>
+                <input
+                  type="date" value={customTo}
+                  onChange={e => setCustomTo(e.target.value)}
+                  className="shrink-0 bg-[#1A1D24] border border-white/10 rounded-lg px-2 py-1 text-[11px] text-[#F5F5F7] focus:outline-none focus:border-[#A6192E] w-[120px]"
+                />
+              </>
+            )}
+
+            {/* Divider */}
+            {(canSeeAll && showrooms.length > 0) || (canSeeShowroom && execList.length > 0) ? (
+              <div className="h-5 w-px bg-white/10 shrink-0 mx-1" />
+            ) : null}
+
+            {/* Showroom dropdown */}
+            {canSeeAll && showrooms.length > 0 && (
+              <div className="shrink-0 flex items-center gap-1 bg-[#1A1D24] border border-white/10 rounded-full px-2.5 py-1">
+                <Building2 className="h-3 w-3 text-[#A1A5AE]" />
                 <Select value={selectedShowroom} onValueChange={setSelectedShowroom}>
-                  <SelectTrigger className="w-[200px] border-none shadow-none bg-transparent h-8 text-sm">
+                  <SelectTrigger className="border-none shadow-none bg-transparent h-5 text-[11px] text-[#F5F5F7] w-[120px] p-0 focus:ring-0 font-medium">
                     <SelectValue placeholder="All Showrooms" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">All Showrooms</SelectItem>
                     {showrooms.map(sr => (
-                      <SelectItem key={sr.id} value={sr.id}>
-                        {sr.name} – {sr.city}
+                      <SelectItem key={sr.id} value={sr.id}>{sr.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+
+            {/* Executive dropdown */}
+            {canSeeShowroom && execList.length > 0 && (
+              <div className="shrink-0 flex items-center gap-1 bg-[#1A1D24] border border-white/10 rounded-full px-2.5 py-1">
+                <UserCheck className="h-3 w-3 text-[#A1A5AE]" />
+                <Select value={selectedExecutive} onValueChange={setSelectedExecutive}>
+                  <SelectTrigger className="border-none shadow-none bg-transparent h-5 text-[11px] text-[#F5F5F7] w-[130px] p-0 focus:ring-0 font-medium">
+                    <SelectValue placeholder="All Members" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Members</SelectItem>
+                    {execList.map(e => (
+                      <SelectItem key={e.id} value={e.id}>
+                        {e.name} · {e.role === 'executive' ? 'Exec' : e.role === 'manager' ? 'Mgr' : 'TL'}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               </div>
-            </motion.div>
-          )}
-        </div>
+            )}
 
-        {/* ── KPI Cards Row 1 ── */}
-        <motion.div variants={containerVariants} className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <StatCard label="Total Visits" value={metrics.totalVisits} icon={CalendarCheck} color="text-blue-500" bg="bg-blue-500/10" sub={`${metrics.completionRate}% completion`} />
-          <StatCard label="Clients" value={metrics.totalClients} icon={Users} color="text-emerald-500" bg="bg-emerald-500/10" sub={`+${metrics.newClientsThisMonth} this month`} />
-          <StatCard label="Partners" value={metrics.totalPartners} icon={Building2} color="text-purple-500" bg="bg-purple-500/10" sub={`+${metrics.newPartnersThisMonth} this month`} />
-          <StatCard label="Work Orders" value={metrics.totalOrders} icon={Briefcase} color="text-orange-500" bg="bg-orange-500/10" />
+            {/* Clear all filters */}
+            {(dateFilter !== 'all' || selectedExecutive !== 'all' || (canSeeAll && selectedShowroom !== 'all')) && (
+              <button
+                onClick={() => { setDateFilter('all'); setSelectedExecutive('all'); setSelectedShowroom('all'); setCustomFrom(''); setCustomTo(''); }}
+                className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#A6192E]/20 text-[#A6192E] border border-[#A6192E]/30 text-[10px] font-bold hover:bg-[#A6192E]/30 transition-colors"
+              >
+                <XCircle className="h-3 w-3" /> Clear
+              </button>
+            )}
+          </div>
         </motion.div>
 
-        {/* ── KPI Cards Row 2 – Order Status ── */}
-        <motion.div variants={containerVariants} className="grid grid-cols-3 gap-3 md:grid-cols-6">
-          <StatCard label="Completed" value={metrics.completedVisits} icon={CheckCircle2} color="text-green-500" bg="bg-green-500/10" />
-          <StatCard label="Planned" value={metrics.plannedVisits} icon={Clock} color="text-blue-500" bg="bg-blue-500/10" />
-          <StatCard label="Cancelled" value={metrics.cancelledVisits} icon={XCircle} color="text-red-500" bg="bg-red-500/10" />
-          <StatCard label="Orders Won" value={metrics.ordersWon} icon={Trophy} color="text-emerald-600" bg="bg-emerald-600/10" />
-          <StatCard label="Orders Lost" value={metrics.ordersLost} icon={XCircle} color="text-red-500" bg="bg-red-500/10" />
-          <StatCard label="Pending" value={metrics.ordersPending} icon={Clock} color="text-amber-500" bg="bg-amber-500/10" />
+        {/* ── Champion Banner (first 3 days of month) ── */}
+        <ChampionBanner />
+
+        {/* ── KPI Cards Row 1 (4 main metrics) ── */}
+        <motion.div
+          variants={containerVariants}
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}
+        >
+          <ClickableStatCard
+            label="Total Visits" value={metrics.totalVisits} icon={CalendarCheck}
+            gradient="bg-gradient-to-br from-blue-500 to-blue-700" accent="#3b82f6"
+            sub={`${metrics.completionRate}% completion`}
+            change={pctChange(metrics.totalVisits, prevMetrics.totalVisits)}
+            onClick={() => openDrawer(`Total Visits (${metrics.totalVisits})`, allVisitsItems)}
+          />
+          <ClickableStatCard
+            label="Clients" value={metrics.totalClients} icon={Users}
+            gradient="bg-gradient-to-br from-emerald-500 to-emerald-700" accent="#10b981"
+            sub={dateFilter === 'all' ? `+${metrics.newClientsThisMonth} this month` : `in selected period`}
+            change={pctChange(metrics.totalClients, prevMetrics.totalClients)}
+            onClick={() => openDrawer(`Clients (${metrics.totalClients})`, clientItems)}
+          />
+          <ClickableStatCard
+            label="Partners" value={metrics.totalPartners} icon={Building2}
+            gradient="bg-gradient-to-br from-purple-500 to-purple-700" accent="#a855f7"
+            sub={dateFilter === 'all' ? `+${metrics.newPartnersThisMonth} this month` : `in selected period`}
+            change={pctChange(metrics.totalPartners, prevMetrics.totalPartners)}
+            onClick={() => openDrawer(`Partners (${metrics.totalPartners})`, partnerItems)}
+          />
+          <ClickableStatCard
+            label="Work Orders" value={metrics.totalOrders} icon={Briefcase}
+            gradient="bg-gradient-to-br from-orange-500 to-orange-700" accent="#f97316"
+            change={pctChange(metrics.totalOrders, prevMetrics.totalOrders)}
+            onClick={() => openDrawer(`Work Orders (${metrics.totalOrders})`, allWosItems)}
+          />
         </motion.div>
+
+        {/* ── KPI Cards Row 2 (6 status metrics) ── */}
+        <motion.div
+          variants={containerVariants}
+          style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}
+        >
+          <ClickableStatCard
+            label="Completed" value={metrics.completedVisits} icon={CheckCircle2}
+            gradient="bg-gradient-to-br from-green-500 to-green-700" accent="#22c55e"
+            change={pctChange(metrics.completedVisits, prevMetrics.completedVisits)}
+            onClick={() => openDrawer(`Completed Visits (${metrics.completedVisits})`, completedItems)}
+          />
+          <ClickableStatCard
+            label="Planned" value={metrics.plannedVisits} icon={Clock}
+            gradient="bg-gradient-to-br from-sky-500 to-sky-700" accent="#0ea5e9"
+            change={pctChange(metrics.plannedVisits, prevMetrics.plannedVisits)}
+            onClick={() => openDrawer(`Planned Visits (${metrics.plannedVisits})`, plannedItems)}
+          />
+          <ClickableStatCard
+            label="Cancelled" value={metrics.cancelledVisits} icon={XCircle}
+            gradient="bg-gradient-to-br from-red-500 to-red-700" accent="#ef4444"
+            change={pctChange(metrics.cancelledVisits, prevMetrics.cancelledVisits)}
+            onClick={() => openDrawer(`Cancelled Visits (${metrics.cancelledVisits})`, cancelledItems)}
+          />
+          <ClickableStatCard
+            label="Orders Won" value={metrics.ordersWon} icon={Trophy}
+            gradient="bg-gradient-to-br from-emerald-500 to-teal-700" accent="#10b981"
+            change={pctChange(metrics.ordersWon, prevMetrics.ordersWon)}
+            onClick={() => openDrawer(`Orders Won (${metrics.ordersWon})`, wonItems)}
+          />
+          <ClickableStatCard
+            label="Orders Lost" value={metrics.ordersLost} icon={XCircle}
+            gradient="bg-gradient-to-br from-rose-500 to-red-700" accent="#f43f5e"
+            change={pctChange(metrics.ordersLost, prevMetrics.ordersLost)}
+            onClick={() => openDrawer(`Orders Lost (${metrics.ordersLost})`, lostItems)}
+          />
+          <ClickableStatCard
+            label="Pending" value={metrics.ordersPending} icon={Clock}
+            gradient="bg-gradient-to-br from-amber-500 to-orange-600" accent="#f59e0b"
+            change={pctChange(metrics.ordersPending, prevMetrics.ordersPending)}
+            onClick={() => openDrawer(`Pending Orders (${metrics.ordersPending})`, pendingItems)}
+          />
+        </motion.div>
+
+        {/* ── Detail Drawer ── */}
+        <DetailDrawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          title={drawerTitle}
+          items={drawerItems}
+        />
 
         {/* ── Main Content Tabs ── */}
         <Tabs defaultValue="overview" className="space-y-4">
@@ -523,6 +1009,7 @@ const AnalyticsDashboard = () => {
               {canSeeShowroom && <TabsTrigger value="team" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><Award className="h-3.5 w-3.5" />Team Performance</TabsTrigger>}
               {canSeeShowroom && <TabsTrigger value="live-map" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><MapPin className="h-3.5 w-3.5" />Live Map</TabsTrigger>}
               {canSeeAll && <TabsTrigger value="comparison" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><GitCompare className="h-3.5 w-3.5" />Compare Showrooms</TabsTrigger>}
+              {canSeeShowroom && <TabsTrigger value="hall-of-fame" className="text-xs gap-1.5 data-[state=active]:bg-[#1A1D24] data-[state=active]:text-[#F5F5F7] text-[#A1A5AE]"><Crown className="h-3.5 w-3.5 text-[#D4AF37]" />Hall of Fame</TabsTrigger>}
             </TabsList>
           </motion.div>
 
@@ -934,6 +1421,21 @@ const AnalyticsDashboard = () => {
               <LiveTracking />
             </TabsContent>
           )}
+          {/* ═══ HALL OF FAME TAB ═══ */}
+          {canSeeShowroom && (
+            <TabsContent value="hall-of-fame" className="space-y-4 mt-0">
+              <motion.div variants={itemVariants}>
+                <div className="flex items-center gap-2 mb-4">
+                  <Crown className="h-5 w-5 text-[#D4AF37]" />
+                  <div>
+                    <h3 className="text-base font-bold text-[#F5F5F7]">Hall of Fame</h3>
+                    <p className="text-[10px] text-[#8E939D]">Monthly top performers — Executives, TLs & Managers</p>
+                  </div>
+                </div>
+                <HallOfFame />
+              </motion.div>
+            </TabsContent>
+          )}
         </Tabs>
       </motion.div>
     </div>
@@ -951,8 +1453,13 @@ const Dashboard = () => {
     );
   }
 
-  if (role === "executive") return <ExecutiveHome />;
+  // Executive, TL, Manager → PersonalHome (visits + check-in + KPIs + showroom leaderboard)
+  // MD, Admin → AnalyticsDashboard (full org-wide analytics)
+  if (role === 'executive' || role === 'tl' || role === 'manager') {
+    return <ExecutiveHome />;
+  }
   return <AnalyticsDashboard />;
+
 };
 
 export default Dashboard;

@@ -9,8 +9,9 @@ interface AuthContextType {
   user: User | null;
   session: Session | null;
   role: AppRole | null;
-  showroomId: string | null;
-  reportsTo: string | null;   // TL's user_id (for exec), Manager's user_id (for TL)
+  showroomId: string | null;    // Primary showroom (first) — backward compat
+  showroomIds: string[];        // ALL showrooms for this role (multi-showroom managers)
+  reportsTo: string | null;    // TL's user_id (for exec), Manager's user_id (for TL)
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -20,6 +21,7 @@ const AuthContext = createContext<AuthContextType>({
   session: null,
   role: null,
   showroomId: null,
+  showroomIds: [],
   reportsTo: null,
   loading: true,
   signOut: async () => {},
@@ -30,6 +32,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRole] = useState<AppRole | null>(null);
   const [showroomId, setShowroomId] = useState<string | null>(null);
+  const [showroomIds, setShowroomIds] = useState<string[]>([]);
   const [reportsTo, setReportsTo] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -64,7 +67,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         (rolePriority[a.role] || 0) >= (rolePriority[b.role] || 0) ? a : b
       );
       setRole(best.role);
-      setShowroomId(best.showroom_id);
+
+      // Collect ALL showroom_ids for the best role (multi-showroom managers)
+      const sameRoleRows = data.filter(r => r.role === best.role);
+      const allShowroomIds = sameRoleRows
+        .map(r => r.showroom_id)
+        .filter((id): id is string => !!id);
+
+      setShowroomIds(allShowroomIds);
+      setShowroomId(allShowroomIds[0] ?? null);   // Primary (backward compat)
       setReportsTo(best.reports_to ?? null);
     } else {
       // Auto-assign executive role for new users
@@ -105,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else {
           setRole(null);
           setShowroomId(null);
+          setShowroomIds([]);
           setReportsTo(null);
         }
         setLoading(false);
@@ -129,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, role, showroomId, reportsTo, loading, signOut }}>
+    <AuthContext.Provider value={{ user, session, role, showroomId, showroomIds, reportsTo, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

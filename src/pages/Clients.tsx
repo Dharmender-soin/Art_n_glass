@@ -146,7 +146,7 @@ const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partne
 
 
 const Clients = () => {
-  const { user, role, showroomId, reportsTo } = useAuth();
+  const { user, role, showroomId, showroomIds, reportsTo } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -178,12 +178,12 @@ const Clients = () => {
         const ids = [user.id, ...execIds];
         q = q.in("created_by", ids);
 
-      } else if (role === "manager" && showroomId) {
-        // Manager: all clients added by anyone in their showroom
+      } else if (role === "manager" && showroomIds.length > 0) {
+        // Manager: all clients in any of their showrooms
         const { data: teamRoles } = await supabase
           .from("user_roles")
           .select("user_id")
-          .eq("showroom_id", showroomId);
+          .in("showroom_id", showroomIds);
         const teamIds = (teamRoles || []).map((r: any) => r.user_id);
         if (teamIds.length > 0) q = q.in("created_by", teamIds);
       }
@@ -211,11 +211,11 @@ const Clients = () => {
           .eq("role", "executive");
         const execIds = (myExecs || []).map((r: any) => r.user_id);
         q = q.in("created_by", [user.id, ...execIds]);
-      } else if (role === "manager" && showroomId) {
+      } else if (role === "manager" && showroomIds.length > 0) {
         const { data: teamRoles } = await supabase
           .from("user_roles")
           .select("user_id")
-          .eq("showroom_id", showroomId);
+          .in("showroom_id", showroomIds);
         const teamIds = (teamRoles || []).map((r: any) => r.user_id);
         if (teamIds.length > 0) q = q.in("created_by", teamIds);
       }

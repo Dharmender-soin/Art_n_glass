@@ -285,7 +285,7 @@ const EmptyState = ({ isFiltered, onAdd }: { isFiltered: boolean; onAdd: () => v
 
 /* ─── Main Component ───────────────────────────────────────── */
 const Partners = () => {
-  const { user, role, showroomId, reportsTo } = useAuth();
+  const { user, role, showroomId, showroomIds, reportsTo } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [filterCity, setFilterCity] = useState("");
@@ -317,11 +317,11 @@ const Partners = () => {
         const execIds = (myExecs || []).map((r: any) => r.user_id);
         q = q.in("created_by", [user.id, ...execIds]);
 
-      } else if (role === "manager" && showroomId) {
+      } else if (role === "manager" && showroomIds.length > 0) {
         const { data: teamRoles } = await supabase
           .from("user_roles")
           .select("user_id")
-          .eq("showroom_id", showroomId);
+          .in("showroom_id", showroomIds);
         const teamIds = (teamRoles || []).map((r: any) => r.user_id);
         if (teamIds.length > 0) q = q.in("created_by", teamIds);
       }

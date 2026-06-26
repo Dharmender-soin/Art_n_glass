@@ -17,6 +17,7 @@ import { useNavigate } from "react-router-dom";
 import { Database } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { RaceCountdown } from "@/components/dashboard/ChampionBanner";
 
 import { calculateRouteDistance } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ export const ExecutiveHome = () => {
     const { user, role, showroomId } = useAuth();
     const navigate = useNavigate();
     const [selectedDate, setSelectedDate] = useState(new Date());
+    const [expandedTeamAlert, setExpandedTeamAlert] = useState<string | null>(null);
 
     const [kpiPopup, setKpiPopup] = useState<{
         title: string;
@@ -60,8 +62,9 @@ export const ExecutiveHome = () => {
     const monthStart = format(startOfMonth(selectedDate), "yyyy-MM-dd");
     const monthEnd = format(endOfMonth(selectedDate), "yyyy-MM-dd");
 
-    const fullName: string = user?.user_metadata?.full_name || "Executive";
-    const firstName = (fullName.split(" ")[0] || "Executive").charAt(0).toUpperCase() + (fullName.split(" ")[0] || "").slice(1);
+    const roleLabel = role === 'tl' ? 'Team Leader' : role === 'manager' ? 'Showroom Manager' : 'Executive';
+    const fullName: string = user?.user_metadata?.full_name || roleLabel;
+    const firstName = (fullName.split(" ")[0] || roleLabel).charAt(0).toUpperCase() + (fullName.split(" ")[0] || "").slice(1);
 
     // ── Fetch profile avatar ──
     const queryClient = useQueryClient();
@@ -448,6 +451,290 @@ export const ExecutiveHome = () => {
         enabled: !!showroomId,
     });
 
+    // ── TEAM ACTION REQUIRED QUERIES (TL, MANAGER, ADMIN, MD) ──
+    const { data: allUserRoles = [] } = useQuery({
+        queryKey: ["exec-all-user-roles"],
+        enabled: !!user && (role === "tl" || role === "manager" || role === "admin" || role === "md"),
+        queryFn: async () => {
+            const { data, error } = await supabase.from("user_roles").select("*").eq("is_active" as any, true);
+            if (error) throw error;
+            return data || [];
+        }
+    });
+
+    const { data: allProfiles = [] } = useQuery({
+        queryKey: ["exec-all-profiles"],
+        enabled: !!user && (role === "tl" || role === "manager" || role === "admin" || role === "md"),
+        queryFn: async () => {
+            const { data, error } = await supabase.from("profiles").select("user_id, full_name");
+            if (error) throw error;
+            return data || [];
+        }
+    });
+
+    const teamUserIds = useMemo(() => {
+        if (!user || (role !== "tl" && role !== "manager" && role !== "admin" && role !== "md")) return [];
+        if (role === "tl") {
+            return allUserRoles.filter(r => r.reports_to === user.id && r.role === "executive").map(r => r.user_id);
+        } else if (role === "manager" && showroomId) {
+            return allUserRoles.filter(r => r.showroom_id === showroomId && r.role === "executive").map(r => r.user_id);
+        } else if (role === "admin" || role === "md") {
+            return allUserRoles.filter(r => r.role === "executive").map(r => r.user_id);
+        }
+        return [];
+    }, [allUserRoles, role, user, showroomId]);
+
+    const { data: teamVisits = [] } = useQuery({
+        queryKey: ["team-visits-alerts", teamUserIds],
+        enabled: teamUserIds.length > 0,
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("visits")
+                .select("id, status, visit_date, created_at, created_by, client_id, partner_id, done_at")
+                .in("created_by", teamUserIds);
+            if (error) throw error;
+            return data || [];
+        }
+    });
+
+    const { data: teamClients = [] } = useQuery({
+        queryKey: ["team-clients-alerts", teamUserIds],
+        enabled: teamUserIds.length > 0,
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("clients")
+                .select("id, name, created_at, created_by, partner_id, project_status")
+                .in("created_by", teamUserIds);
+            if (error) throw error;
+            return data || [];
+        }
+    });
+
+    const { data: teamWos = [] } = useQuery({
+        queryKey: ["team-wos-alerts", teamUserIds],
+        enabled: teamUserIds.length > 0,
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("work_scope_items")
+                .select("id, work_status, created_at, created_by, client_id, amount_in_lac, is_verified")
+                .in("created_by", teamUserIds);
+            if (error) throw error;
+            return data || [];
+        }
+    });
+
+    const { data: teamPartners = [] } = useQuery({
+        queryKey: ["team-partners-alerts", teamUserIds],
+        enabled: teamUserIds.length > 0,
+        queryFn: async () => {
+            const { data, error } = await supabase
+                .from("partners")
+                .select("id, name, type, created_by")
+                .in("created_by", teamUserIds);
+            if (error) throw error;
+            return data || [];
+        }
+    });
+
+    const teamAlerts = useMemo(() => {
+        if (role !== "tl" && role !== "manager" && role !== "admin" && role !== "md") return [];
+        
+        const alertsList: {
+            id: string;
+            type: "inactive" | "partners" | "visits" | "deficit" | "closure";
+            title: string;
+            count: number;
+            details: { name: string; info: string; actionText?: string; actionRoute?: string }[];
+        }[] = [];
+
+        const profileMap = Object.fromEntries(allProfiles.map(p => [p.user_id, p.full_name || "Unknown"]));
+
+        // 1. Inactive Employees
+        const inactiveDetails: typeof alertsList[number]["details"] = [];
+        teamUserIds.forEach(uid => {
+            const uVisits = teamVisits.filter(v => v.created_by === uid);
+            const uWos = teamWos.filter(w => w.created_by === uid);
+            const uClients = teamClients.filter(c => c.created_by === uid);
+
+            const lastActiveDates = [
+                ...uVisits.map(v => new Date(v.created_at)),
+                ...uWos.map(w => new Date(w.created_at)),
+                ...uClients.map(c => new Date(c.created_at))
+            ].map(d => d.getTime());
+
+            const lastActive = lastActiveDates.length > 0 ? Math.max(...lastActiveDates) : null;
+            if (lastActive) {
+                const daysInactive = (Date.now() - lastActive) / 86400000;
+                if (daysInactive >= 2.0) {
+                    inactiveDetails.push({
+                        name: profileMap[uid] || "Unknown",
+                        info: `${Math.floor(daysInactive)} days inactive`,
+                        actionText: "View Team",
+                        actionRoute: "/hierarchy"
+                    });
+                }
+            } else {
+                inactiveDetails.push({
+                    name: profileMap[uid] || "Unknown",
+                    info: "Never active in system",
+                    actionText: "View Team",
+                    actionRoute: "/hierarchy"
+                });
+            }
+        });
+        if (inactiveDetails.length > 0) {
+            alertsList.push({
+                id: "team-inactive",
+                type: "inactive",
+                title: `${inactiveDetails.length} Inactive Employee${inactiveDetails.length > 1 ? 's' : ''}`,
+                count: inactiveDetails.length,
+                details: inactiveDetails
+            });
+        }
+
+        // 2. Partner Visit Pending (15-day limit)
+        const partnerDetails: typeof alertsList[number]["details"] = [];
+        const realPartners = teamPartners.filter(p => {
+            const name = p.name.toLowerCase();
+            return !(
+                name.includes("zirakpur") || name.includes("kirti nagar") || name.includes("kirtinagar") ||
+                name.includes("gurgaon") || name.includes("gurugram") || name.includes("art n glass") ||
+                name.includes("art & glass") || name.includes("art and glass") || name.includes("showroom") ||
+                name.includes("home") || name.includes("office") || name.includes("test") ||
+                name.includes("testing") || name.includes("demo") || name.includes("dummy") ||
+                name.includes("sample") || name.includes("internal") || name.includes("trial")
+            );
+        });
+
+        realPartners.forEach(p => {
+            const pVisits = teamVisits.filter(v => v.partner_id === p.id && v.status === "done");
+            const lastVisitDate = pVisits.length > 0 
+                ? Math.max(...pVisits.map(v => v.done_at ? new Date(v.done_at).getTime() : new Date(v.visit_date).getTime())) 
+                : null;
+
+            if (lastVisitDate) {
+                const daysSince = (Date.now() - lastVisitDate) / 86400000;
+                if (daysSince >= 12) {
+                    partnerDetails.push({
+                        name: p.name,
+                        info: `${Math.floor(daysSince)} days since last visit (${profileMap[p.created_by] || 'Unassigned'})`,
+                        actionText: "Plan Visit",
+                        actionRoute: `/visits?partner_id=${p.id}&visit_with_type=partner`
+                    });
+                }
+            } else {
+                partnerDetails.push({
+                    name: p.name,
+                    info: `Never visited (${profileMap[p.created_by] || 'Unassigned'})`,
+                    actionText: "Plan Visit",
+                    actionRoute: `/visits?partner_id=${p.id}&visit_with_type=partner`
+                });
+            }
+        });
+        if (partnerDetails.length > 0) {
+            alertsList.push({
+                id: "team-partners-pending",
+                type: "partners",
+                title: `${partnerDetails.length} Partner Visit${partnerDetails.length > 1 ? 's' : ''} Overdue`,
+                count: partnerDetails.length,
+                details: partnerDetails
+            });
+        }
+
+        // 3. Low Visit Average (< 2.0 visits/day completed in last 7 days)
+        const lowAvgDetails: typeof alertsList[number]["details"] = [];
+        const sevenDaysAgo = Date.now() - 7 * 86400000;
+        teamUserIds.forEach(uid => {
+            const recentVisits = teamVisits.filter(v => v.created_by === uid && v.status === "done" && new Date(v.visit_date).getTime() >= sevenDaysAgo);
+            const completedCount = recentVisits.length;
+            const avgPerDay = completedCount / 7.0;
+            if (avgPerDay < 2.0) {
+                lowAvgDetails.push({
+                    name: profileMap[uid] || "Unknown",
+                    info: `${avgPerDay.toFixed(1)} completed visits/day avg (last 7 days)`,
+                    actionText: "Check Performance",
+                    actionRoute: "/hierarchy"
+                });
+            }
+        });
+        if (lowAvgDetails.length > 0) {
+            alertsList.push({
+                id: "team-low-avg",
+                type: "visits",
+                title: `${lowAvgDetails.length} Executive${lowAvgDetails.length > 1 ? 's' : ''} with Low Visit Avg`,
+                count: lowAvgDetails.length,
+                details: lowAvgDetails
+            });
+        }
+
+        // 4. Client / WOS Deficit (0 clients or WOS added this week)
+        const deficitDetails: typeof alertsList[number]["details"] = [];
+        const currentWeekStart = new Date(weekStart).getTime();
+        teamUserIds.forEach(uid => {
+            const weekClients = teamClients.filter(c => c.created_by === uid && new Date(c.created_at).getTime() >= currentWeekStart).length;
+            const weekWos = teamWos.filter(w => w.created_by === uid && new Date(w.created_at).getTime() >= currentWeekStart).length;
+
+            if (weekClients === 0 && weekWos === 0) {
+                deficitDetails.push({
+                    name: profileMap[uid] || "Unknown",
+                    info: `0 clients & 0 WOS items added this week`,
+                    actionText: "View Team",
+                    actionRoute: "/hierarchy"
+                });
+            } else if (weekClients === 0) {
+                deficitDetails.push({
+                    name: profileMap[uid] || "Unknown",
+                    info: `0 clients added this week`,
+                    actionText: "View Team",
+                    actionRoute: "/hierarchy"
+                });
+            } else if (weekWos === 0) {
+                deficitDetails.push({
+                    name: profileMap[uid] || "Unknown",
+                    info: `0 WOS items added this week`,
+                    actionText: "View Team",
+                    actionRoute: "/hierarchy"
+                });
+            }
+        });
+        if (deficitDetails.length > 0) {
+            alertsList.push({
+                id: "team-deficit",
+                type: "deficit",
+                title: `${deficitDetails.length} Executive${deficitDetails.length > 1 ? 's' : ''} with Deficits`,
+                count: deficitDetails.length,
+                details: deficitDetails
+            });
+        }
+
+        // 5. Pending Order Closure
+        const closureDetails: typeof alertsList[number]["details"] = [];
+        const activeClients = teamClients.filter(c => c.project_status === "active" || !c.project_status);
+        activeClients.forEach(c => {
+            const clientWos = teamWos.filter(w => w.client_id === c.id);
+            const hasWonWos = clientWos.some(w => w.work_status === "won" || w.is_verified);
+            if (hasWonWos) {
+                closureDetails.push({
+                    name: c.name,
+                    info: `Won order pending final verification / project closure`,
+                    actionText: "Close Project",
+                    actionRoute: "/hierarchy"
+                });
+            }
+        });
+        if (closureDetails.length > 0) {
+            alertsList.push({
+                id: "team-order-closure",
+                type: "closure",
+                title: `${closureDetails.length} Won Order${closureDetails.length > 1 ? 's' : ''} Pending Closure`,
+                count: closureDetails.length,
+                details: closureDetails
+            });
+        }
+
+        return alertsList;
+    }, [teamUserIds, allProfiles, teamVisits, teamWos, teamClients, teamPartners, role, weekStart]);
+
     const displayDate = isToday(selectedDate) ? "TODAY" : format(selectedDate, "dd MMM yyyy");
 
     const handlePrevDay = () => setSelectedDate(subDays(selectedDate, 1));
@@ -455,12 +742,13 @@ export const ExecutiveHome = () => {
 
     const leaderboard = useMemo(() => {
         if (!showroomLeaderboard.length) return { visits: [], wosCount: [], wosWon: [] };
-        const stats = showroomLeaderboard.map(exec => ({
+        const stats = showroomLeaderboard.map((exec: any) => ({
             user_id: exec.user_id,
             full_name: exec.full_name,
-            visits: Number(exec.visits_count),
-            wosCount: Number(exec.wos_count),
-            wosWon: Number(exec.wos_won_total)
+            role: exec.role || 'executive',
+            visits: Number(exec.visits_count ?? 0),
+            wosCount: Number(exec.wos_count ?? 0),
+            wosWon: Number(exec.wos_won_total ?? 0)
         }));
         return {
             visits: [...stats].sort((a, b) => b.visits - a.visits),
@@ -762,6 +1050,9 @@ export const ExecutiveHome = () => {
                     <div className="min-w-0 flex-1">
                         <p className="text-[10px] text-muted-foreground dark:text-white/50 font-medium uppercase tracking-[0.15em] truncate">Welcome back</p>
                         <h2 className="text-sm font-bold text-foreground leading-tight truncate">{firstName}</h2>
+                        <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-red-500/15 text-red-400 border border-red-500/20">
+                          {roleLabel}
+                        </span>
                     </div>
                 </div>
 
@@ -906,7 +1197,7 @@ export const ExecutiveHome = () => {
                             </div>
                             <div>
                                 <h3 className="text-sm font-bold text-foreground leading-none">Showroom Leaderboard</h3>
-                                <p className="text-[9px] text-muted-foreground dark:text-white/30 font-medium mt-0.5">This Month · {showroomLeaderboard.length} Executives</p>
+                                <p className="text-[9px] text-muted-foreground dark:text-white/30 font-medium mt-0.5">This Month · {showroomLeaderboard.length} Members</p>
                             </div>
                         </div>
                         {/* My rank badge */}
@@ -1028,11 +1319,17 @@ export const ExecutiveHome = () => {
                                                 ) : (
                                                     <span className={`text-[11px] font-bold w-5 text-center ${rankNumColor}`}>#{idx + 1}</span>
                                                 )}
-                                                <span className={`text-[13px] font-bold truncate max-w-[130px] ${nameColor}`}>
+                                                <span className={`text-[13px] font-bold truncate max-w-[110px] ${nameColor}`}>
                                                     {exec.full_name || 'Executive'}
                                                 </span>
+                                                {exec.role === 'tl' && (
+                                                    <span className="text-[8px] font-bold bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-300 dark:border-blue-400/30 px-1.5 py-0.5 rounded-full shrink-0">TL</span>
+                                                )}
+                                                {exec.role === 'manager' && (
+                                                    <span className="text-[8px] font-bold bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-300 border border-purple-300 dark:border-purple-400/30 px-1.5 py-0.5 rounded-full shrink-0">MGR</span>
+                                                )}
                                                 {isMe && (
-                                                    <span className="text-[8px] font-bold bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-400/30 px-1.5 py-0.5 rounded-full">YOU</span>
+                                                    <span className="text-[8px] font-bold bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-300 border border-red-300 dark:border-red-400/30 px-1.5 py-0.5 rounded-full shrink-0">YOU</span>
                                                 )}
                                             </div>
                                             <span className={`text-sm font-extrabold font-mono tabular-nums ${valColor}`}>
@@ -1074,6 +1371,22 @@ export const ExecutiveHome = () => {
                         })()}
                     </div>
                 </motion.div>
+
+                {/* ── RACE COUNTDOWN ── */}
+                {(() => {
+                    const lbData = leaderboard[leaderboardTab];
+                    const leader = lbData[0];
+                    const myEntry = lbData.find(e => e.user_id === user?.id);
+                    if (!leader || !myEntry || leader.user_id === user?.id) return null;
+                    return (
+                        <RaceCountdown
+                            leaderName={leader.full_name.split(' ')[0]}
+                            leaderScore={leader[leaderboardTab]}
+                            myScore={myEntry[leaderboardTab]}
+                            category={leaderboardTab}
+                        />
+                    );
+                })()}
 
                 {/* ── HERO SECTION: Today's Summary ── */}
                 <motion.div
@@ -1384,6 +1697,114 @@ export const ExecutiveHome = () => {
                         </div>
                     )}
                 </motion.div>
+
+                {/* ── TEAM ACTION REQUIRED (TL, MANAGER, ADMIN & MD) ── */}
+                {(role === "tl" || role === "manager" || role === "admin" || role === "md") && teamAlerts.length > 0 && (
+                    <motion.div
+                        initial={{ opacity: 0, y: 12 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.4, delay: 0.21 }}
+                        className="bg-white dark:bg-white/[0.03] shadow-sm dark:shadow-none border border-border dark:border-white/5 rounded-2xl overflow-hidden"
+                    >
+                        {/* Header */}
+                        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-border dark:border-white/5">
+                            <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-red-600/20 to-red-500/10 border border-red-500/30 flex items-center justify-center">
+                                    <Users className="h-4 w-4 text-red-500" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-foreground leading-none">Team Action Required</h3>
+                                    <p className="text-[9px] text-muted-foreground dark:text-white/30 font-medium mt-0.5">
+                                        {teamAlerts.length} issue category{teamAlerts.length > 1 ? 's' : ''} require attention
+                                    </p>
+                                </div>
+                            </div>
+                            <span className="min-w-[22px] h-[22px] bg-red-600 rounded-full flex items-center justify-center px-1.5">
+                                <span className="text-[10px] font-extrabold text-white">{teamAlerts.reduce((acc, alert) => acc + alert.count, 0)}</span>
+                            </span>
+                        </div>
+
+                        {/* Accordion Categories */}
+                        <div className="divide-y divide-border dark:divide-white/5">
+                            {teamAlerts.map((alert, idx) => {
+                                const isExpanded = expandedTeamAlert === alert.id;
+                                const alertIcon = {
+                                    inactive: <Clock className="h-4 w-4 text-red-500" />,
+                                    partners: <Handshake className="h-4 w-4 text-red-500" />,
+                                    visits: <AlertCircle className="h-4 w-4 text-red-500" />,
+                                    deficit: <TrendingUp className="h-4 w-4 text-red-500" />,
+                                    closure: <CheckCircle2 className="h-4 w-4 text-red-500" />,
+                                }[alert.type] || <AlertCircle className="h-4 w-4 text-red-500" />;
+
+                                return (
+                                    <div key={alert.id} className="relative">
+                                        {/* Row Header */}
+                                        <button
+                                            onClick={() => setExpandedTeamAlert(isExpanded ? null : alert.id)}
+                                            className="w-full flex items-center justify-between gap-3 px-4 py-3.5 hover:bg-black/5 dark:hover:bg-white/[0.02] transition-colors text-left"
+                                        >
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <div className="w-7 h-7 rounded-lg bg-red-500/10 border border-red-500/15 flex items-center justify-center shrink-0">
+                                                    {alertIcon}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-[12px] font-bold text-foreground leading-tight">
+                                                        {alert.title}
+                                                    </p>
+                                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                        {alert.count} case{alert.count > 1 ? 's' : ''} pending follow-up
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-red-500/15 text-red-500 border border-red-500/20">
+                                                    {alert.count}
+                                                </span>
+                                                <ChevronRightIcon className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`} />
+                                            </div>
+                                        </button>
+
+                                        {/* Accordion Expandable Details */}
+                                        <AnimatePresence initial={false}>
+                                            {isExpanded && (
+                                                <motion.div
+                                                    initial={{ height: 0, opacity: 0 }}
+                                                    animate={{ height: "auto", opacity: 1 }}
+                                                    exit={{ height: 0, opacity: 0 }}
+                                                    transition={{ duration: 0.25, ease: "easeInOut" }}
+                                                    className="overflow-hidden bg-black/[0.02] dark:bg-white/[0.01] border-t border-border dark:border-white/5"
+                                                >
+                                                    <div className="px-4 py-2 divide-y divide-border/50 dark:divide-white/[0.03]">
+                                                        {alert.details.map((detail, dIdx) => (
+                                                            <div key={dIdx} className="flex items-center justify-between gap-3 py-2.5">
+                                                                <div className="min-w-0">
+                                                                    <p className="text-xs font-semibold text-gray-800 dark:text-foreground">
+                                                                        {detail.name}
+                                                                    </p>
+                                                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                                        {detail.info}
+                                                                    </p>
+                                                                </div>
+                                                                {detail.actionRoute && (
+                                                                    <button
+                                                                        onClick={() => navigate(detail.actionRoute!)}
+                                                                        className="shrink-0 text-[10px] font-bold px-2.5 py-1 rounded-lg bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-colors"
+                                                                    >
+                                                                        {detail.actionText || "View"}
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </motion.div>
+                                            )}
+                                        </AnimatePresence>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </motion.div>
+                )}
 
                 {/* ── SMART ACTION CENTER ── */}
                 {smartAlerts.length > 0 && (

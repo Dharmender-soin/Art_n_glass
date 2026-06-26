@@ -26,6 +26,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AnimatePresence } from "framer-motion";
 import PageTransition from "@/components/PageTransition";
 import { AIAssistant } from "@/components/AIAssistant";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 const queryClient = new QueryClient();
 
@@ -80,6 +81,8 @@ const RoleBasedHome = () => {
 };
 
 const AnimatedRoutes = () => {
+  const { user } = useAuth();
+  usePushNotifications(user?.id);
 
   const location = useLocation();
 

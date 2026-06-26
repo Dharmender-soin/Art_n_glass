@@ -51,6 +51,7 @@
     <!-- Internet -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- GPS Location (required for Check-In, Mark Done, Live Tracking) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />

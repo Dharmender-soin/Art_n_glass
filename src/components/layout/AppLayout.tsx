@@ -56,7 +56,7 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
         className={cn(
-          "relative z-50",
+          "relative z-50 transition-all duration-300 ease-out will-change-[width]",
           isHovered && "[&_[data-sidebar=spacer]]:!w-[--sidebar-width-icon]"
         )}
       >

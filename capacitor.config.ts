@@ -14,6 +14,11 @@ const config: CapacitorConfig = {
     // Required by @capacitor-community/background-geolocation
     // Prevents location updates from halting after 5 minutes in background
     useLegacyBridge: true,
+  },
+  plugins: {
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"],
+    },
   }
 };
 

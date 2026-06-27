@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useBackgroundTracking } from "@/hooks/useBackgroundTracking";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -33,6 +33,7 @@ export const ExecutiveHome = () => {
     const navigate = useNavigate();
     const [selectedDate, setSelectedDate] = useState(new Date());
     const [expandedTeamAlert, setExpandedTeamAlert] = useState<string | null>(null);
+    const [showActionPopup, setShowActionPopup] = useState(false);
 
     const [kpiPopup, setKpiPopup] = useState<{
         title: string;
@@ -2448,6 +2449,82 @@ export const ExecutiveHome = () => {
 
             {/* ── FAB ── */}
             <FAB navigate={navigate} />
+
+            {/* Action Required Popup */}
+            <Dialog open={showActionPopup} onOpenChange={setShowActionPopup}>
+                <DialogContent className="max-w-[calc(100%-32px)] sm:max-w-md bg-white dark:bg-[#09090b] border-border dark:border-white/10 shadow-2xl p-0 overflow-hidden rounded-[24px]">
+                    <div className="p-5 pb-4 bg-gradient-to-br from-red-500/10 to-orange-500/5 border-b border-border dark:border-white/5">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-red-500/20 to-orange-500/10 border border-red-500/20 flex items-center justify-center shrink-0">
+                                <AlertTriangle className="h-5 w-5 text-red-500" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-black text-foreground tracking-tight leading-none">Action Required</h2>
+                                <p className="text-xs text-muted-foreground dark:text-white/40 mt-1 font-medium">
+                                    You have {smartAlerts.length} item{smartAlerts.length > 1 ? 's' : ''} that need your attention
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="p-4 max-h-[60vh] overflow-y-auto bg-slate-50/50 dark:bg-black/20">
+                        <div className="space-y-3">
+                            {smartAlerts.map((alert, idx) => {
+                                const cfg = {
+                                    critical: {
+                                        rowBg: 'bg-white dark:bg-white/[0.02] border-red-500/20',
+                                        badge: 'bg-red-500/15 text-red-500 border-red-500/25',
+                                        badgeLabel: 'URGENT',
+                                        btn: 'bg-red-500 text-white hover:bg-red-600 shadow-sm shadow-red-500/20',
+                                    },
+                                    warning: {
+                                        rowBg: 'bg-white dark:bg-white/[0.02] border-amber-500/20',
+                                        badge: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25',
+                                        badgeLabel: 'ACTION',
+                                        btn: 'bg-amber-500 text-white hover:bg-amber-600 shadow-sm shadow-amber-500/20',
+                                    },
+                                    info: {
+                                        rowBg: 'bg-white dark:bg-white/[0.02] border-blue-500/20',
+                                        badge: 'bg-blue-500/15 text-blue-500 border-blue-500/25',
+                                        badgeLabel: 'INFO',
+                                        btn: 'bg-blue-500 text-white hover:bg-blue-600 shadow-sm shadow-blue-500/20',
+                                    },
+                                }[alert.priority];
+
+                                return (
+                                    <div key={alert.id} className={`p-3.5 rounded-2xl border ${cfg?.rowBg || 'bg-white'} flex flex-col gap-2.5 shadow-sm`}>
+                                        <div className="flex items-start gap-2.5">
+                                            <span className="text-xl leading-none shrink-0 mt-0.5">{alert.emoji}</span>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between mb-1">
+                                                    <p className="text-[13px] font-bold text-foreground leading-tight">{alert.title}</p>
+                                                    {cfg && (
+                                                        <span className={`text-[9px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${cfg.badge} shrink-0`}>
+                                                            {cfg.badgeLabel}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[12px] text-muted-foreground dark:text-white/50 leading-snug">{alert.desc}</p>
+                                            </div>
+                                        </div>
+                                        {alert.route && cfg && (
+                                            <button
+                                                onClick={() => {
+                                                    setShowActionPopup(false);
+                                                    navigate(alert.route!);
+                                                }}
+                                                className={`w-full py-2 rounded-xl text-xs font-bold transition-colors flex items-center justify-center gap-1.5 ${cfg.btn}`}
+                                            >
+                                                {alert.action} <ArrowRight className="h-3 w-3" />
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 };
@@ -2710,7 +2787,6 @@ const FAB = ({ navigate }: { navigate: (path: string) => void }) => {
                     </motion.div>
                 </motion.button>
             </div>
-
-            </>
-        );
+        </>
+    );
 };

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -109,9 +109,10 @@ const Visits = () => {
 
   const [form, setForm] = useState({
     visit_date: format(new Date(), "yyyy-MM-dd"),
-    visit_with_type: "client" as VisitWithType,
+    visit_with_type: "client" as string,
     client_id: "",
     partner_id: "",
+    showroom_id: "",
     address: "",
     purpose_id: "",
     travel_mode: "own" as "own" | "pooled",
@@ -241,6 +242,33 @@ const Visits = () => {
     enabled: !!user,
   });
 
+  const { data: showrooms = [] } = useQuery({
+    queryKey: ["showrooms-list"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("showrooms").select("*").order("name");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const userShowroomName = useMemo(() => {
+    const s = showrooms.find((item) => item.id === showroomId);
+    return s?.name?.toLowerCase() || "";
+  }, [showrooms, showroomId]);
+
+  const filteredShowrooms = useMemo(() => {
+    if (!userShowroomName || role === "admin" || role === "md") {
+      return showrooms;
+    }
+    if (userShowroomName.includes("gurgaon") || userShowroomName.includes("kirti")) {
+      return showrooms.filter((s) => s.name.toLowerCase().includes("gurgaon") || s.name.toLowerCase().includes("kirti"));
+    }
+    if (userShowroomName.includes("zirakpur") || userShowroomName.includes("zarkpur") || userShowroomName.includes("sarkpur")) {
+      return showrooms.filter((s) => s.name.toLowerCase().includes("zirakpur") || s.name.toLowerCase().includes("kirti"));
+    }
+    return showrooms;
+  }, [showrooms, userShowroomName, role]);
+
   // Fetch same-showroom colleagues via SECURITY DEFINER RPC (bypasses RLS on profiles)
   const { data: colleagues = [] } = useQuery({
     queryKey: ["colleagues-list", user?.id, showroomId],
@@ -278,15 +306,18 @@ const Visits = () => {
         travel_mode: form.travel_mode,
         pooled_with_user_id: form.travel_mode === "pooled" && form.pooled_with_user_id ? form.pooled_with_user_id : null,
       };
-      if (form.visit_with_type === "client") insertData.client_id = form.client_id;
-      else insertData.partner_id = form.partner_id;
+      if (form.visit_with_type === "client" || form.visit_with_type === "home") {
+        if (form.client_id) insertData.client_id = form.client_id;
+      } else if (form.visit_with_type === "partner") {
+        if (form.partner_id) insertData.partner_id = form.partner_id;
+      }
       const { error } = await supabase.from("visits").insert(insertData);
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["visits"] });
       toast.success("Visit planned!");
-      setForm({ visit_date: format(new Date(), "yyyy-MM-dd"), visit_with_type: "client", client_id: "", partner_id: "", address: "", purpose_id: "", travel_mode: "own", pooled_with_user_id: "" });
+      setForm({ visit_date: format(new Date(), "yyyy-MM-dd"), visit_with_type: "client", client_id: "", partner_id: "", showroom_id: "", address: "", purpose_id: "", travel_mode: "own", pooled_with_user_id: "" });
       setDialogOpen(false);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -484,12 +515,15 @@ const Visits = () => {
   });
 
   const handleSelectEntity = (id: string) => {
-    if (form.visit_with_type === "client") {
+    if (form.visit_with_type === "client" || form.visit_with_type === "home") {
       const c = clients.find((x) => x.id === id);
-      setForm({ ...form, client_id: id, address: c?.address || c?.city || "" });
-    } else {
+      setForm({ ...form, client_id: id, partner_id: "", showroom_id: "", address: c?.address || c?.city || "" });
+    } else if (form.visit_with_type === "partner") {
       const p = partners.find((x) => x.id === id);
-      setForm({ ...form, partner_id: id, address: p?.address || p?.city || "" });
+      setForm({ ...form, partner_id: id, client_id: "", showroom_id: "", address: p?.address || p?.city || "" });
+    } else if (form.visit_with_type === "showroom") {
+      const s = showrooms.find((x) => x.id === id);
+      setForm({ ...form, showroom_id: id, client_id: "", partner_id: "", address: s?.city ? `${s.name} Showroom, ${s.city}` : `${s?.name} Showroom` });
     }
   };
 
@@ -567,95 +601,111 @@ const Visits = () => {
               <div className="space-y-1"><Label>Visit Date</Label><Input type="date" min={todayStr} value={form.visit_date} onChange={(e) => setForm({ ...form, visit_date: e.target.value })} required /></div>
               <div className="space-y-1">
                 <Label>Visit With</Label>
-                <Select value={form.visit_with_type} onValueChange={(v) => setForm({ ...form, visit_with_type: v as VisitWithType, client_id: "", partner_id: "", address: "", purpose_id: "" })}>
+                <Select value={form.visit_with_type} onValueChange={(v) => setForm({ ...form, visit_with_type: v, client_id: "", partner_id: "", showroom_id: "", address: "", purpose_id: "" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent className="bg-popover"><SelectItem value="client">Client</SelectItem><SelectItem value="partner">Partner</SelectItem></SelectContent>
+                  <SelectContent className="bg-popover">
+                    <SelectItem value="client">Client</SelectItem>
+                    <SelectItem value="partner">Partner</SelectItem>
+                    <SelectItem value="home">Home</SelectItem>
+                    <SelectItem value="hotel">Hotel</SelectItem>
+                    <SelectItem value="showroom">Showroom</SelectItem>
+                  </SelectContent>
                 </Select>
               </div>
-              {/* ─── Searchable Client / Partner Picker ─── */}
-              <div className="space-y-1">
-                <Label>{form.visit_with_type === "client" ? "Select Client" : "Select Partner"}</Label>
-                <div className="relative">
-                  {/* Trigger button */}
-                  <button
-                    type="button"
-                    onClick={() => setEntityPickerOpen(o => !o)}
-                    className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-input bg-background text-sm transition-colors hover:bg-accent"
-                  >
-                    <span className={`truncate ${
-                      (form.visit_with_type === "client" ? form.client_id : form.partner_id)
-                        ? "text-foreground font-medium"
-                        : "text-muted-foreground"
-                    }`}>
-                      {(form.visit_with_type === "client" ? form.client_id : form.partner_id)
-                        ? (form.visit_with_type === "client" ? clients : partners).find(e => e.id === (form.visit_with_type === "client" ? form.client_id : form.partner_id))?.name
-                        : `Select ${form.visit_with_type === "client" ? "client" : "partner"}...`}
-                    </span>
-                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      {(form.visit_with_type === "client" ? form.client_id : form.partner_id) && (
-                        <span
-                          role="button"
-                          onClick={e => { e.stopPropagation(); setForm({ ...form, client_id: "", partner_id: "", address: "" }); setEntityPickerOpen(false); }}
-                          className="text-muted-foreground hover:text-destructive text-xs font-bold px-1"
-                        >✕</span>
-                      )}
-                      <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${entityPickerOpen ? "rotate-180" : ""}`} />
-                    </div>
-                  </button>
+              {/* ─── Searchable Entity / Showroom Picker ─── */}
+              {(form.visit_with_type === "client" || form.visit_with_type === "partner" || form.visit_with_type === "showroom") && (
+                <div className="space-y-1">
+                  <Label>
+                    {form.visit_with_type === "client"
+                      ? "Select Client"
+                      : form.visit_with_type === "partner"
+                      ? "Select Partner"
+                      : "Select Showroom"}
+                  </Label>
+                  <div className="relative">
+                    {/* Trigger button */}
+                    <button
+                      type="button"
+                      onClick={() => setEntityPickerOpen(o => !o)}
+                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-lg border border-input bg-background text-sm transition-colors hover:bg-accent"
+                    >
+                      <span className={`truncate ${
+                        (form.visit_with_type === "client" ? form.client_id : form.visit_with_type === "partner" ? form.partner_id : form.showroom_id)
+                          ? "text-foreground font-medium"
+                          : "text-muted-foreground"
+                      }`}>
+                        {form.visit_with_type === "client"
+                          ? (form.client_id ? clients.find(e => e.id === form.client_id)?.name : "Select client...")
+                          : form.visit_with_type === "partner"
+                          ? (form.partner_id ? partners.find(e => e.id === form.partner_id)?.name : "Select partner...")
+                          : (form.showroom_id ? filteredShowrooms.find(e => e.id === form.showroom_id)?.name : "Select showroom...")}
+                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                        {(form.visit_with_type === "client" ? form.client_id : form.visit_with_type === "partner" ? form.partner_id : form.showroom_id) && (
+                          <span
+                            role="button"
+                            onClick={e => { e.stopPropagation(); setForm({ ...form, client_id: "", partner_id: "", showroom_id: "", address: "" }); setEntityPickerOpen(false); }}
+                            className="text-muted-foreground hover:text-destructive text-xs font-bold px-1"
+                          >✕</span>
+                        )}
+                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform duration-200 ${entityPickerOpen ? "rotate-180" : ""}`} />
+                      </div>
+                    </button>
 
-                  {/* Dropdown panel */}
-                  {entityPickerOpen && (
-                    <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-border bg-popover shadow-xl overflow-hidden">
-                      {/* Search */}
-                      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
-                        <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                        <input
-                          type="text"
-                          autoFocus
-                          placeholder={`Search ${form.visit_with_type === "client" ? "client" : "partner"}...`}
-                          value={entitySearch}
-                          onChange={e => setEntitySearch(e.target.value)}
-                          className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground text-foreground"
-                        />
-                        {entitySearch && (
-                          <button type="button" onClick={() => setEntitySearch("")} className="text-muted-foreground hover:text-foreground text-xs font-bold">✕</button>
-                        )}
+                    {/* Dropdown panel */}
+                    {entityPickerOpen && (
+                      <div className="absolute left-0 right-0 top-full mt-1 z-50 rounded-lg border border-border bg-popover shadow-xl overflow-hidden">
+                        {/* Search */}
+                        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-muted/30">
+                          <Search className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                          <input
+                            type="text"
+                            autoFocus
+                            placeholder={`Search...`}
+                            value={entitySearch}
+                            onChange={e => setEntitySearch(e.target.value)}
+                            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground text-foreground"
+                          />
+                          {entitySearch && (
+                            <button type="button" onClick={() => setEntitySearch("")} className="text-muted-foreground hover:text-foreground text-xs font-bold">✕</button>
+                          )}
+                        </div>
+                        {/* List */}
+                        <div className="overflow-y-auto" style={{ maxHeight: "200px" }}>
+                          {(form.visit_with_type === "client" ? clients : form.visit_with_type === "partner" ? partners : filteredShowrooms)
+                            .filter(e => e.name.toLowerCase().includes(entitySearch.toLowerCase()))
+                            .map(e => {
+                              const currentId = form.visit_with_type === "client" ? form.client_id : form.visit_with_type === "partner" ? form.partner_id : form.showroom_id;
+                              const isSelected = currentId === e.id;
+                              return (
+                                <button
+                                  key={e.id}
+                                  type="button"
+                                  onClick={() => {
+                                    handleSelectEntity(e.id);
+                                    setEntitySearch("");
+                                    setEntityPickerOpen(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-2
+                                    ${isSelected
+                                      ? "bg-primary/10 text-primary font-semibold"
+                                      : "hover:bg-accent text-foreground"}`}
+                                >
+                                  {isSelected && <span className="text-primary text-xs">✓</span>}
+                                  <span className="truncate">{e.name} {'city' in e && e.city ? `(${e.city})` : ''}</span>
+                                </button>
+                              );
+                            })}
+                          {(form.visit_with_type === "client" ? clients : form.visit_with_type === "partner" ? partners : filteredShowrooms)
+                            .filter(e => e.name.toLowerCase().includes(entitySearch.toLowerCase())).length === 0 && (
+                            <p className="text-center text-xs text-muted-foreground py-5">No results found</p>
+                          )}
+                        </div>
                       </div>
-                      {/* List */}
-                      <div className="overflow-y-auto" style={{ maxHeight: "200px" }}>
-                        {(form.visit_with_type === "client" ? clients : partners)
-                          .filter(e => e.name.toLowerCase().includes(entitySearch.toLowerCase()))
-                          .map(e => {
-                            const currentId = form.visit_with_type === "client" ? form.client_id : form.partner_id;
-                            const isSelected = currentId === e.id;
-                            return (
-                              <button
-                                key={e.id}
-                                type="button"
-                                onClick={() => {
-                                  handleSelectEntity(e.id);
-                                  setEntitySearch("");
-                                  setEntityPickerOpen(false);
-                                }}
-                                className={`w-full text-left px-3 py-2.5 text-sm transition-colors flex items-center gap-2
-                                  ${isSelected
-                                    ? "bg-primary/10 text-primary font-semibold"
-                                    : "hover:bg-accent text-foreground"}`}
-                              >
-                                {isSelected && <span className="text-primary text-xs">✓</span>}
-                                <span className="truncate">{e.name}</span>
-                              </button>
-                            );
-                          })}
-                        {(form.visit_with_type === "client" ? clients : partners)
-                          .filter(e => e.name.toLowerCase().includes(entitySearch.toLowerCase())).length === 0 && (
-                          <p className="text-center text-xs text-muted-foreground py-5">No results found</p>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="space-y-1">
                 <Label>Address</Label>
                 {isLoaded ? (
@@ -814,7 +864,7 @@ const Visits = () => {
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between mb-2">
                           <div>
-                            <p className="font-semibold">{(v as VisitRow).clients?.name || (v as VisitRow).partners?.name || "—"}</p>
+                            <p className="font-semibold">{(v as VisitRow).clients?.name || (v as VisitRow).partners?.name || (v.address ? v.address.split(',')[0] : (v.visit_with_type === 'showroom' ? 'Showroom Visit' : v.visit_with_type === 'hotel' ? 'Hotel Visit' : v.visit_with_type === 'home' ? 'Home Visit' : '—'))}</p>
                             <p className="text-xs text-muted-foreground capitalize">{v.visit_with_type}</p>
                           </div>
                           <Badge className={`${visitStatusColors[v.status]} capitalize text-xs border-0`}>{v.status}</Badge>

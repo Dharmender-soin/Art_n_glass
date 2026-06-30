@@ -9,9 +9,12 @@ import {
   Search, BarChart2, Activity, Target, Shield, UserCheck, UserX,
   Trophy, Zap, RefreshCw, ChevronDown, ChevronUp, ArrowUpDown,
   Award, Handshake, EyeOff, Star, TrendingDown, Flame, Download,
+  Send, Phone, Calendar, Mail
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SendNotificationForm } from "@/components/dashboard/SendNotificationForm";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { toast } from "sonner";
 
 /* ═══════════════════════════ TYPES ═══════════════════════════ */
 type DateRange = "today" | "7d" | "month";
@@ -369,9 +372,9 @@ const SortBtn = ({ label, sortKey, current, dir, onSort }: {
 );
 
 /* ════════════════ AT A GLANCE — INSIGHT CARD ════════════════ */
-const InsightCard = ({ icon, title, name, detail, color, route }: {
+const InsightCard = ({ icon, title, name, detail, color, route, onClick }: {
   icon: React.ReactNode; title: string; name: string; detail: string;
-  color: "emerald" | "red" | "amber" | "sky" | "indigo" | "violet"; route?: string;
+  color: "emerald" | "red" | "amber" | "sky" | "indigo" | "violet"; route?: string; onClick?: () => void;
 }) => {
   const clr = {
     emerald: { border: "border-l-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-900/20", icon: "bg-emerald-100 dark:bg-emerald-800/40 text-emerald-600" },
@@ -383,7 +386,7 @@ const InsightCard = ({ icon, title, name, detail, color, route }: {
   }[color];
 
   const content = (
-    <div className={`rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-3 border-l-4 ${clr.border} ${clr.bg} h-full`}>
+    <div onClick={onClick} className={`rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm p-3 border-l-4 ${clr.border} ${clr.bg} h-full ${onClick ? "cursor-pointer hover:shadow-md transition-all hover:scale-[1.01]" : ""}`}>
       <div className="flex items-start gap-2">
         <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${clr.icon}`}>
           {icon}
@@ -418,11 +421,18 @@ const AlertCard = ({ a }: { a: AlertItem }) => {
         <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">{a.desc}</p>
         <p className="text-[10px] text-slate-400 mt-0.5 font-medium italic">{a.tag}</p>
       </div>
-      {a.action && a.route && (
-        <Link to={a.route}
-          className="shrink-0 text-[10px] font-bold text-red-600 hover:text-red-700 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 rounded-lg px-2.5 py-1.5 whitespace-nowrap transition-colors">
-          {a.action}
-        </Link>
+      {a.action && (a.route || a.onClick) && (
+        a.onClick ? (
+          <button onClick={a.onClick}
+            className="shrink-0 text-[10px] font-bold text-red-600 hover:text-red-700 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 rounded-lg px-2.5 py-1.5 whitespace-nowrap transition-colors">
+            {a.action}
+          </button>
+        ) : (
+          <Link to={a.route!}
+            className="shrink-0 text-[10px] font-bold text-red-600 hover:text-red-700 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 rounded-lg px-2.5 py-1.5 whitespace-nowrap transition-colors">
+            {a.action}
+          </Link>
+        )
       )}
     </div>
   );
@@ -544,7 +554,7 @@ const CompRow = ({ s, isTop, isWeak }: { s: ShowroomStat; isTop: boolean; isWeak
 };
 
 /* ════════════════ EMPLOYEE ROW (desktop) ════════════════ */
-const EmpRow = ({ e, idx, daysInPeriod }: { e: EmpStat; idx: number; daysInPeriod: number }) => {
+const EmpRow = ({ e, idx, daysInPeriod, onSelectEmp }: { e: EmpStat; idx: number; daysInPeriod: number; onSelectEmp: (id: string) => void }) => {
   const days = e.lastVisitDate ? differenceInDays(new Date(), parseISO(e.lastVisitDate)) : null;
   const isLeader = e.role === "tl" || e.role === "manager";
   // Scale thresholds by days in period (base = 7 days)
@@ -571,7 +581,7 @@ const EmpRow = ({ e, idx, daysInPeriod }: { e: EmpStat; idx: number; daysInPerio
             {e.rank <= 3 ? ["🥇","🥈","🥉"][e.rank-1] : e.rank}
           </div>
           <div className="min-w-0">
-            <p className="text-[11px] font-bold text-slate-900 dark:text-white truncate">{e.fullName}</p>
+            <p onClick={() => onSelectEmp(e.userId)} className="text-[11px] font-bold text-slate-900 dark:text-white truncate cursor-pointer hover:text-red-600 hover:underline">{e.fullName}</p>
             <p className="text-[9px] text-slate-400 truncate">
               {e.showroomName}
               {e.role === "tl" && <span className="ml-1 text-indigo-500 font-bold">· TL</span>}
@@ -631,7 +641,7 @@ const EmpRow = ({ e, idx, daysInPeriod }: { e: EmpStat; idx: number; daysInPerio
 };
 
 /* ════════════════ EMPLOYEE CARD (mobile) ════════════════ */
-const EmpCard = ({ e, daysInPeriod }: { e: EmpStat; daysInPeriod: number }) => {
+const EmpCard = ({ e, daysInPeriod, onSelectEmp }: { e: EmpStat; daysInPeriod: number; onSelectEmp: (id: string) => void }) => {
   const days = e.lastVisitDate ? differenceInDays(new Date(), parseISO(e.lastVisitDate)) : null;
   const isLeader = e.role === "tl" || e.role === "manager";
   const scale = daysInPeriod / 7;
@@ -652,7 +662,7 @@ const EmpCard = ({ e, daysInPeriod }: { e: EmpStat; daysInPeriod: number }) => {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <p className="text-[12px] font-bold text-slate-900 dark:text-white">{e.fullName}</p>
+            <p onClick={() => onSelectEmp(e.userId)} className="text-[12px] font-bold text-slate-900 dark:text-white cursor-pointer hover:text-red-600 hover:underline">{e.fullName}</p>
             {e.role === "tl" && <span className="text-[9px] font-extrabold text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded-full">TL</span>}
             {e.role === "manager" && <span className="text-[9px] font-extrabold text-purple-600 bg-purple-50 border border-purple-200 px-1.5 py-0.5 rounded-full">MGR</span>}
             <StatusBadge status={e.status} />
@@ -848,8 +858,8 @@ const PipeRow = ({ name, pending, quoted, won, lost, total }: {
 };
 
 /* ════════════════ LEADERBOARD ROW ════════════════ */
-const LeaderRow = ({ rank, name, showroom, value, label }: {
-  rank: number; name: string; showroom: string; value: number; label: string;
+const LeaderRow = ({ rank, name, showroom, value, label, userId, onSelectEmp }: {
+  rank: number; name: string; showroom: string; value: number; label: string; userId: string; onSelectEmp: (id: string) => void;
 }) => (
   <div className={`flex items-center gap-3 py-2.5 border-b border-slate-100 dark:border-slate-800 last:border-0
     ${rank === 1 ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}`}>
@@ -858,7 +868,7 @@ const LeaderRow = ({ rank, name, showroom, value, label }: {
       {rank <= 3 ? ["🥇","🥈","🥉"][rank-1] : rank}
     </div>
     <div className="flex-1 min-w-0">
-      <p className="text-[12px] font-bold text-slate-900 dark:text-white truncate">{name}</p>
+      <p onClick={() => onSelectEmp(userId)} className="text-[12px] font-bold text-slate-900 dark:text-white truncate cursor-pointer hover:text-red-600 hover:underline">{name}</p>
       <p className="text-[10px] text-slate-400 truncate">{showroom}</p>
     </div>
     <div className="text-right shrink-0">
@@ -1128,6 +1138,239 @@ const ShowroomFunnelBlock = ({ fd }: { fd: SRFunnelData }) => {
   );
 };
 
+/* ════════════════ EMPLOYEE DETAIL MODAL (Popup Detail View) ════════════════ */
+const EmployeeDetailModal = ({
+  userId,
+  onClose,
+  emp,
+}: {
+  userId: string;
+  onClose: () => void;
+  emp: EmpStat | undefined;
+}) => {
+  const [notifBody, setNotifBody] = useState("");
+  const [sendingNotif, setSendingNotif] = useState(false);
+
+  // Fetch recent 5 visits for this executive with full details
+  const { data: empVisits = [], isLoading: isLoadingVisits } = useQuery({
+    queryKey: ["emp-detail-visits", userId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("visits")
+        .select(`
+          id,
+          visit_date,
+          visit_with_type,
+          status,
+          purpose,
+          remarks,
+          check_in_time,
+          check_out_time,
+          partners(name, company_name),
+          clients(name)
+        `)
+        .eq("created_by", userId)
+        .order("visit_date", { ascending: false })
+        .limit(5);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!userId,
+  });
+
+  const handleSendPush = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!notifBody.trim()) {
+      toast.error("Please type a message body.");
+      return;
+    }
+    setSendingNotif(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("send-push-notification", {
+        body: {
+          title: "Attention Required ⚠️",
+          body: notifBody.trim(),
+          userId: userId,
+          data: { targetUrl: "/visits" }
+        }
+      });
+      if (error) throw error;
+      if (data?.success) {
+        toast.success(`Message sent directly to ${emp?.fullName || "employee"}!`);
+        setNotifBody("");
+      } else {
+        toast.error(data?.message || "Failed to send notification.");
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.message || "Failed to send notification.");
+    } finally {
+      setSendingNotif(false);
+    }
+  };
+
+  if (!emp) return null;
+
+  const daysOffline = emp.lastVisitDate ? differenceInDays(new Date(), parseISO(emp.lastVisitDate)) : null;
+
+  return (
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl bg-slate-900 border border-slate-800 text-white rounded-2xl shadow-2xl p-6 overflow-y-auto max-h-[90vh]">
+        <DialogHeader>
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-red-600 to-red-800 flex items-center justify-center text-xl font-extrabold shadow-md uppercase">
+                {emp.fullName.substring(0, 2)}
+              </div>
+              <div className="text-left">
+                <DialogTitle className="text-lg font-extrabold text-white leading-tight">{emp.fullName}</DialogTitle>
+                <div className="flex items-center gap-2 mt-1">
+                  <span className="text-[10px] bg-slate-800 text-slate-300 font-bold px-2 py-0.5 rounded-full border border-slate-700 uppercase">
+                    {emp.role}
+                  </span>
+                  <span className="text-[10px] bg-red-950 text-red-400 font-bold px-2 py-0.5 rounded-full border border-red-900">
+                    📍 {emp.showroomName}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <StatusBadge status={emp.status} />
+          </div>
+        </DialogHeader>
+
+        {/* Profile Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+          
+          {/* Left Panel: Stats and Details */}
+          <div className="md:col-span-2 space-y-4 text-left">
+            
+            {/* KPI Cards Grid */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "Visits Done", val: emp.visits, col: "text-sky-400" },
+                { label: "WOS Created", val: emp.wosCount, col: "text-indigo-400" },
+                { label: "WOS Won", val: emp.wonCount, col: "text-emerald-400" },
+                { label: "Win Rate", val: `${emp.winRate}%`, col: "text-amber-400" },
+                { label: "Leads Added", val: emp.clientsAdded, col: "text-purple-400" },
+                { label: "Perf Score", val: emp.score, col: "text-red-400" },
+              ].map(k => (
+                <div key={k.label} className="bg-slate-800/50 border border-slate-800 rounded-xl p-3 text-center">
+                  <div className={`text-xl font-extrabold ${k.col}`}>{k.val}</div>
+                  <div className="text-[9px] text-slate-400 font-bold mt-1 uppercase tracking-wider">{k.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Performance status card */}
+            <div className="bg-slate-800/30 border border-slate-800/80 rounded-xl p-4">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Activity Summary</h4>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {emp.status === "active" && `Employee is currently active. Last visit was recorded ${daysOffline === 0 ? "today" : `${daysOffline} day(s) ago`} on ${format(parseISO(emp.lastVisitDate!), "d MMM yyyy")}.`}
+                {emp.status === "at_risk" && `Employee is at risk. No visit recorded in ${daysOffline} days. Last active on ${format(parseISO(emp.lastVisitDate!), "d MMM yyyy")}.`}
+                {emp.status === "inactive" && `Action required: Employee is inactive. Last visit was recorded ${daysOffline ?? "many"} days ago (${emp.lastVisitDate ? format(parseISO(emp.lastVisitDate), "d MMM yyyy") : "Never"}).`}
+                {emp.status === "never_visited" && `Critical: This employee has never recorded a visit in the system. Check onboarding status.`}
+              </p>
+            </div>
+
+            {/* Recent 5 Visits */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Recent Visits (Last 5)</h4>
+              {isLoadingVisits ? (
+                <div className="space-y-2">
+                  <div className="h-10 bg-slate-800/50 rounded-xl animate-pulse" />
+                  <div className="h-10 bg-slate-800/50 rounded-xl animate-pulse" />
+                </div>
+              ) : empVisits.length === 0 ? (
+                <p className="text-xs text-slate-500 italic py-2">No visits found in history.</p>
+              ) : (
+                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                  {empVisits.map((v: any) => {
+                    const targetName = v.visit_with_type === "partner" 
+                      ? (v.partners?.name || "Partner") 
+                      : (v.clients?.name || "Client");
+                    const subtitle = v.visit_with_type === "partner" && v.partners?.company_name 
+                      ? v.partners.company_name 
+                      : v.visit_with_type;
+                    
+                    return (
+                      <div key={v.id} className="bg-slate-800/40 border border-slate-800/60 rounded-xl p-3 flex items-center justify-between gap-3 hover:bg-slate-800/60 transition-colors">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-slate-200 truncate">{targetName}</p>
+                          <p className="text-[10px] text-slate-400 truncate capitalize">{subtitle} · {v.purpose || "No Purpose"}</p>
+                          {v.remarks && <p className="text-[9px] text-slate-500 italic truncate mt-0.5">"{v.remarks}"</p>}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase ${
+                            v.status === "done" ? "bg-emerald-950 text-emerald-400 border-emerald-900" : "bg-amber-950 text-amber-400 border-amber-900"
+                          }`}>
+                            {v.status}
+                          </span>
+                          <p className="text-[9px] text-slate-400 mt-1">{format(parseISO(v.visit_date), "d MMM")}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+          </div>
+
+          {/* Right Panel: Send Actionable Alert */}
+          <div className="bg-slate-800/40 border border-slate-800 rounded-xl p-4 flex flex-col justify-between text-left">
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+                <Send className="h-3.5 w-3.5 text-red-500" /> Direct Alert / Ping
+              </h4>
+              <p className="text-[11px] text-slate-400 mb-4 leading-normal">
+                Send an instant, high-priority push notification to this employee's phone to check in or follow up.
+              </p>
+              
+              <form onSubmit={handleSendPush} className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-slate-500">Alert Title</label>
+                  <input
+                    type="text"
+                    value="Attention Required ⚠️"
+                    disabled
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-500"
+                  />
+                </div>
+                
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase text-slate-400">Message Body</label>
+                  <textarea
+                    rows={4}
+                    value={notifBody}
+                    onChange={(e) => setNotifBody(e.target.value)}
+                    placeholder="e.g. Please log your visits for today, or contact showroom manager."
+                    className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:border-red-500"
+                    maxLength={250}
+                  />
+                </div>
+                
+                <button
+                  type="submit"
+                  disabled={sendingNotif}
+                  className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  {sendingNotif ? "Sending..." : "Send Ping"}
+                </button>
+              </form>
+            </div>
+            
+            <div className="border-t border-slate-800/80 pt-3 mt-4 text-[10px] text-slate-500 text-center">
+              Active Push Devices will be targeted.
+            </div>
+          </div>
+
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 /* ═══════════════════════════════ MAIN ═══════════════════════════════ */
 const MDDashboard = () => {
   const { role, showroomId, showroomIds } = useAuth();
@@ -1136,6 +1379,7 @@ const MDDashboard = () => {
   /* ── UI State ── */
   const [dateRange, setDateRange] = useState<DateRange>("7d");
   const [showroomFilter, setShowroomFilter] = useState("all");
+  const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null);
   const [empFilter, setEmpFilter] = useState<EmpFilter>("all");
   const [pFilter, setPFilter] = useState<PFilter>("all");
   const [empSearch, setEmpSearch] = useState("");
@@ -1765,7 +2009,8 @@ const MDDashboard = () => {
         id: `inc-${e.userId}`, severity: "critical",
         title: `${e.fullName} — no visit in ${days ?? "many"} days`,
         desc: `Executive is inactive. Last visit: ${e.lastVisitDate ? format(parseISO(e.lastVisitDate), "d MMM") : "Never"}. Call or assign a follow-up immediately.`,
-        tag: `📍 ${e.showroomName}`, action: "View Visits", route: "/visits",
+        tag: `📍 ${e.showroomName}`, action: "View Executive",
+        onClick: () => setSelectedEmpId(e.userId)
       });
     });
 
@@ -1944,7 +2189,7 @@ const MDDashboard = () => {
       const order = { critical: 0, warning: 1, positive: 2 };
       return order[a.severity] - order[b.severity];
     });
-  }, [allEmpStats, partnerStats, showroomStats, glance, isLoading]);
+  }, [allEmpStats, partnerStats, showroomStats, glance, isLoading, setSelectedEmpId]);
 
   /* ── Leaderboard ── */
   const leaderboard = useMemo(() => {
@@ -2228,7 +2473,7 @@ const MDDashboard = () => {
               icon={<Award className="h-4 w-4" />} color="amber" title="Best Employee"
               name={glance.bestEmp?.fullName || "—"}
               detail={glance.bestEmp ? `${glance.bestEmp.visits} visits · ${glance.bestEmp.wonCount} won · Score ${glance.bestEmp.score}` : "No data"}
-              route="/visits"
+              onClick={glance.bestEmp ? () => setSelectedEmpId(glance.bestEmp.userId) : undefined}
             />
             {/* 4 */}
             <InsightCard
@@ -2237,19 +2482,21 @@ const MDDashboard = () => {
               detail={glance.inactiveEmp
                 ? `No visit${glance.inactiveEmp.lastVisitDate ? ` since ${format(parseISO(glance.inactiveEmp.lastVisitDate), "d MMM")}` : " — never visited"}`
                 : "No inactive employees"}
-              route="/visits"
+              onClick={glance.inactiveEmp ? () => setSelectedEmpId(glance.inactiveEmp.userId) : undefined}
             />
             {/* 5 */}
             <InsightCard
               icon={<TrendingUp className="h-4 w-4" />} color="sky" title="Top Visit Leader"
               name={glance.topVisitEmp?.fullName || "—"}
               detail={glance.topVisitEmp ? `${glance.topVisitEmp.visits} visits · ${glance.topVisitEmp.showroomName}` : "No data"}
+              onClick={glance.topVisitEmp ? () => setSelectedEmpId(glance.topVisitEmp.userId) : undefined}
             />
             {/* 6 */}
             <InsightCard
               icon={<Star className="h-4 w-4" />} color="indigo" title="Top WOS Contributor"
               name={glance.topWosEmp?.fullName || "—"}
               detail={glance.topWosEmp ? `${glance.topWosEmp.wosCount} WOS · ${glance.topWosEmp.wonCount} won · ${glance.topWosEmp.winRate}% win rate` : "No data"}
+              onClick={glance.topWosEmp ? () => setSelectedEmpId(glance.topWosEmp.userId) : undefined}
             />
             {/* 7 */}
             <InsightCard
@@ -2288,6 +2535,7 @@ const MDDashboard = () => {
                         detail={glance.topClientAdder && glance.topClientAdder.clientsAdded > 0
                           ? `${glance.topClientAdder.clientsAdded} clients added · ${glance.topClientAdder.showroomName}`
                           : "No clients added this period"}
+                        onClick={glance.topClientAdder ? () => setSelectedEmpId(glance.topClientAdder.userId) : undefined}
                       />
                       {/* 10: Best Win Rate */}
                       <InsightCard
@@ -2296,6 +2544,7 @@ const MDDashboard = () => {
                         detail={glance.bestWinRate
                           ? `${glance.bestWinRate.winRate}% win rate · ${glance.bestWinRate.wonCount}/${glance.bestWinRate.wosCount} WOS won`
                           : "Need ≥3 WOS to qualify"}
+                        onClick={glance.bestWinRate ? () => setSelectedEmpId(glance.bestWinRate.userId) : undefined}
                       />
                       {/* 11: Most WOS Won */}
                       <InsightCard
@@ -2304,6 +2553,7 @@ const MDDashboard = () => {
                         detail={glance.topWonEmp && glance.topWonEmp.wonCount > 0
                           ? `${glance.topWonEmp.wonCount} won · ${glance.topWonEmp.winRate}% conversion · ${glance.topWonEmp.showroomName}`
                           : "No WOS won this period"}
+                        onClick={glance.topWonEmp ? () => setSelectedEmpId(glance.topWonEmp.userId) : undefined}
                       />
                       {/* 12: Zero WOS Employees */}
                       <InsightCard
@@ -2322,6 +2572,7 @@ const MDDashboard = () => {
                         detail={glance.bestTL
                           ? `Team: ${glance.bestTL.teamVisits} visits · ${glance.bestTL.teamWos} WOS · ${glance.bestTL.teamWon} won`
                           : "No TL data available"}
+                        onClick={glance.bestTL ? () => setSelectedEmpId(glance.bestTL.userId) : undefined}
                       />
                       {/* 14: Showroom Best Win Rate */}
                       <InsightCard
@@ -2667,7 +2918,7 @@ const MDDashboard = () => {
                           </span>
                         </td>
                       </tr>
-                      {managers.map((e, i) => <EmpRow key={e.userId} e={e} idx={i} daysInPeriod={daysInPeriod} />)}
+                      {managers.map((e, i) => <EmpRow key={e.userId} e={e} idx={i} daysInPeriod={daysInPeriod} onSelectEmp={setSelectedEmpId} />)}
                     </>
                   )}
 
@@ -2682,7 +2933,7 @@ const MDDashboard = () => {
                           </span>
                         </td>
                       </tr>
-                      {tls.map((e, i) => <EmpRow key={e.userId} e={e} idx={i} daysInPeriod={daysInPeriod} />)}
+                      {tls.map((e, i) => <EmpRow key={e.userId} e={e} idx={i} daysInPeriod={daysInPeriod} onSelectEmp={setSelectedEmpId} />)}
                     </>
                   )}
 
@@ -2703,7 +2954,7 @@ const MDDashboard = () => {
                         </td>
                       </tr>
                       {executives.slice(0, visibleEmpCount).map((e, i) => (
-                        <EmpRow key={e.userId} e={e} idx={i} daysInPeriod={daysInPeriod} />
+                        <EmpRow key={e.userId} e={e} idx={i} daysInPeriod={daysInPeriod} onSelectEmp={setSelectedEmpId} />
                       ))}
                     </>
                   )}
@@ -2734,7 +2985,7 @@ const MDDashboard = () => {
                         <Shield className="h-3 w-3" /> Managers &nbsp;·&nbsp; {managers.length}
                       </span>
                     </div>
-                    {managers.map(e => <EmpCard key={e.userId} e={e} daysInPeriod={daysInPeriod} />)}
+                    {managers.map(e => <EmpCard key={e.userId} e={e} daysInPeriod={daysInPeriod} onSelectEmp={setSelectedEmpId} />)}
                   </div>
                 )}
                 {/* ─── TLs ─── */}
@@ -2745,7 +2996,7 @@ const MDDashboard = () => {
                         <Star className="h-3 w-3" /> Team Leaders &nbsp;·&nbsp; {tls.length}
                       </span>
                     </div>
-                    {tls.map(e => <EmpCard key={e.userId} e={e} daysInPeriod={daysInPeriod} />)}
+                    {tls.map(e => <EmpCard key={e.userId} e={e} daysInPeriod={daysInPeriod} onSelectEmp={setSelectedEmpId} />)}
                   </div>
                 )}
                 {/* ─── EXECUTIVES ─── */}
@@ -2756,7 +3007,7 @@ const MDDashboard = () => {
                         <Users className="h-3 w-3" /> Executives &nbsp;·&nbsp; {executives.length}
                       </span>
                     </div>
-                    {executives.slice(0, visibleEmpCount).map(e => <EmpCard key={e.userId} e={e} daysInPeriod={daysInPeriod} />)}
+                    {executives.slice(0, visibleEmpCount).map(e => <EmpCard key={e.userId} e={e} daysInPeriod={daysInPeriod} onSelectEmp={setSelectedEmpId} />)}
                   </div>
                 )}
               </>
@@ -2955,6 +3206,7 @@ const MDDashboard = () => {
                     rank={i + 1} name={e.fullName} showroom={e.showroomName}
                     value={leaderTab === "visits" ? e.visits : leaderTab === "wos" ? e.wosCount : e.wonCount}
                     label={leaderTab === "visits" ? "visits" : leaderTab === "wos" ? "WOS" : "won"}
+                    userId={e.userId} onSelectEmp={setSelectedEmpId}
                   />
                 </motion.div>
               ))
@@ -2966,6 +3218,16 @@ const MDDashboard = () => {
         <div className="mt-6">
           <SendNotificationForm />
         </div>
+
+        <AnimatePresence>
+          {selectedEmpId && (
+            <EmployeeDetailModal
+              userId={selectedEmpId}
+              onClose={() => setSelectedEmpId(null)}
+              emp={allEmpStats.find((e) => e.userId === selectedEmpId)}
+            />
+          )}
+        </AnimatePresence>
 
         <div className="h-4" />
       </div>

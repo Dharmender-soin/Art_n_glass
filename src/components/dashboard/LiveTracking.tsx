@@ -142,7 +142,7 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 export const LiveTracking = () => {
-  const { role, showroomId } = useAuth();
+  const { role, showroomId, showroomIds } = useAuth();
   const [liveLocations, setLiveLocations] = useState<ExecutiveLocation[]>([]);
   const [selectedExecId, setSelectedExecId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -190,8 +190,12 @@ export const LiveTracking = () => {
 
       // Never show MD or Admin users on the live map — they are observers, not field staff
       const withoutAdmins = enriched.filter((e: any) => e._role !== "md" && e._role !== "admin");
-
-      const filtered = isAdminOrMd ? withoutAdmins : withoutAdmins.filter(e => e.showroom_id === showroomId);
+      const isManager = role === "manager";
+      const filtered = isAdminOrMd 
+        ? withoutAdmins 
+        : (isManager && showroomIds && showroomIds.length > 0)
+          ? withoutAdmins.filter(e => e.showroom_id && showroomIds.includes(e.showroom_id))
+          : withoutAdmins.filter(e => e.showroom_id === showroomId);
       setLiveLocations(filtered);
 
       // Build showroom list
@@ -227,7 +231,7 @@ export const LiveTracking = () => {
       .on("postgres_changes", { event: "*", schema: "public", table: "live_locations" }, fetchLocations)
       .subscribe();
     return () => { (supabase as any).removeChannel(channel); };
-  }, [isAdminOrMd, showroomId, isLoaded]);
+  }, [role, isAdminOrMd, showroomId, showroomIds, isLoaded]);
 
   // ── Visits query ────────────────────────────────────────────────────────────
   const { data: execVisits = [] } = useQuery<VisitPoint[]>({
@@ -523,7 +527,7 @@ export const LiveTracking = () => {
         </div>
 
         {/* Showroom filter */}
-        {isAdminOrMd && showroomList.length > 0 && (
+        {(isAdminOrMd || (role === "manager" && showroomIds && showroomIds.length > 1)) && showroomList.length > 0 && (
           <Select value={filterShowroom} onValueChange={setFilterShowroom}>
             <SelectTrigger className="bg-[#1a1d27] border-[#2a2d3a] text-[11px] h-8 rounded-lg min-w-[130px] max-w-[160px] shrink-0 gap-1">
               <Building2 className="h-3 w-3 text-[#6b7280] shrink-0" />

@@ -261,7 +261,7 @@ const Hierarchy = () => {
   const [blockClose, setBlockClose] = useState<{ clientName: string; blockers: string[] } | null>(null);
   const [showClosedTable, setShowClosedTable] = useState(false);
 
-  const { data: showrooms=[] } = useQuery({ queryKey:["sr-h3"], enabled:isMdOrAdmin,
+  const { data: showrooms=[] } = useQuery({ queryKey:["sr-h3"], enabled:isMdOrAdmin || (role === "manager" && showroomIds && showroomIds.length > 1),
     queryFn: async()=>{ const{data}=await supabase.from("showrooms").select("id,name").order("name"); return data||[]; } });
   const { data: userRoles=[] } = useQuery({ queryKey:["ur-h3"], enabled:canAccess,
     queryFn: async()=>{ const{data}=await supabase.from("user_roles").select("user_id,showroom_id"); return data||[]; } });
@@ -269,7 +269,7 @@ const Hierarchy = () => {
     queryFn: async()=>{ const{data}=await supabase.from("profiles").select("user_id,full_name"); return data||[]; } });
   const { data: allWorkTypes=[] } = useQuery({ queryKey:["wt-h3"], enabled:canAccess,
     queryFn: async()=>{ const{data}=await supabase.from("master_work_types").select("id,type_of_work,sub_work").order("type_of_work"); return data||[]; } });
-  const { data: rawWOS=[], isLoading } = useQuery({ queryKey:["wos-h3", user?.id, role], enabled:canAccess && !!user,
+  const { data: rawWOS=[], isLoading } = useQuery({ queryKey:["wos-h3", user?.id, role, showroomIds], enabled:canAccess && !!user,
     queryFn: async()=>{
       let q = supabase.from("work_scope_items")
         .select(`id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile,project_status,partners(name)),master_work_types(type_of_work,sub_work)`);
@@ -499,13 +499,15 @@ const Hierarchy = () => {
             <input type="text" placeholder="Search client, address..." value={fSearch} onChange={e=>setFSearch(e.target.value)}
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-7 pr-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-300/30 transition-all"/>
           </div>
-          {isMdOrAdmin && (
+          {(isMdOrAdmin || (role === "manager" && showroomIds && showroomIds.length > 1)) && (
             <div className="relative">
               <Building2 className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400 pointer-events-none"/>
               <select value={fShowroom} onChange={e=>{setFShowroom(e.target.value);setFExec("all");}}
                 className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-7 pr-5 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-400 appearance-none min-w-[110px] cursor-pointer">
                 <option value="all">All Showrooms</option>
-                {showrooms.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
+                {showrooms
+                  .filter(s => isMdOrAdmin || (showroomIds && showroomIds.includes(s.id)))
+                  .map(s=><option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
           )}

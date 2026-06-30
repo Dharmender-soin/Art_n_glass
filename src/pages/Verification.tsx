@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -17,9 +17,10 @@ import { ShieldCheck, Package, CheckCircle, XCircle, Clock, Filter, Search, Spar
 import { motion, AnimatePresence } from "framer-motion";
 
 const Verification = () => {
-  const { user, role } = useAuth();
+  const { user, role, showroomIds } = useAuth();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [showroomFilter, setShowroomFilter] = useState<string>("all");
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [verificationRemarks, setVerificationRemarks] = useState("");
   const [workStatus, setWorkStatus] = useState<string>("pending");
@@ -29,7 +30,7 @@ const Verification = () => {
 
   // Fetch all work scope items with client & work type info
   const { data: items = [], isLoading } = useQuery({
-    queryKey: ["verification-items"],
+    queryKey: ["verification-items", showroomIds],
     enabled: canAccess,
     queryFn: async () => {
       const { data, error } = await supabase
@@ -41,10 +42,10 @@ const Verification = () => {
     },
   });
 
-  // Fetch showrooms for MD grouping
+  // Fetch showrooms for MD grouping and multi-showroom manager filtering
   const { data: showrooms = [] } = useQuery({
     queryKey: ["showrooms"],
-    enabled: role === "md",
+    enabled: role === "md" || (role === "manager" && showroomIds && showroomIds.length > 1),
     queryFn: async () => {
       const { data, error } = await supabase.from("showrooms").select("*").order("name");
       if (error) throw error;
@@ -52,10 +53,10 @@ const Verification = () => {
     },
   });
 
-  // Fetch user roles for showroom mapping (MD view)
+  // Fetch user roles for showroom mapping (MD and Manager views)
   const { data: userRoles = [] } = useQuery({
-    queryKey: ["user-roles-for-verification"],
-    enabled: role === "md",
+    queryKey: ["user-roles-for-verification", showroomIds],
+    enabled: role === "md" || role === "manager",
     queryFn: async () => {
       const { data, error } = await supabase.from("user_roles").select("user_id, showroom_id");
       if (error) throw error;
@@ -131,17 +132,25 @@ const Verification = () => {
     setWorkStatus(recognized.includes(item.work_status) ? item.work_status : "pending");
   };
 
-  const filteredItems = useMemo(() => {
-    return statusFilter === "all"
-      ? items
-      : items.filter((i: any) => i.work_status === statusFilter);
-  }, [items, statusFilter]);
-
-  const getShowroomForItem = (item: any) => {
+  const getShowroomForItem = useCallback((item: any) => {
     const userRole = userRoles.find((ur) => ur.user_id === item.created_by);
     if (!userRole?.showroom_id) return null;
     return showrooms.find((s) => s.id === userRole.showroom_id) || null;
-  };
+  }, [userRoles, showrooms]);
+
+  const filteredItems = useMemo(() => {
+    let result = items;
+    if (statusFilter !== "all") {
+      result = result.filter((i: any) => i.work_status === statusFilter);
+    }
+    if (showroomFilter !== "all") {
+      result = result.filter((i: any) => {
+        const sr = getShowroomForItem(i);
+        return sr?.id === showroomFilter;
+      });
+    }
+    return result;
+  }, [items, statusFilter, showroomFilter, getShowroomForItem]);
 
   if (!canAccess) {
     return (
@@ -181,6 +190,23 @@ const Verification = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          {(role === "md" || (role === "manager" && showroomIds && showroomIds.length > 1)) && showrooms.length > 0 && (
+            <div className="bg-card/50 backdrop-blur-sm p-1 rounded-lg border shadow-sm flex items-center gap-2">
+              <Building2 className="h-4 w-4 text-muted-foreground ml-2" />
+              <Select value={showroomFilter} onValueChange={setShowroomFilter}>
+                <SelectTrigger className="w-[160px] bg-transparent border-none focus-visible:ring-0 h-9">
+                  <SelectValue placeholder="All Showrooms" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Showrooms</SelectItem>
+                  {showrooms
+                    .filter((s) => role === "md" || (showroomIds && showroomIds.includes(s.id)))
+                    .map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="bg-card/50 backdrop-blur-sm p-1 rounded-lg border shadow-sm flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground ml-2" />
             <Select value={statusFilter} onValueChange={setStatusFilter}>

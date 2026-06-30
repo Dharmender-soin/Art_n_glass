@@ -8,7 +8,7 @@ import {
   Building2, Users, TrendingUp, AlertTriangle, CheckCircle2, Clock,
   Search, BarChart2, Activity, Target, Shield, UserCheck, UserX,
   Trophy, Zap, RefreshCw, ChevronDown, ChevronUp, ArrowUpDown,
-  Award, Handshake, EyeOff, Star, TrendingDown, Flame, Download,
+  Award, Handshake, EyeOff, Eye, Star, TrendingDown, Flame, Download,
   Send, Phone, Calendar, Mail
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";

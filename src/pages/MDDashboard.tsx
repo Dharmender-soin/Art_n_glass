@@ -25,7 +25,7 @@ type SortKey = "score" | "visits" | "wos" | "won" | "last_active" | "name";
 type PFilter = "all" | "top" | "neglected" | "new" | "low" | "top_leads" | "active";
 
 interface ShowroomRow { id: string; name: string; }
-interface ProfileRow { user_id: string; full_name: string; }
+interface ProfileRow { user_id: string; full_name: string | null; email?: string | null; }
 interface UserRoleRow { user_id: string; role: string; showroom_id: string | null; }
 interface VisitRow {
   id: string; created_by: string; visit_date: string;
@@ -1756,7 +1756,7 @@ const MDDashboard = () => {
 
   const { data: profiles = [] } = useQuery<ProfileRow[]>({
     queryKey: ["md-profiles"],
-    queryFn: async () => { const { data } = await supabase.from("profiles").select("user_id, full_name"); return data || []; },
+    queryFn: async () => { const { data } = await supabase.from("profiles").select("user_id, full_name, email"); return data || []; },
     staleTime: 60000,
   });
 
@@ -1887,7 +1887,17 @@ const MDDashboard = () => {
   /* ── Derived Maps ── */
   const profileMap = useMemo(() => {
     const m: Record<string, string> = {};
-    profiles.forEach(p => { m[p.user_id] = p.full_name || "Unknown"; });
+    profiles.forEach(p => {
+      let name = p.full_name ? p.full_name.trim() : "";
+      if (!name && p.email) {
+        const prefix = p.email.split("@")[0];
+        name = prefix
+          .split(/[._]/)
+          .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+          .join(" ");
+      }
+      m[p.user_id] = name || "Unknown";
+    });
     return m;
   }, [profiles]);
 

@@ -36,7 +36,7 @@ const vehicleEmoji = (v: string) => {
 };
 
 const Conveyance = () => {
-  const { role, showroomId: myShowroomId, user } = useAuth();
+  const { role, showroomId: myShowroomId, showroomIds, user } = useAuth();
   const canSeeAll = role === "md" || role === "admin";
   // Accountant: read-only view scoped to their own showroom (same as manager)
   const isManager = role === "manager" || role === "accountant";
@@ -80,7 +80,7 @@ const Conveyance = () => {
   // ── Queries ───────────────────────────────────────────────────────────────
   const { data: showrooms = [] } = useQuery({
     queryKey: ["conv2-showrooms"],
-    enabled: canSeeAll,
+    enabled: canSeeAll || isManager,
     queryFn: async () => {
       const { data } = await supabase.from("showrooms").select("*").order("name");
       return data || [];
@@ -88,11 +88,18 @@ const Conveyance = () => {
   });
 
   const { data: userRoles = [] } = useQuery({
-    queryKey: ["conv2-roles", myShowroomId, selectedShowroom, role],
+    queryKey: ["conv2-roles", myShowroomId, showroomIds, selectedShowroom, role],
     queryFn: async () => {
       let q = supabase.from("user_roles").select("user_id, role, showroom_id").in("role", ["executive", "backhand_executive", "tl"]);
-      if (isManager && myShowroomId) q = q.eq("showroom_id", myShowroomId);
-      else if (canSeeAll && selectedShowroom !== "all") q = q.eq("showroom_id", selectedShowroom);
+      if (isManager) {
+        if (selectedShowroom && selectedShowroom !== "all") {
+          q = q.eq("showroom_id", selectedShowroom);
+        } else if (showroomIds && showroomIds.length > 0) {
+          q = q.in("showroom_id", showroomIds);
+        }
+      } else if (canSeeAll && selectedShowroom !== "all") {
+        q = q.eq("showroom_id", selectedShowroom);
+      }
       const { data } = await q;
       return data || [];
     },
@@ -373,12 +380,14 @@ const Conveyance = () => {
             )}
 
             {/* Showroom */}
-            {canSeeAll && showrooms.length > 0 && (
+            {(canSeeAll || (isManager && showroomIds && showroomIds.length > 1)) && showrooms.length > 0 && (
               <Select value={selectedShowroom} onValueChange={setSelectedShowroom}>
                 <SelectTrigger className="h-8 text-xs w-[140px] bg-background"><SelectValue placeholder="All Showrooms" /></SelectTrigger>
                 <SelectContent className="bg-popover">
                   <SelectItem value="all">All Showrooms</SelectItem>
-                  {showrooms.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                  {showrooms
+                    .filter(s => canSeeAll || (showroomIds && showroomIds.includes(s.id)))
+                    .map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             )}

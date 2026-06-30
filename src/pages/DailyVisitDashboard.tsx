@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -12,7 +12,7 @@ import { Navigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 
 const DailyVisitDashboard = () => {
-  const { role, showroomId } = useAuth();
+  const { role, showroomId, showroomIds } = useAuth();
   const isAdmin = role === "admin";
   const isManager = role === "manager";
   const isMd = role === "md";
@@ -20,9 +20,19 @@ const DailyVisitDashboard = () => {
 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [searchExec, setSearchExec] = useState("");
-  const [filterShowroom, setFilterShowroom] = useState<string>((isManager && showroomId) ? showroomId : "all");
+  const [filterShowroom, setFilterShowroom] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [visibleCount, setVisibleCount] = useState(20);
+
+  useEffect(() => {
+    if (isManager) {
+      if (showroomIds && showroomIds.length === 1 && showroomId) {
+        setFilterShowroom(showroomId);
+      } else {
+        setFilterShowroom("all");
+      }
+    }
+  }, [isManager, showroomId, showroomIds]);
 
   const today = selectedDate;
   const yesterday = format(subDays(parseISO(selectedDate), 1), "yyyy-MM-dd");
@@ -37,7 +47,7 @@ const DailyVisitDashboard = () => {
   });
 
   const { data: executives = [] } = useQuery({
-    queryKey: ["executives-for-dashboard", filterShowroom],
+    queryKey: ["executives-for-dashboard", filterShowroom, showroomIds],
     queryFn: async () => {
       let query = supabase
         .from("user_roles")
@@ -45,6 +55,8 @@ const DailyVisitDashboard = () => {
         .eq("role", "executive");
       if (filterShowroom && filterShowroom !== "all") {
         query = query.eq("showroom_id", filterShowroom);
+      } else if (isManager && showroomIds && showroomIds.length > 0) {
+        query = query.in("showroom_id", showroomIds);
       }
       const { data: roles, error: rolesError } = await query;
       if (rolesError) throw rolesError;
@@ -168,14 +180,16 @@ const DailyVisitDashboard = () => {
             />
           </div>
 
-          {(isAdmin || isMd) && (
+          {(isAdmin || isMd || (isManager && showroomIds && showroomIds.length > 1)) && (
             <Select value={filterShowroom} onValueChange={setFilterShowroom}>
               <SelectTrigger className="w-[160px] bg-[#12141A] border-[#F5F5F7]/10 text-[#F5F5F7]">
                 <SelectValue placeholder="All Showrooms" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Showrooms</SelectItem>
-                {showrooms.map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                {showrooms
+                  .filter((s) => isAdmin || isMd || (showroomIds && showroomIds.includes(s.id)))
+                  .map((s) => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
               </SelectContent>
             </Select>
           )}

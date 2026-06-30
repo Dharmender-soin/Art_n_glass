@@ -255,8 +255,8 @@ const Chip = ({ label, active, onClick, count }: {
   </button>
 );
 
-const Card = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
-  <div className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden ${className}`}>
+const Card = ({ children, className = "", id }: { children: React.ReactNode; className?: string; id?: string }) => (
+  <div id={id} className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-800 shadow-sm overflow-hidden ${className}`}>
     {children}
   </div>
 );
@@ -317,11 +317,12 @@ const BenchmarkDot = ({ value, thresholds, tooltip }: {
   );
 };
 
-const KpiCard = ({ label, value, icon, gradient, sub, warn }: {
+const KpiCard = ({ label, value, icon, gradient, sub, warn, onClick }: {
   label: string; value: string | number; icon: React.ReactNode;
-  gradient: string; sub?: string; warn?: boolean;
+  gradient: string; sub?: string; warn?: boolean; onClick?: () => void;
 }) => (
-  <div className={`bg-white dark:bg-slate-900 rounded-2xl border shadow-sm p-4 flex items-start gap-3
+  <div onClick={onClick} className={`bg-white dark:bg-slate-900 rounded-2xl border shadow-sm p-4 flex items-start gap-3 transition-all
+    ${onClick ? "cursor-pointer hover:shadow-md hover:scale-[1.01] hover:border-slate-300 dark:hover:border-slate-700 active:scale-95" : ""}
     ${warn ? "border-red-200 dark:border-red-800/40" : "border-slate-100 dark:border-slate-800"}`}>
     <div className={`h-11 w-11 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center text-white shadow-sm shrink-0`}>
       {icon}
@@ -2733,12 +2734,18 @@ const MDDashboard = () => {
               </div>
               <div className="flex-1 flex flex-wrap gap-2">
                 {criticalShowrooms.map(s => (
-                  <span key={s.id} className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700/40">
+                  <span key={s.id} onClick={() => setSelectedShowroomId(s.id)}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-700/40 cursor-pointer hover:bg-red-250 dark:hover:bg-red-900/60 hover:scale-105 active:scale-95 transition-all">
                     🏬 {s.name} — {s.inactiveEmps} inactive · {s.visits} visits
                   </span>
                 ))}
                 {noActivityToday > 0 && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-700/40">
+                  <span onClick={() => {
+                    setEmpFilter("never_visited");
+                    const el = document.getElementById("employee-performance-section");
+                    if (el) el.scrollIntoView({ behavior: "smooth" });
+                  }}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-700/40 cursor-pointer hover:bg-rose-200 dark:hover:bg-rose-900/60 hover:scale-105 active:scale-95 transition-all">
                     👤 {noActivityToday} employee{noActivityToday > 1 ? "s" : ""} never visited
                   </span>
                 )}
@@ -2758,19 +2765,40 @@ const MDDashboard = () => {
                 : DR_LABELS[dateRange]
             }
             warn={visitTrend !== null && visitTrend < -10}
+            onClick={() => {
+              const el = document.getElementById("showroom-performance-section");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            }}
           />
           <KpiCard label="WOS / Won" value={`${totalWos}/${totalWon}`}
             icon={<Target className="h-5 w-5" />} gradient="from-emerald-500 to-teal-600"
-            sub={totalWos > 0 ? `${Math.round((totalWon / totalWos) * 100)}% win rate` : "No WOS yet"} />
+            sub={totalWos > 0 ? `${Math.round((totalWon / totalWos) * 100)}% win rate` : "No WOS yet"}
+            onClick={() => {
+              const el = document.getElementById("pipeline-summary-section");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            }}
+          />
           <KpiCard label="Active Employees" value={activeCount}
             icon={<UserCheck className="h-5 w-5" />} gradient="from-indigo-500 to-violet-600"
-            sub={`${atRiskCount} at risk · ${inactiveCount} inactive`} />
+            sub={`${atRiskCount} at risk · ${inactiveCount} inactive`}
+            onClick={() => {
+              setEmpFilter("active");
+              const el = document.getElementById("employee-performance-section");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            }}
+          />
           <KpiCard label="Not Active" value={inactiveCount + neverVisitedCount}
             icon={<UserX className="h-5 w-5" />} gradient="from-rose-500 to-red-700"
             sub={inactiveCount > 0 || neverVisitedCount > 0
               ? `${inactiveCount} inactive · ${neverVisitedCount} never visited`
               : "All employees active"}
-            warn={inactiveCount > 0 || neverVisitedCount > 0} />
+            warn={inactiveCount > 0 || neverVisitedCount > 0}
+            onClick={() => {
+              setEmpFilter("inactive");
+              const el = document.getElementById("employee-performance-section");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            }}
+          />
           <KpiCard
             label="Partner Coverage"
             value={totalPartnerCount > 0 ? `${overallPartnerCoverage}%` : "—"}
@@ -2779,6 +2807,10 @@ const MDDashboard = () => {
               ? `${visitedPartnerCount}/${totalPartnerCount} partners visited`
               : "No real partners found"}
             warn={overallPartnerCoverage < 50 && totalPartnerCount > 0}
+            onClick={() => {
+              const el = document.getElementById("partner-utilization-section");
+              if (el) el.scrollIntoView({ behavior: "smooth" });
+            }}
           />
         </div>
 
@@ -3149,7 +3181,7 @@ const MDDashboard = () => {
 
         {/* ══════════════ SHOWROOM PERFORMANCE ══════════════ */}
         {showroomStats.length > 0 && (
-          <div>
+          <div id="showroom-performance-section">
             <div className="flex items-center justify-between mb-2.5">
               <h2 className="text-[13px] font-extrabold text-slate-700 dark:text-slate-200 flex items-center gap-2">
                 <Building2 className="h-4 w-4 text-red-600" />Showroom Performance
@@ -3205,7 +3237,7 @@ const MDDashboard = () => {
         )}
 
         {/* ══════════════ EMPLOYEE PERFORMANCE ══════════════ */}
-        <Card>
+        <Card id="employee-performance-section">
           <SecHead
             icon={<Users className="h-3.5 w-3.5" />}
             title="Employee Performance"
@@ -3393,7 +3425,7 @@ const MDDashboard = () => {
         </Card>
 
         {/* ══════════════ PARTNER UTILIZATION ══════════════ */}
-        <Card>
+        <Card id="partner-utilization-section">
           <SecHead
             icon={<Handshake className="h-3.5 w-3.5" />}
             title="Partner Utilization"
@@ -3492,7 +3524,7 @@ const MDDashboard = () => {
         </Card>
 
         {/* ══════════════ PIPELINE SUMMARY ══════════════ */}
-        <Card>
+        <Card id="pipeline-summary-section">
           <SecHead
             icon={<TrendingUp className="h-3.5 w-3.5" />}
             title="Pipeline Summary by Showroom"

@@ -81,6 +81,7 @@ interface PartnerStat {
 interface AlertItem {
   id: string; severity: AlertSeverity; title: string;
   desc: string; tag: string; action?: string; route?: string;
+  onClick?: () => void;
 }
 
 /* ═══════════════════════ CONSTANTS & HELPERS ═══════════════════════ */
@@ -439,8 +440,8 @@ const AlertCard = ({ a }: { a: AlertItem }) => {
 };
 
 /* ════════════════ SHOWROOM CARD ════════════════ */
-const ShowroomCard = ({ s, onClick, isSelected, totalShowrooms }: {
-  s: ShowroomStat; onClick: () => void; isSelected: boolean; totalShowrooms: number;
+const ShowroomCard = ({ s, onClick, onViewDetails, isSelected, totalShowrooms }: {
+  s: ShowroomStat; onClick: () => void; onViewDetails?: () => void; isSelected: boolean; totalShowrooms: number;
 }) => {
   const isTop = s.rank === 1;
   const isWeak = s.rank === totalShowrooms && totalShowrooms > 1;
@@ -473,9 +474,23 @@ const ShowroomCard = ({ s, onClick, isSelected, totalShowrooms }: {
             {s.execCount} exec · {s.activeEmps} active · {s.inactiveEmps} inactive
           </p>
         </div>
-        <div className="text-right shrink-0">
-          <div className="text-[18px] font-extrabold leading-none" style={{ color: scoreClr }}>{scorePct}</div>
-          <div className="text-[8px] text-slate-400 font-medium">score</div>
+        <div className="text-right shrink-0 flex items-center gap-2">
+          {onViewDetails && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onViewDetails();
+              }}
+              className="p-1 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+              title="View Showroom Details"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <div>
+            <div className="text-[18px] font-extrabold leading-none text-right" style={{ color: scoreClr }}>{scorePct}</div>
+            <div className="text-[8px] text-slate-400 font-medium text-right">score</div>
+          </div>
         </div>
       </div>
 
@@ -522,7 +537,7 @@ const ShowroomCard = ({ s, onClick, isSelected, totalShowrooms }: {
 };
 
 /* ════════════════ SHOWROOM COMPARISON ROW ════════════════ */
-const CompRow = ({ s, isTop, isWeak }: { s: ShowroomStat; isTop: boolean; isWeak: boolean }) => {
+const CompRow = ({ s, isTop, isWeak, onSelectShowroom }: { s: ShowroomStat; isTop: boolean; isWeak: boolean; onSelectShowroom: (id: string) => void }) => {
   const scoreClr = s.score >= 60 ? "text-emerald-600" : s.score >= 30 ? "text-amber-600" : "text-red-500";
   const winClr = s.winRate >= 40 ? "text-emerald-600" : s.winRate >= 20 ? "text-amber-600" : "text-red-500";
   const covClr = s.partnerCoverage >= 80 ? "text-emerald-600" : s.partnerCoverage >= 50 ? "text-amber-600" : "text-red-500";
@@ -531,7 +546,7 @@ const CompRow = ({ s, isTop, isWeak }: { s: ShowroomStat; isTop: boolean; isWeak
       ${isTop ? "bg-emerald-50/30 dark:bg-emerald-900/10" : isWeak ? "bg-red-50/30 dark:bg-red-900/10" : "hover:bg-slate-50 dark:hover:bg-slate-800/40"}`}>
       <td className="px-3 py-2.5">
         <div className="flex items-center gap-1.5">
-          <span className="font-extrabold text-slate-900 dark:text-white">{s.name}</span>
+          <span onClick={() => onSelectShowroom(s.id)} className="font-extrabold text-slate-900 dark:text-white cursor-pointer hover:text-purple-600 hover:underline">{s.name}</span>
           {isTop && <span className="text-[9px] bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold">Best</span>}
           {isWeak && <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">Weak</span>}
         </div>
@@ -702,7 +717,7 @@ const EmpCard = ({ e, daysInPeriod, onSelectEmp }: { e: EmpStat; daysInPeriod: n
 };
 
 /* ════════════════ PARTNER CARD ════════════════ */
-const PartnerCard = ({ p, rank }: { p: PartnerStat; rank?: number }) => {
+const PartnerCard = ({ p, rank, onSelectPartner }: { p: PartnerStat; rank?: number; onSelectPartner: (id: string) => void }) => {
   // Status styling
   const statusCfg = {
     active:    { border: "border-emerald-200 dark:border-emerald-700/40", dot: "bg-emerald-500", lbl: "Active",       lclr: "bg-emerald-50 text-emerald-700 border border-emerald-200" },
@@ -720,7 +735,7 @@ const PartnerCard = ({ p, rank }: { p: PartnerStat; rank?: number }) => {
           ? <span className="text-base shrink-0 mt-0.5">{["🥇","🥈","🥉"][rank - 1]}</span>
           : <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${statusCfg.dot}`} />}
         <div className="min-w-0 flex-1">
-          <p className="text-[12px] font-bold text-slate-900 dark:text-white truncate leading-tight">{p.name}</p>
+          <p onClick={() => onSelectPartner(p.id)} className="text-[12px] font-bold text-slate-900 dark:text-white truncate leading-tight cursor-pointer hover:text-purple-600 hover:underline">{p.name}</p>
           <p className="text-[10px] text-slate-400 truncate">
             {p.company ? `${p.company} · ` : ""}{p.showroomName}
           </p>
@@ -888,7 +903,7 @@ type SRFunnelData = {
   diagnosis: string;
 };
 
-const ShowroomFunnelBlock = ({ fd }: { fd: SRFunnelData }) => {
+const ShowroomFunnelBlock = ({ fd, onSelectPartner }: { fd: SRFunnelData; onSelectPartner: (id: string) => void }) => {
   const [open, setOpen] = useState(false);
   const overdueCount = fd.covOverdue + fd.covNever;
   const isLow = fd.coveragePct < 60;
@@ -1112,7 +1127,7 @@ const ShowroomFunnelBlock = ({ fd }: { fd: SRFunnelData }) => {
                            <Clock className="h-4 w-4" />}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate leading-tight">{p.name}</p>
+                          <p onClick={() => onSelectPartner(p.id)} className="text-[11px] font-bold text-slate-800 dark:text-slate-100 truncate leading-tight cursor-pointer hover:text-purple-600 hover:underline">{p.name}</p>
                           <p className={`text-[10px] font-semibold mt-0.5 ${
                             p.covStatus === "overdue" || p.covStatus === "never" ? "text-red-500" : "text-amber-600"
                           }`}>
@@ -1135,6 +1150,328 @@ const ShowroomFunnelBlock = ({ fd }: { fd: SRFunnelData }) => {
         )}
       </AnimatePresence>
     </div>
+  );
+};
+
+/* ════════════════ SHOWROOM DETAIL MODAL (Popup Detail View) ════════════════ */
+const ShowroomDetailModal = ({
+  showroomId,
+  onClose,
+  showroom,
+  allEmpStats,
+  onSelectEmp,
+}: {
+  showroomId: string;
+  onClose: () => void;
+  showroom: ShowroomStat | undefined;
+  allEmpStats: EmpStat[];
+  onSelectEmp: (uid: string) => void;
+}) => {
+  if (!showroom) return null;
+
+  // Filter employees for this showroom
+  const showroomEmps = allEmpStats.filter((e) => e.showroomId === showroomId);
+
+  return (
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl bg-slate-900 border border-slate-800 text-white rounded-2xl shadow-2xl p-6 overflow-y-auto max-h-[90vh]">
+        <DialogHeader>
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-purple-600 to-indigo-800 flex items-center justify-center text-white shrink-0 shadow-md">
+                <Building2 className="h-6 w-6" />
+              </div>
+              <div className="text-left">
+                <DialogTitle className="text-lg font-extrabold text-white leading-tight">{showroom.name}</DialogTitle>
+                <p className="text-[11px] text-slate-400 mt-1">Showroom performance analysis and team roster</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-extrabold text-purple-400 leading-none">{showroom.score}</div>
+              <div className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-1">Score Rank #{showroom.rank}</div>
+            </div>
+          </div>
+        </DialogHeader>
+
+        {/* Info Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+          
+          {/* Left/Middle Column: Stats and Roster */}
+          <div className="md:col-span-2 space-y-5 text-left">
+            
+            {/* KPI Cards */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "Visits Done", val: showroom.visits, col: "text-sky-400" },
+                { label: "WOS Logged", val: showroom.wosCount, col: "text-indigo-400" },
+                { label: "WOS Won", val: showroom.wonCount, col: "text-emerald-400" },
+                { label: "Win Rate", val: `${showroom.winRate}%`, col: "text-amber-400" },
+                { label: "Coverage", val: showroom.totalPartners > 0 ? `${showroom.partnerCoverage}%` : "—", col: "text-purple-400" },
+                { label: "Total Partners", val: showroom.totalPartners, col: "text-red-400" },
+              ].map(k => (
+                <div key={k.label} className="bg-slate-800/50 border border-slate-800 rounded-xl p-3 text-center">
+                  <div className={`text-xl font-extrabold ${k.col}`}>{k.val}</div>
+                  <div className="text-[9px] text-slate-400 font-bold mt-1 uppercase tracking-wider">{k.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Team Roster */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                <span>Showroom Team Roster ({showroomEmps.length} members)</span>
+                <span className="text-[10px] text-slate-500 font-medium lowercase">click name for profile</span>
+              </h4>
+              <div className="bg-slate-800/20 border border-slate-800 rounded-xl divide-y divide-slate-800 overflow-hidden">
+                {showroomEmps.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic p-3 text-center">No team members assigned.</p>
+                ) : (
+                  showroomEmps.map((e) => (
+                    <div key={e.userId} className="p-3 flex items-center justify-between hover:bg-slate-800/30 transition-colors">
+                      <div className="min-w-0">
+                        <p onClick={() => onSelectEmp(e.userId)} className="text-xs font-bold text-slate-200 truncate cursor-pointer hover:text-red-400 hover:underline">
+                          {e.fullName}
+                        </p>
+                        <p className="text-[10px] text-slate-400 uppercase font-medium">{e.role}</p>
+                      </div>
+                      <div className="flex items-center gap-4 text-right shrink-0">
+                        <div className="text-center">
+                          <p className="text-xs font-extrabold text-sky-400">{e.visits}</p>
+                          <p className="text-[8px] text-slate-500 font-bold uppercase">Visits</p>
+                        </div>
+                        <div className="text-center">
+                          <p className="text-xs font-extrabold text-emerald-400">{e.wonCount}/{e.wosCount}</p>
+                          <p className="text-[8px] text-slate-500 font-bold uppercase">Won</p>
+                        </div>
+                        <div className="text-center bg-slate-800 rounded-lg px-2 py-0.5">
+                          <p className="text-xs font-extrabold text-purple-400">{e.score}</p>
+                          <p className="text-[8px] text-slate-500 font-bold uppercase">Score</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+          </div>
+
+          {/* Right Column: Funnel Health & Diagnostics */}
+          <div className="bg-slate-800/40 border border-slate-800 rounded-xl p-4 flex flex-col justify-between text-left">
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">Funnel Analysis</h4>
+              
+              <div className="space-y-4">
+                {/* Active count vs Inactive count */}
+                <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800">
+                  <div className="flex justify-between text-[11px] mb-1">
+                    <span className="text-slate-400">Team Status</span>
+                    <span className="font-bold text-slate-200">{showroom.activeEmps} Active / {showroom.inactiveEmps} Inactive</span>
+                  </div>
+                  <div className="h-2 bg-slate-800 rounded-full overflow-hidden flex">
+                    <div className="h-full bg-emerald-500" style={{ width: `${showroom.execCount > 0 ? (showroom.activeEmps / showroom.execCount) * 100 : 0}%` }} />
+                    <div className="h-full bg-red-500" style={{ width: `${showroom.execCount > 0 ? (showroom.inactiveEmps / showroom.execCount) * 100 : 0}%` }} />
+                  </div>
+                </div>
+
+                {/* Funnel conversion diagnostics */}
+                <div className="space-y-2">
+                  <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Showroom Health</div>
+                  <p className="text-xs text-slate-300 leading-relaxed font-medium">
+                    {showroom.visits === 0 ? (
+                      "🚨 Critical: No visits logged by the team in this showroom for the selected period."
+                    ) : showroom.partnerCoverage < 50 ? (
+                      "⚠️ Low Coverage: Less than 50% of the showroom's partners have been visited recently."
+                    ) : showroom.winRate < 20 ? (
+                      "⚠️ Low Conversion: Showroom win rate is under 20% - quotes and conversions need review."
+                    ) : (
+                      "🟢 Healthy: Showroom activity and conversions are on track."
+                    )}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-800/80 pt-3 mt-4 text-[10px] text-slate-500 text-center uppercase tracking-wider font-bold">
+              Art & Glass BI System
+            </div>
+          </div>
+
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+/* ════════════════ PARTNER DETAIL MODAL (Popup Detail View) ════════════════ */
+const PartnerDetailModal = ({
+  partnerId,
+  onClose,
+  partner,
+  onSelectEmp,
+}: {
+  partnerId: string;
+  onClose: () => void;
+  partner: PartnerStat | undefined;
+  onSelectEmp: (uid: string) => void;
+}) => {
+  // Fetch recent 5 visits to this partner
+  const { data: partnerVisits = [], isLoading: isLoadingVisits } = useQuery({
+    queryKey: ["partner-detail-visits", partnerId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("visits")
+        .select(`
+          id,
+          visit_date,
+          purpose,
+          remarks,
+          status,
+          created_by,
+          profiles(full_name)
+        `)
+        .eq("partner_id", partnerId)
+        .order("visit_date", { ascending: false })
+        .limit(5);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!partnerId,
+  });
+
+  if (!partner) return null;
+
+  return (
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-2xl bg-slate-900 border border-slate-800 text-white rounded-2xl shadow-2xl p-6 overflow-y-auto max-h-[90vh]">
+        <DialogHeader>
+          <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center gap-3">
+              <div className="h-12 w-12 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-800 flex items-center justify-center text-white shrink-0 shadow-md">
+                <Handshake className="h-6 w-6" />
+              </div>
+              <div className="text-left">
+                <DialogTitle className="text-lg font-extrabold text-white leading-tight">{partner.name}</DialogTitle>
+                <p className="text-[11px] text-slate-400 mt-1">{partner.company || "Independent Partner"} · {partner.showroomName}</p>
+              </div>
+            </div>
+            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border uppercase ${
+              partner.status === "active" ? "bg-emerald-950 text-emerald-400 border-emerald-900" :
+              partner.status === "low" ? "bg-amber-950 text-amber-400 border-amber-900" :
+              "bg-red-950 text-red-400 border-red-900"
+            }`}>
+              {partner.status === "active" ? "Active" : partner.status === "low" ? "Low Activity" : "Neglected"}
+            </span>
+          </div>
+        </DialogHeader>
+
+        {/* Info Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-4">
+          
+          {/* Left Column: Stats & Visit History */}
+          <div className="md:col-span-2 space-y-4 text-left">
+            
+            {/* KPI Cards */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "Visits Received", val: partner.visitCount, col: "text-sky-400" },
+                { label: "Leads Referred", val: partner.leadsCount, col: "text-indigo-400" },
+                { label: "WOS Generated", val: partner.wosCount, col: "text-purple-400" },
+                { label: "WOS Won", val: partner.wonWos, col: "text-emerald-400" },
+                { label: "Hot Leads", val: partner.hotLeads, col: "text-red-400" },
+                { label: "Won Leads", val: partner.convertedLeads, col: "text-amber-400" },
+              ].map(k => (
+                <div key={k.label} className="bg-slate-800/50 border border-slate-800 rounded-xl p-3 text-center">
+                  <div className={`text-xl font-extrabold ${k.col}`}>{k.val}</div>
+                  <div className="text-[9px] text-slate-400 font-bold mt-1 uppercase tracking-wider">{k.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Recent Visit Logs */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Recent Visit Logs (Last 5)</h4>
+              {isLoadingVisits ? (
+                <div className="space-y-2">
+                  <div className="h-10 bg-slate-800/50 rounded-xl animate-pulse" />
+                  <div className="h-10 bg-slate-800/50 rounded-xl animate-pulse" />
+                </div>
+              ) : partnerVisits.length === 0 ? (
+                <p className="text-xs text-slate-500 italic py-2">No visits recorded yet for this partner.</p>
+              ) : (
+                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                  {partnerVisits.map((v: any) => (
+                    <div key={v.id} className="bg-slate-800/40 border border-slate-800/60 rounded-xl p-3 flex items-center justify-between gap-3 hover:bg-slate-800/60 transition-colors">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-slate-200 truncate">
+                          Visited by: <span onClick={() => onSelectEmp(v.created_by)} className="cursor-pointer hover:underline text-indigo-400 font-extrabold">{v.profiles?.full_name || "Unknown"}</span>
+                        </p>
+                        <p className="text-[10px] text-slate-400 truncate capitalize">{v.purpose || "General Visit"}</p>
+                        {v.remarks && <p className="text-[9px] text-slate-500 italic truncate mt-0.5">"{v.remarks}"</p>}
+                      </div>
+                      <div className="text-right shrink-0">
+                        <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border uppercase ${
+                          v.status === "done" ? "bg-emerald-950 text-emerald-400 border-emerald-900" : "bg-amber-950 text-amber-400 border-amber-900"
+                        }`}>
+                          {v.status}
+                        </span>
+                        <p className="text-[9px] text-slate-400 mt-1">{format(parseISO(v.visit_date), "d MMM yyyy")}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+          </div>
+
+          {/* Right Column: Contact info and assigned executive */}
+          <div className="bg-slate-800/40 border border-slate-800 rounded-xl p-4 flex flex-col justify-between text-left">
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Partner Details</h4>
+                {partner.mobile ? (
+                  <a
+                    href={`tel:${partner.mobile}`}
+                    className="flex items-center gap-2 text-xs text-sky-400 font-semibold hover:underline bg-slate-900/60 border border-slate-800 px-3 py-2 rounded-lg"
+                  >
+                    <Phone className="h-3.5 w-3.5" /> {partner.mobile}
+                  </a>
+                ) : (
+                  <p className="text-xs text-slate-500 italic">No mobile number recorded</p>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1">Key Executive</h4>
+                <p className="text-xs text-slate-200 font-semibold">{partner.topExec || "—"}</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Executive with the most visits to this partner</p>
+              </div>
+
+              <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-3">
+                <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Cycle Analysis</div>
+                <p className="text-[11px] text-slate-300 mt-1.5 leading-relaxed font-medium">
+                  {partner.daysSince === 9999 ? (
+                    "🔴 This partner has never been visited. Schedule an onboarding visit."
+                  ) : partner.daysSince > 45 ? (
+                    `🔴 Neglected: It has been ${partner.daysSince} days since the last visit. High revenue risk.`
+                  ) : partner.daysSince > 14 ? (
+                    `🟡 Low Activity: Last visit was ${partner.daysSince} days ago. Needs follow-up.`
+                  ) : (
+                    `🟢 Active: Visited recently (${partner.daysSince} day(s) ago). Relationship healthy.`
+                  )}
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t border-slate-800/80 pt-3 mt-4 text-[10px] text-slate-500 text-center uppercase tracking-wider font-bold">
+              Art & Glass BI System
+            </div>
+          </div>
+
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 
@@ -1380,6 +1717,8 @@ const MDDashboard = () => {
   const [dateRange, setDateRange] = useState<DateRange>("7d");
   const [showroomFilter, setShowroomFilter] = useState("all");
   const [selectedEmpId, setSelectedEmpId] = useState<string | null>(null);
+  const [selectedShowroomId, setSelectedShowroomId] = useState<string | null>(null);
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const [empFilter, setEmpFilter] = useState<EmpFilter>("all");
   const [pFilter, setPFilter] = useState<PFilter>("all");
   const [empSearch, setEmpSearch] = useState("");
@@ -2459,6 +2798,7 @@ const MDDashboard = () => {
               detail={glance.bestSR
                 ? `Score ${glance.bestSR.score} · ${glance.bestSR.visits} visits · ${glance.bestSR.wosCount} WOS · 🤝 ${glance.bestSR.partnerCoverage}% coverage`
                 : "No data"}
+              onClick={glance.bestSR ? () => setSelectedShowroomId(glance.bestSR.id) : undefined}
             />
             {/* 2 */}
             <InsightCard
@@ -2467,6 +2807,7 @@ const MDDashboard = () => {
               detail={glance.weakSR
                 ? `Score ${glance.weakSR.score} · ${glance.weakSR.visits} visits · ${glance.weakSR.inactiveEmps} inactive · 🤝 ${glance.weakSR.partnerCoverage}% coverage`
                 : ""}
+              onClick={glance.weakSR ? () => setSelectedShowroomId(glance.weakSR.id) : undefined}
             />
             {/* 3 */}
             <InsightCard
@@ -2503,6 +2844,7 @@ const MDDashboard = () => {
               icon={<Handshake className="h-4 w-4" />} color="emerald" title="Most Used Partner"
               name={glance.topPartner?.name || "—"}
               detail={glance.topPartner ? `${glance.topPartner.visitCount} visits · ${glance.topPartner.showroomName}` : "No partner visits"}
+              onClick={glance.topPartner ? () => setSelectedPartnerId(glance.topPartner.id) : undefined}
             />
             {/* 8 */}
             <InsightCard
@@ -2511,6 +2853,7 @@ const MDDashboard = () => {
               detail={glance.ignoredPartner
                 ? `Not visited ${glance.ignoredPartner.daysSince >= 9999 ? "— never" : `in ${glance.ignoredPartner.daysSince}d`}`
                 : "All partners recently visited"}
+              onClick={glance.ignoredPartner ? () => setSelectedPartnerId(glance.ignoredPartner.id) : undefined}
             />
           </div>
 
@@ -2581,6 +2924,7 @@ const MDDashboard = () => {
                         detail={glance.bestConvSR
                           ? `${glance.bestConvSR.winRate}% win rate · ${glance.bestConvSR.wonCount}/${glance.bestConvSR.wosCount} WOS won`
                           : "Need ≥5 WOS per showroom"}
+                        onClick={glance.bestConvSR ? () => setSelectedShowroomId(glance.bestConvSR.id) : undefined}
                       />
                       {/* 15: Conversion Gap */}
                       <InsightCard
@@ -2591,6 +2935,7 @@ const MDDashboard = () => {
                         detail={glance.convGapSR
                           ? `${glance.convGapSR.wosCount} WOS but only ${glance.convGapSR.wonCount} won (${glance.convGapSR.winRate}% rate) — review`
                           : "All showrooms converting well"}
+                        onClick={glance.convGapSR ? () => setSelectedShowroomId(glance.convGapSR.id) : undefined}
                       />
                       {/* 16: Clients This Period */}
                       <InsightCard
@@ -2784,7 +3129,7 @@ const MDDashboard = () => {
                   className="overflow-hidden"
                 >
                   <div className="p-3 space-y-2">
-                    {funnelData.map(fd => <ShowroomFunnelBlock key={fd.srId} fd={fd} />)}
+                    {funnelData.map(fd => <ShowroomFunnelBlock key={fd.srId} fd={fd} onSelectPartner={setSelectedPartnerId} />)}
                   </div>
                 </motion.div>
               )}
@@ -2822,7 +3167,7 @@ const MDDashboard = () => {
                         </thead>
                         <tbody>
                           {showroomStats.map(s => (
-                            <CompRow key={s.id} s={s} isTop={s.rank === 1} isWeak={s.rank === showroomStats.length && showroomStats.length > 1} />
+                            <CompRow key={s.id} s={s} isTop={s.rank === 1} isWeak={s.rank === showroomStats.length && showroomStats.length > 1} onSelectShowroom={setSelectedShowroomId} />
                           ))}
                         </tbody>
                       </table>
@@ -2841,6 +3186,7 @@ const MDDashboard = () => {
                     totalShowrooms={showroomStats.length}
                     isSelected={showroomFilter === s.id}
                     onClick={() => setShowroomFilter(prev => prev === s.id ? "all" : s.id)}
+                    onViewDetails={() => setSelectedShowroomId(s.id)}
                   />
                 </motion.div>
               ))}
@@ -3099,6 +3445,7 @@ const MDDashboard = () => {
                   <PartnerCard
                     p={p}
                     rank={(pFilter === "top" || pFilter === "top_leads") ? i + 1 : undefined}
+                    onSelectPartner={setSelectedPartnerId}
                   />
                 </motion.div>
               ))
@@ -3225,6 +3572,35 @@ const MDDashboard = () => {
               userId={selectedEmpId}
               onClose={() => setSelectedEmpId(null)}
               emp={allEmpStats.find((e) => e.userId === selectedEmpId)}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {selectedShowroomId && (
+            <ShowroomDetailModal
+              showroomId={selectedShowroomId}
+              onClose={() => setSelectedShowroomId(null)}
+              showroom={showroomStats.find((s) => s.id === selectedShowroomId)}
+              allEmpStats={allEmpStats}
+              onSelectEmp={(uid) => {
+                setSelectedShowroomId(null);
+                setSelectedEmpId(uid);
+              }}
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {selectedPartnerId && (
+            <PartnerDetailModal
+              partnerId={selectedPartnerId}
+              onClose={() => setSelectedPartnerId(null)}
+              partner={partnerStats.find((p) => p.id === selectedPartnerId)}
+              onSelectEmp={(uid) => {
+                setSelectedPartnerId(null);
+                setSelectedEmpId(uid);
+              }}
             />
           )}
         </AnimatePresence>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -9,16 +9,28 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { format, parseISO, startOfMonth } from "date-fns";
-import { CalendarCheck, Users, Building2, CheckCircle, Clock, Package, Filter, ArrowUpRight, Download, Navigation } from "lucide-react";
+import { format, parseISO, startOfMonth, getDaysInMonth, eachDayOfInterval, startOfMonth as som, endOfMonth } from "date-fns";
+import { CalendarCheck, Users, Building2, CheckCircle, Clock, Package, Filter, ArrowUpRight, Download, Navigation, FileText, Printer, ChevronDown } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence } from "framer-motion";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+
+const MONTHS = [
+  "January","February","March","April","May","June",
+  "July","August","September","October","November","December"
+];
 
 const Reports = () => {
   const { role } = useAuth();
+  const [activeTab, setActiveTab] = useState<"overview" | "dsr">("overview");
   const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [dateTo, setDateTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [filterExecutive, setFilterExecutive] = useState<string>("all");
+
+  // DSR Tab state
+  const [dsrEmployee, setDsrEmployee] = useState<string>("");
+  const [dsrMonth, setDsrMonth] = useState<number>(new Date().getMonth());
+  const [dsrYear, setDsrYear] = useState<number>(new Date().getFullYear());
 
   const { data: visits = [], isLoading: isLoadingVisits } = useQuery({
     queryKey: ["report-visits", dateFrom, dateTo],
@@ -92,6 +104,112 @@ const Reports = () => {
       return data;
     },
   });
+
+  // DSR — fetch visits for selected employee + month
+  const dsrFrom = `${dsrYear}-${String(dsrMonth + 1).padStart(2, "0")}-01`;
+  const dsrTo = `${dsrYear}-${String(dsrMonth + 1).padStart(2, "0")}-${String(getDaysInMonth(new Date(dsrYear, dsrMonth))).padStart(2, "0")}`;
+
+  const { data: dsrVisits = [], isLoading: dsrLoading } = useQuery({
+    queryKey: ["dsr-visits", dsrEmployee, dsrFrom, dsrTo],
+    enabled: isManager && !!dsrEmployee,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("visits")
+        .select("*, clients(name, address), partners(name, address)")
+        .eq("created_by", dsrEmployee)
+        .gte("visit_date", dsrFrom)
+        .lte("visit_date", dsrTo)
+        .order("visit_date", { ascending: true })
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  const dsrEmployeeName = executivesList.find(e => e.user_id === dsrEmployee)?.full_name || "";
+
+  // Group DSR visits by date
+  const dsrByDate = useMemo(() => {
+    const map = new Map<string, typeof dsrVisits>();
+    dsrVisits.forEach(v => {
+      const d = v.visit_date;
+      if (!map.has(d)) map.set(d, []);
+      map.get(d)!.push(v);
+    });
+    return map;
+  }, [dsrVisits]);
+
+  const dsrTotalPlanned = dsrVisits.filter(v => v.status === "planned" || v.status === "done").length;
+  const dsrTotalDone = dsrVisits.filter(v => v.status === "done").length;
+  const dsrSuccessRate = dsrTotalPlanned > 0 ? Math.round((dsrTotalDone / dsrTotalPlanned) * 100) : 0;
+
+  const printDSR = () => {
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) return;
+
+    const monthLabel = `${MONTHS[dsrMonth].toUpperCase()} ${dsrYear}`;
+    const generatedAt = format(new Date(), "dd-MMM-yyyy, hh:mm a");
+
+    const daysHtml = Array.from(dsrByDate.entries()).map(([date, dayVisits]) => {
+      const plannedCount = dayVisits.filter((v: any) => v.status === "planned" || v.status === "done").length;
+      const doneCount = dayVisits.filter((v: any) => v.status === "done").length;
+      const dateLabel = format(parseISO(date), "EEEE, dd MMM yyyy");
+
+      const rowsHtml = dayVisits.map((v: any, idx: number) => {
+        const name = v.clients?.name || v.partners?.name || "\u2014";
+        const addr = v.address || v.clients?.address || v.partners?.address || "\u2014";
+        const purpose = v.purpose || "\u2014";
+        const remarks = v.remarks || "\u2014";
+        const type = v.visit_with_type || "solo";
+        const statusColor = v.status === "done" ? "#16a34a" : v.status === "cancelled" ? "#dc2626" : "#d97706";
+        const statusLabel = v.status === "done" ? "\u2713 Done" : v.status === "cancelled" ? "\u2717 Cancelled" : "\u23f3 Planned";
+        return `<tr style="border-bottom:1px solid #e5e7eb;">
+          <td style="padding:5px 7px;border:1px solid #e5e7eb;color:#888;font-size:10px;">${idx + 1}</td>
+          <td style="padding:5px 7px;border:1px solid #e5e7eb;"><strong style="font-size:11px;">${name}</strong><br/><span style="font-size:9px;color:#888;text-transform:capitalize;">${type}</span></td>
+          <td style="padding:5px 7px;border:1px solid #e5e7eb;font-size:10px;color:#555;">${addr}</td>
+          <td style="padding:5px 7px;border:1px solid #e5e7eb;font-size:10px;">${purpose}</td>
+          <td style="padding:5px 7px;border:1px solid #e5e7eb;"><span style="font-size:10px;font-weight:bold;color:${statusColor};">${statusLabel}</span></td>
+          <td style="padding:5px 7px;border:1px solid #e5e7eb;font-size:10px;color:#555;">${remarks}</td>
+        </tr>`;
+      }).join("");
+
+      return `<div style="border:1px solid #d1d5db;margin-bottom:12px;page-break-inside:avoid;">
+        <div style="background:#f3f4f6;padding:7px 12px;border-bottom:1px solid #d1d5db;display:flex;justify-content:space-between;align-items:center;">
+          <div><strong style="font-size:12px;">${dateLabel}</strong><span style="font-size:10px;color:#6b7280;margin-left:8px;">${plannedCount} planned \u2022 ${doneCount} done</span></div>
+          <span style="font-size:10px;font-weight:bold;color:#16a34a;">${doneCount}/${plannedCount} Done</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:11px;">
+          <thead><tr style="background:#f9fafb;">
+            <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;width:28px;">#</th>
+            <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Customer / Partner</th>
+            <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Address</th>
+            <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Purpose</th>
+            <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Status</th>
+            <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Remarks</th>
+          </tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      </div>`;
+    }).join("");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
+    <title>DSR \u2014 ${dsrEmployeeName} \u2014 ${monthLabel}</title>
+    <style>*{box-sizing:border-box;}body{font-family:Arial,sans-serif;margin:0;padding:18px 20px;color:#111;background:#fff;}@media print{body{padding:10px 14px;}@page{margin:10mm;}}</style>
+    </head><body>
+    <div style="text-align:center;border-bottom:2px solid #222;padding-bottom:10px;margin-bottom:18px;">
+      <h1 style="margin:0;font-size:18px;font-weight:bold;">DAILY VISIT REPORT \u2014 ${monthLabel}</h1>
+      <p style="margin:4px 0 0;font-size:11px;"><strong>Employee:</strong> ${dsrEmployeeName} &nbsp;|&nbsp; <strong>Generated:</strong> ${generatedAt}</p>
+      <p style="margin:3px 0 0;font-size:11px;">Total Visits: <strong>${dsrTotalPlanned}</strong> &nbsp;|&nbsp; Done: <strong>${dsrTotalDone}</strong> &nbsp;|&nbsp; Success Rate: <strong>${dsrSuccessRate}%</strong></p>
+    </div>
+    ${daysHtml}
+    </body></html>`;
+
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    setTimeout(() => { win.print(); }, 400);
+  };
+
 
   // Filtered conveyance records
   const filteredConveyance = filterExecutive === "all"
@@ -179,7 +297,8 @@ const Reports = () => {
       animate="show"
       className="space-y-8 pb-20"
     >
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
+      {/* Page Header - hidden on print */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 print:hidden">
         <div className="space-y-1">
           <motion.h1
             initial={{ opacity: 0, x: -20 }}
@@ -197,30 +316,238 @@ const Reports = () => {
             Comprehensive overview of performance and activities
           </motion.p>
         </div>
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.1 }}
-          className="flex items-center gap-3 bg-card p-2 rounded-xl border shadow-sm"
-        >
-          <div className="flex items-center gap-2 px-2 border-r pr-4">
-            <Filter className="h-4 w-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Filter Range</span>
-          </div>
-          <div className="flex gap-2">
-            <div className="space-y-0.5">
-              <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">From</Label>
-              <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 w-36 bg-background border-none shadow-none text-xs focus-visible:ring-0 px-0" />
-            </div>
-            <div className="h-8 w-px bg-border mx-1 self-end mb-1" />
-            <div className="space-y-0.5">
-              <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">To</Label>
-              <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 w-36 bg-background border-none shadow-none text-xs focus-visible:ring-0 px-0" />
-            </div>
-          </div>
-        </motion.div>
       </div>
+
+      {/* Tabs - hidden on print */}
+      {isManager && (
+        <div className="flex gap-1 bg-muted/40 p-1 rounded-xl border border-border/50 w-fit print:hidden">
+          <button
+            onClick={() => setActiveTab("overview")}
+            className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
+              activeTab === "overview"
+                ? "bg-background shadow-sm text-foreground border border-border/60"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <BarChart3Icon className="h-4 w-4" />
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab("dsr")}
+            className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
+              activeTab === "dsr"
+                ? "bg-background shadow-sm text-foreground border border-border/60"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <FileText className="h-4 w-4" />
+            Employee DSR
+          </button>
+        </div>
+      )}
+
+      {/* ───────── DSR TAB ───────── */}
+      {activeTab === "dsr" && isManager && (
+        <AnimatePresence mode="wait">
+          <motion.div
+            key="dsr-tab"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="space-y-6"
+          >
+            {/* DSR Filters - hidden on print */}
+            <Card className="border-none shadow-sm print:hidden">
+              <CardContent className="p-4">
+                <div className="flex flex-wrap gap-4 items-end">
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Employee</Label>
+                    <Select value={dsrEmployee} onValueChange={setDsrEmployee}>
+                      <SelectTrigger className="w-[200px] h-9">
+                        <SelectValue placeholder="Select Employee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {executivesList.map(e => (
+                          <SelectItem key={e.user_id} value={e.user_id}>{e.full_name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Month</Label>
+                    <Select value={String(dsrMonth)} onValueChange={v => setDsrMonth(Number(v))}>
+                      <SelectTrigger className="w-[140px] h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {MONTHS.map((m, i) => <SelectItem key={i} value={String(i)}>{m}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Year</Label>
+                    <Select value={String(dsrYear)} onValueChange={v => setDsrYear(Number(v))}>
+                      <SelectTrigger className="w-[100px] h-9">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {[2024,2025,2026,2027].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {dsrEmployee && (
+                    <Button onClick={printDSR} variant="outline" size="sm" className="h-9 gap-2 ml-auto print:hidden">
+                      <Printer className="h-4 w-4" />
+                      Print / Save PDF
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* DSR Summary - hidden on print */}
+            {dsrEmployee && !dsrLoading && (
+              <div className="grid grid-cols-3 gap-4 print:hidden">
+                {[
+                  { label: "Total Planned", value: dsrTotalPlanned, color: "text-blue-500", bg: "bg-blue-500/10" },
+                  { label: "Total Done", value: dsrTotalDone, color: "text-emerald-500", bg: "bg-emerald-500/10" },
+                  { label: "Success Rate", value: `${dsrSuccessRate}%`, color: "text-amber-500", bg: "bg-amber-500/10" },
+                ].map(s => (
+                  <Card key={s.label} className="border-none shadow-sm">
+                    <CardContent className="p-4 flex items-center gap-3">
+                      <div className={`w-10 h-10 rounded-full ${s.bg} flex items-center justify-center`}>
+                        <span className={`text-sm font-bold ${s.color}`}>{s.value}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground font-medium">{s.label}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {/* DSR Report Table */}
+            {!dsrEmployee ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+                  <FileText className="h-7 w-7 text-muted-foreground" />
+                </div>
+                <p className="text-muted-foreground font-medium">Select an employee to generate their DSR</p>
+              </div>
+            ) : dsrLoading ? (
+              <div className="flex items-center justify-center py-16">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+              </div>
+            ) : dsrVisits.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center space-y-3">
+                <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
+                  <CalendarCheck className="h-7 w-7 text-muted-foreground" />
+                </div>
+                <p className="text-muted-foreground font-medium">No visits found for {dsrEmployeeName} in {MONTHS[dsrMonth]} {dsrYear}</p>
+              </div>
+            ) : (
+              <div id="dsr-printable">
+                {/* Print Header - visible ONLY when printing */}
+                <div className="dsr-print-header hidden print:block text-center mb-4 pb-3" style={{borderBottom: "2px solid #222"}}>
+                  <h1 style={{fontSize: "16px", fontWeight: "bold", margin: 0}}>DAILY VISIT REPORT — {MONTHS[dsrMonth].toUpperCase()} {dsrYear}</h1>
+                  <p style={{fontSize: "11px", marginTop: "4px"}}>Employee: <strong>{dsrEmployeeName}</strong> &nbsp;|&nbsp; Generated: {format(new Date(), "dd-MMM-yyyy, hh:mm a")}</p>
+                  <p style={{fontSize: "11px"}}>Total Visits: <strong>{dsrTotalPlanned}</strong> &nbsp;|&nbsp; Done: <strong>{dsrTotalDone}</strong> &nbsp;|&nbsp; Success Rate: <strong>{dsrSuccessRate}%</strong></p>
+                </div>
+
+                <div className="space-y-4">
+                  {Array.from(dsrByDate.entries()).map(([date, dayVisits]) => {
+                    const planned = dayVisits.filter(v => v.status === "planned" || v.status === "done");
+                    const done = dayVisits.filter(v => v.status === "done");
+                    return (
+                      <div key={date} className="dsr-day-card overflow-hidden rounded-xl border border-border shadow-md">
+                        <div className="dsr-day-header flex items-center justify-between bg-muted/40 border-b py-2.5 px-4">
+                          <div className="flex items-center gap-3">
+                            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center print:hidden">
+                              <span className="text-xs font-bold text-primary">{format(parseISO(date), "dd")}</span>
+                            </div>
+                            <div>
+                              <p className="font-bold text-sm">{format(parseISO(date), "EEEE, dd MMM yyyy")}</p>
+                              <p className="text-[11px] text-muted-foreground">{planned.length} planned &bull; {done.length} done</p>
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 print:hidden">
+                            {done.length}/{planned.length} Done
+                          </span>
+                          <span className="hidden print:inline text-[11px] font-bold text-green-700">
+                            {done.length}/{planned.length} Done
+                          </span>
+                        </div>
+                        <div className="p-0">
+                          <table className="w-full border-collapse text-xs">
+                            <thead>
+                              <tr className="bg-muted/20">
+                                <th className="text-[11px] py-2 px-3 text-left font-semibold border-b w-[28px]">#</th>
+                                <th className="text-[11px] py-2 px-3 text-left font-semibold border-b">Customer / Partner</th>
+                                <th className="text-[11px] py-2 px-3 text-left font-semibold border-b">Address</th>
+                                <th className="text-[11px] py-2 px-3 text-left font-semibold border-b">Purpose</th>
+                                <th className="text-[11px] py-2 px-3 text-left font-semibold border-b">Status</th>
+                                <th className="text-[11px] py-2 px-3 text-left font-semibold border-b">Remarks</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {dayVisits.map((v, idx) => {
+                                const name = (v as any).clients?.name || (v as any).partners?.name || "—";
+                                const addr = v.address || (v as any).clients?.address || (v as any).partners?.address || "—";
+                                const statusClass = v.status === "done" ? "dsr-status-done" : v.status === "cancelled" ? "dsr-status-cancelled" : "dsr-status-planned";
+                                const statusLabel = v.status === "done" ? "✓ Done" : v.status === "cancelled" ? "✗ Cancelled" : "⏳ Planned";
+                                return (
+                                  <tr key={v.id} className="border-b hover:bg-muted/10">
+                                    <td className="text-[11px] py-2 px-3 text-muted-foreground font-mono">{idx + 1}</td>
+                                    <td className="py-2 px-3">
+                                      <p className="font-semibold text-sm">{name}</p>
+                                      <span className="text-[9px] text-muted-foreground capitalize">{v.visit_with_type || "solo"}</span>
+                                    </td>
+                                    <td className="text-xs text-muted-foreground py-2 px-3 max-w-[120px]">{addr}</td>
+                                    <td className="text-xs py-2 px-3 max-w-[160px]">{v.purpose}</td>
+                                    <td className="py-2 px-3">
+                                      <span className={`text-[10px] font-bold ${statusClass}`}>{statusLabel}</span>
+                                    </td>
+                                    <td className="text-xs text-muted-foreground py-2 px-3 max-w-[160px]">{v.remarks || "—"}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      )}
+
+      {/* ───────── OVERVIEW TAB ───────── */}
+      {(activeTab === "overview" || !isManager) && (
+      <div className="space-y-8">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.1 }}
+        className="flex items-center gap-3 bg-card p-2 rounded-xl border shadow-sm"
+      >
+        <div className="flex items-center gap-2 px-2 border-r pr-4">
+          <Filter className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-medium">Filter Range</span>
+        </div>
+        <div className="flex gap-2">
+          <div className="space-y-0.5">
+            <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">From</Label>
+            <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} className="h-8 w-36 bg-background border-none shadow-none text-xs focus-visible:ring-0 px-0" />
+          </div>
+          <div className="h-8 w-px bg-border mx-1 self-end mb-1" />
+          <div className="space-y-0.5">
+            <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">To</Label>
+            <Input type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} className="h-8 w-36 bg-background border-none shadow-none text-xs focus-visible:ring-0 px-0" />
+          </div>
+        </div>
+      </motion.div>
 
       {/* Visit Stats */}
       <motion.div variants={containerVariants} className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -585,8 +912,20 @@ const Reports = () => {
       </motion.div>
       )}
 
+      </div>
+      )}
+
     </motion.div>
   );
 };
+
+// Local icon to avoid extra import
+const BarChart3Icon = ({ className }: { className?: string }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="18" y1="20" x2="18" y2="10" />
+    <line x1="12" y1="20" x2="12" y2="4" />
+    <line x1="6" y1="20" x2="6" y2="14" />
+  </svg>
+);
 
 export default Reports;

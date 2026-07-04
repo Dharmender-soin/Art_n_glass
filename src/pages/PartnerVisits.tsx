@@ -87,7 +87,7 @@ const PartnerVisits = () => {
   const { data: userRoles = [] } = useQuery({
     queryKey: ["pv3-roles", myShowroomId, showroomIds, selectedShowroom, role],
     queryFn: async () => {
-      let q = supabase.from("user_roles").select("user_id, role, showroom_id").eq("role", "executive");
+      let q = supabase.from("user_roles").select("user_id, role, showroom_id, reports_to").in("role", ["executive", "tl"]);
       if (isManager) {
         if (selectedShowroom && selectedShowroom !== "all") {
           q = q.eq("showroom_id", selectedShowroom);
@@ -104,6 +104,21 @@ const PartnerVisits = () => {
 
   const execUserIds = useMemo(() => [...new Set(userRoles.map((r) => r.user_id))], [userRoles]);
 
+  // ── TL (reports_to) map: exec user_id → TL user_id ───────────────────────
+  const execTlMap = useMemo(() => {
+    const map: Record<string, string | null> = {};
+    userRoles.forEach((r) => {
+      map[r.user_id] = (r as any).reports_to ?? null;
+    });
+    return map;
+  }, [userRoles]);
+
+  // Collect all unique TL user_ids to fetch their profiles
+  const tlUserIds = useMemo(() => {
+    const ids = Object.values(execTlMap).filter((id): id is string => !!id);
+    return [...new Set(ids)];
+  }, [execTlMap]);
+
   // ── Profiles ───────────────────────────────────────────────────────────────
   const { data: profiles = [] } = useQuery({
     queryKey: ["pv3-profiles", execUserIds],
@@ -114,9 +129,29 @@ const PartnerVisits = () => {
     },
   });
 
+  // ── TL Profiles ────────────────────────────────────────────────────────────
+  const { data: tlProfiles = [] } = useQuery({
+    queryKey: ["pv3-tl-profiles", tlUserIds],
+    enabled: tlUserIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase.from("profiles").select("user_id, full_name").in("user_id", tlUserIds);
+      return data || [];
+    },
+  });
+
   const profileMap = useMemo(() => Object.fromEntries(profiles.map((p) => [p.user_id, p.full_name])), [profiles]);
+  const tlProfileMap = useMemo(() => Object.fromEntries(tlProfiles.map((p) => [p.user_id, p.full_name])), [tlProfiles]);
   const showroomMap = useMemo(() => Object.fromEntries(showrooms.map((s) => [s.id, s.name])), [showrooms]);
   const execShowroomMap = useMemo(() => Object.fromEntries(userRoles.map((r) => [r.user_id, r.showroom_id])), [userRoles]);
+
+  // Helper: get TL name for an exec
+  const getTlName = (execId: string) => {
+    const tlId = execTlMap[execId];
+    if (!tlId) return null;
+    return tlProfileMap[tlId] || null;
+  };
+
+  const showTlColumn = canSeeAll || isManager;
 
   const targetUserIds = useMemo(() => {
     if (selectedExec !== "all") return [selectedExec];
@@ -320,11 +355,13 @@ const PartnerVisits = () => {
   const exportCSV = () => {
     let rows: string[][];
     if (viewMode === "matrix") {
-      rows = [["Executive", "Showroom", "Partner", "Type", "Last Visit", ...dateColumns.map((d) => format(new Date(d), "dd MMM")), "Total"]];
+      const hdr = ["Executive", ...(showTlColumn ? ["TL"] : []), "Showroom", "Partner", "Type", "Last Visit", ...dateColumns.map((d) => format(new Date(d), "dd MMM")), "Total"];
+      rows = [hdr];
       sortedGroups.forEach(({ execId, rows: gRows }) => {
         gRows.forEach((row) => {
           rows.push([
             profileMap[execId] || "Unknown",
+            ...(showTlColumn ? [getTlName(execId) || "—"] : []),
             showroomMap[execShowroomMap[execId]] || "—",
             row.partnerName,
             row.partnerType,
@@ -335,12 +372,13 @@ const PartnerVisits = () => {
         });
       });
     } else {
-      rows = [["Date", "Executive", "Showroom", "Partner", "Type", "City", "Status"]];
+      rows = [["Date", "Executive", ...(showTlColumn ? ["TL"] : []), "Showroom", "Partner", "Type", "City", "Status"]];
       filtered.forEach((v) => {
         const partner = v.partners as any;
         rows.push([
           format(new Date(v.visit_date), "dd MMM yyyy"),
           profileMap[v.created_by] || "Unknown",
+          ...(showTlColumn ? [getTlName(v.created_by) || "—"] : []),
           showroomMap[execShowroomMap[v.created_by]] || "—",
           partner?.name || "—",
           partner?.type || "—",
@@ -515,6 +553,12 @@ const PartnerVisits = () => {
                     <th className="sticky left-[130px] z-20 bg-muted/80 text-left px-3 py-2.5 font-bold text-[11px] uppercase tracking-wider text-muted-foreground min-w-[130px] border-r border-border">
                       Partner
                     </th>
+                    {/* TL */}
+                    {showTlColumn && (
+                      <th className="bg-muted/80 text-left px-3 py-2.5 font-bold text-[11px] uppercase tracking-wider text-muted-foreground min-w-[100px] border-r border-border whitespace-nowrap">
+                        TL
+                      </th>
+                    )}
                     {canSeeAll && (
                       <th className="bg-muted/80 text-left px-3 py-2.5 font-bold text-[11px] uppercase tracking-wider text-muted-foreground min-w-[85px] border-r border-border whitespace-nowrap">
                         Showroom
@@ -585,6 +629,15 @@ const PartnerVisits = () => {
                               </span>
                             </div>
                           </td>
+                          {/* TL in group header */}
+                          {showTlColumn && (
+                            <td className="bg-muted/50 border-r border-border px-3 py-2 min-w-[100px]">
+                              {getTlName(execId)
+                                ? <span className="text-[10px] font-semibold text-indigo-500">{getTlName(execId)}</span>
+                                : <span className="text-[10px] text-muted-foreground">—</span>
+                              }
+                            </td>
+                          )}
                           {canSeeAll && (
                             <td className="bg-muted/50 border-r border-border px-3 py-2 min-w-[85px]">
                               <span className="text-[10px] text-muted-foreground">{showroomMap[srId] || "—"}</span>
@@ -639,6 +692,15 @@ const PartnerVisits = () => {
                                 )}
                               </td>
 
+                              {/* TL cell in partner row */}
+                              {showTlColumn && (
+                                <td className="bg-background border-r border-border px-3 py-1.5 min-w-[100px]">
+                                  {getTlName(execId)
+                                    ? <span className="text-[10px] font-semibold text-indigo-500">{getTlName(execId)}</span>
+                                    : <span className="text-[10px] text-muted-foreground/40">—</span>
+                                  }
+                                </td>
+                              )}
                               {/* Showroom */}
                               {canSeeAll && (
                                 <td className={`bg-background border-r border-border px-3 py-1.5 min-w-[85px]`}>
@@ -696,6 +758,7 @@ const PartnerVisits = () => {
                     <td className="sticky left-0 z-20 bg-muted/70 border-r border-border px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground min-w-[130px]" colSpan={2}>
                       Grand Total
                     </td>
+                    {showTlColumn && <td className="bg-muted/70 border-r border-border" />}
                     {canSeeAll && <td className="bg-muted/70 border-r border-border" />}
                     <td className="bg-muted/70 border-r border-border" />
                     {dateColumns.map((d) => {
@@ -772,6 +835,11 @@ const PartnerVisits = () => {
                               </div>
                               <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                                 <span className="text-xs text-muted-foreground flex items-center gap-1"><User className="h-3 w-3" />{execName}</span>
+                                {showTlColumn && getTlName(v.created_by) && (
+                                  <span className="text-xs font-semibold text-indigo-500 flex items-center gap-1">
+                                    <User className="h-3 w-3" />TL: {getTlName(v.created_by)}
+                                  </span>
+                                )}
                                 {canSeeAll && <span className="text-xs text-muted-foreground flex items-center gap-1"><Building2 className="h-3 w-3" />{showroomName}</span>}
                                 {partner?.city && <span className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{partner.city}</span>}
                               </div>

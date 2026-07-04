@@ -173,10 +173,22 @@ const Reports = () => {
         </tr>`;
       }).join("");
 
+      // Day-level start/end time
+      const validCreatedAts = dayVisits.filter((v: any) => v.created_at).map((v: any) => v.created_at as string);
+      const validDoneAts = dayVisits.filter((v: any) => v.done_at && v.status === "done").map((v: any) => v.done_at as string);
+      const dayStartTime = validCreatedAts.length > 0 ? format(parseISO(validCreatedAts.sort()[0]), "hh:mm a") : "\u2014";
+      const dayEndTime = validDoneAts.length > 0 ? format(parseISO(validDoneAts.sort().reverse()[0]), "hh:mm a") : "\u2014";
+
       return `<div style="border:1px solid #d1d5db;margin-bottom:12px;page-break-inside:avoid;">
-        <div style="background:#f3f4f6;padding:7px 12px;border-bottom:1px solid #d1d5db;display:flex;justify-content:space-between;align-items:center;">
-          <div><strong style="font-size:12px;">${dateLabel}</strong><span style="font-size:10px;color:#6b7280;margin-left:8px;">${plannedCount} planned \u2022 ${doneCount} done</span></div>
-          <span style="font-size:10px;font-weight:bold;color:#16a34a;">${doneCount}/${plannedCount} Done</span>
+        <div style="background:#f3f4f6;padding:7px 12px;border-bottom:1px solid #d1d5db;">
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <div><strong style="font-size:12px;">${dateLabel}</strong><span style="font-size:10px;color:#6b7280;margin-left:8px;">${plannedCount} planned \u2022 ${doneCount} done</span></div>
+            <span style="font-size:10px;font-weight:bold;color:#16a34a;">${doneCount}/${plannedCount} Done</span>
+          </div>
+          <div style="margin-top:4px;font-size:10px;color:#374151;">
+            <span style="margin-right:14px;">\uD83D\uDD35 <strong>Day Start:</strong> <span style="color:#166534;font-weight:600;">${dayStartTime}</span></span>
+            <span>\uD83D\uDD34 <strong>Day End:</strong> <span style="color:#b45309;font-weight:600;">${dayEndTime}</span></span>
+          </div>
         </div>
         <table style="width:100%;border-collapse:collapse;font-size:11px;">
           <thead><tr style="background:#f9fafb;">
@@ -459,22 +471,45 @@ const Reports = () => {
                     const done = dayVisits.filter(v => v.status === "done");
                     return (
                       <div key={date} className="dsr-day-card overflow-hidden rounded-xl border border-border shadow-md">
-                        <div className="dsr-day-header flex items-center justify-between bg-muted/40 border-b py-2.5 px-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center print:hidden">
-                              <span className="text-xs font-bold text-primary">{format(parseISO(date), "dd")}</span>
+                        <div className="dsr-day-header flex flex-col gap-1 bg-muted/40 border-b py-2.5 px-4">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center print:hidden">
+                                <span className="text-xs font-bold text-primary">{format(parseISO(date), "dd")}</span>
+                              </div>
+                              <div>
+                                <p className="font-bold text-sm">{format(parseISO(date), "EEEE, dd MMM yyyy")}</p>
+                                <p className="text-[11px] text-muted-foreground">{planned.length} planned &bull; {done.length} done</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-bold text-sm">{format(parseISO(date), "EEEE, dd MMM yyyy")}</p>
-                              <p className="text-[11px] text-muted-foreground">{planned.length} planned &bull; {done.length} done</p>
-                            </div>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 print:hidden">
+                              {done.length}/{planned.length} Done
+                            </span>
+                            <span className="hidden print:inline text-[11px] font-bold text-green-700">
+                              {done.length}/{planned.length} Done
+                            </span>
                           </div>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 print:hidden">
-                            {done.length}/{planned.length} Done
-                          </span>
-                          <span className="hidden print:inline text-[11px] font-bold text-green-700">
-                            {done.length}/{planned.length} Done
-                          </span>
+                          {/* Day-level start/end time */}
+                          {(() => {
+                            const validCreated = dayVisits.filter(v => v.created_at).map(v => v.created_at as string);
+                            const validDone = dayVisits.filter(v => (v as any).done_at && v.status === "done").map(v => (v as any).done_at as string);
+                            const dayStart = validCreated.length > 0 ? format(parseISO([...validCreated].sort()[0]), "hh:mm a") : "—";
+                            const dayEnd = validDone.length > 0 ? format(parseISO([...validDone].sort().reverse()[0]), "hh:mm a") : "—";
+                            return (
+                              <div className="flex items-center gap-4 text-[11px] pl-10 print:pl-0">
+                                <span className="flex items-center gap-1">
+                                  <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+                                  <span className="text-muted-foreground">Day Start:</span>
+                                  <span className="font-semibold text-green-600">{dayStart}</span>
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
+                                  <span className="text-muted-foreground">Day End:</span>
+                                  <span className="font-semibold text-amber-600">{dayEnd}</span>
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </div>
                         <div className="p-0">
                           <table className="w-full border-collapse text-xs">

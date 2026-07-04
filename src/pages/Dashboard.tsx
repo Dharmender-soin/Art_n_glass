@@ -265,7 +265,6 @@ const AnalyticsDashboard = () => {
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
   const [selectedExecutive, setSelectedExecutive] = useState('all');
-
   const dateRange = useMemo(() => {
     const yesterday = format(subDays(new Date(), 1), 'yyyy-MM-dd');
     const weekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd');
@@ -278,6 +277,17 @@ const AnalyticsDashboard = () => {
       default:           return null; // 'all' - no date filter
     }
   }, [dateFilter, customFrom, customTo, monthStart, todayStr]);
+
+  // ── Previous Period (for % comparison) ───────────
+  const prevDateRange = useMemo(() => {
+    if (!dateRange) return null;
+    const from = new Date(dateRange.from);
+    const to   = new Date(dateRange.to);
+    const days = differenceInDays(to, from) + 1;
+    const prevTo   = format(subDays(from, 1), 'yyyy-MM-dd');
+    const prevFrom = format(subDays(from, days), 'yyyy-MM-dd');
+    return { from: prevFrom, to: prevTo };
+  }, [dateRange]);
 
   // ── Fetch Showrooms ──────────────────────────────
   const { data: showrooms = [] } = useQuery({
@@ -341,13 +351,18 @@ const AnalyticsDashboard = () => {
 
   // ── Fetch Visits ─────────────────────────────────
   const { data: visits = [], isLoading: visitsLoading } = useQuery({
-    queryKey: ["dashboard-visits-all", targetUserIds],
+    queryKey: ["dashboard-visits-all", targetUserIds, dateRange, prevDateRange],
     queryFn: async () => {
       let q = supabase.from("visits").select("id, status, visit_date, created_at, created_by, client_id, partner_id, client:clients(name), partner:partners(name)");
       if (targetUserIds.length > 0) {
         q = q.in("created_by", targetUserIds);
       }
-      const { data, error } = await q.limit(10000); // bypass default 1000 row limit
+      if (dateRange && prevDateRange) {
+        q = q.gte("visit_date", prevDateRange.from).lte("visit_date", dateRange.to);
+      } else if (dateRange) {
+        q = q.gte("visit_date", dateRange.from).lte("visit_date", dateRange.to);
+      }
+      const { data, error } = await q.order("visit_date", { ascending: false }).limit(10000); // bypass default 1000 row limit
       if (error) throw error;
       return data || [];
     },
@@ -355,13 +370,18 @@ const AnalyticsDashboard = () => {
 
   // ── Fetch Clients ────────────────────────────────
   const { data: clients = [] } = useQuery({
-    queryKey: ["dashboard-clients", targetUserIds],
+    queryKey: ["dashboard-clients", targetUserIds, dateRange, prevDateRange],
     queryFn: async () => {
       let q = supabase.from("clients").select("id, name, created_at, created_by, status, partner_id");
       if (targetUserIds.length > 0) {
         q = q.in("created_by", targetUserIds);
       }
-      const { data, error } = await q.limit(10000); // bypass default 1000 row limit
+      if (dateRange && prevDateRange) {
+        q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+      } else if (dateRange) {
+        q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+      }
+      const { data, error } = await q.order("created_at", { ascending: false }).limit(10000); // bypass default 1000 row limit
       if (error) throw error;
       return data || [];
     },
@@ -369,13 +389,18 @@ const AnalyticsDashboard = () => {
 
   // ── Fetch Partners ───────────────────────────────
   const { data: partners = [] } = useQuery({
-    queryKey: ["dashboard-partners", targetUserIds],
+    queryKey: ["dashboard-partners", targetUserIds, dateRange, prevDateRange],
     queryFn: async () => {
       let q = supabase.from("partners").select("id, name, created_at, created_by, type");
       if (targetUserIds.length > 0) {
         q = q.in("created_by", targetUserIds);
       }
-      const { data, error } = await q.limit(10000); // bypass default 1000 row limit
+      if (dateRange && prevDateRange) {
+        q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+      } else if (dateRange) {
+        q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+      }
+      const { data, error } = await q.order("created_at", { ascending: false }).limit(10000); // bypass default 1000 row limit
       if (error) throw error;
       return data || [];
     },
@@ -383,13 +408,18 @@ const AnalyticsDashboard = () => {
 
   // ── Fetch Work Scope Items ───────────────────────
   const { data: workItems = [] } = useQuery({
-    queryKey: ["dashboard-work-items", targetUserIds],
+    queryKey: ["dashboard-work-items", targetUserIds, dateRange, prevDateRange],
     queryFn: async () => {
       let q = supabase.from("work_scope_items").select("id, work_status, amount_in_lac, created_at, created_by, is_verified, client_id");
       if (targetUserIds.length > 0) {
         q = q.in("created_by", targetUserIds);
       }
-      const { data, error } = await q.limit(10000); // bypass default 1000 row limit
+      if (dateRange && prevDateRange) {
+        q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+      } else if (dateRange) {
+        q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+      }
+      const { data, error } = await q.order("created_at", { ascending: false }).limit(10000); // bypass default 1000 row limit
       if (error) throw error;
       return data || [];
     },
@@ -445,6 +475,8 @@ const AnalyticsDashboard = () => {
     const ordersLost = filteredWorkItems.filter(w => w.work_status === "lost").length;
     // Pending = explicitly "pending" OR null/undefined status (unclassified orders)
     const ordersPending = filteredWorkItems.filter(w => w.work_status === "pending" || !w.work_status).length;
+    // Submitted = orders filed/submitted but not yet actioned
+    const ordersSubmitted = filteredWorkItems.filter(w => w.work_status === "submitted").length;
     const totalOrderValue = filteredWorkItems.reduce((s, w) => s + (w.amount_in_lac || 0), 0);
     const wonOrderValue = filteredWorkItems.filter(w => w.work_status === "won").reduce((s, w) => s + (w.amount_in_lac || 0), 0);
     const verifiedCount = filteredWorkItems.filter(w => w.is_verified).length;
@@ -452,20 +484,11 @@ const AnalyticsDashboard = () => {
     return {
       totalVisits, completedVisits, plannedVisits, cancelledVisits, completionRate,
       totalClients, totalPartners, newClientsThisMonth, newPartnersThisMonth,
-      totalOrders, ordersWon, ordersLost, ordersPending, totalOrderValue, wonOrderValue, verifiedCount,
+      totalOrders, ordersWon, ordersLost, ordersPending, ordersSubmitted, totalOrderValue, wonOrderValue, verifiedCount,
     };
   }, [filteredVisits, filteredClients, filteredPartners, filteredWorkItems, monthStart, dateRange]);
 
-  // ── Previous Period (for % comparison) ───────────
-  const prevDateRange = useMemo(() => {
-    if (!dateRange) return null;
-    const from = new Date(dateRange.from);
-    const to   = new Date(dateRange.to);
-    const days = differenceInDays(to, from) + 1;
-    const prevTo   = format(subDays(from, 1), 'yyyy-MM-dd');
-    const prevFrom = format(subDays(from, days), 'yyyy-MM-dd');
-    return { from: prevFrom, to: prevTo };
-  }, [dateRange]);
+
 
   const prevVisits = useMemo(() => {
     if (!prevDateRange) return visits;
@@ -502,10 +525,11 @@ const AnalyticsDashboard = () => {
     cancelledVisits: prevVisits.filter(v => v.status === 'cancelled').length,
     totalClients:  prevClients.length,
     totalPartners: prevPartners.length,
-    totalOrders:   prevWorkItems.length,
-    ordersWon:     prevWorkItems.filter(w => w.work_status === 'won').length,
-    ordersLost:    prevWorkItems.filter(w => w.work_status === 'lost').length,
-    ordersPending: prevWorkItems.filter(w => w.work_status === 'pending' || !w.work_status).length,
+    totalOrders:      prevWorkItems.length,
+    ordersWon:        prevWorkItems.filter(w => w.work_status === 'won').length,
+    ordersLost:       prevWorkItems.filter(w => w.work_status === 'lost').length,
+    ordersPending:    prevWorkItems.filter(w => w.work_status === 'pending' || !w.work_status).length,
+    ordersSubmitted:  prevWorkItems.filter(w => w.work_status === 'submitted').length,
   }), [prevVisits, prevClients, prevPartners, prevWorkItems]);
 
   // % change helper — returns undefined when no date filter active (no comparison)
@@ -720,8 +744,9 @@ const AnalyticsDashboard = () => {
       })), [filteredPartners]);
 
   const wosItemsBadge = (status: string) =>
-    status === "won" ? { badge: "Won", color: "bg-emerald-500/20 text-emerald-400" } :
-    status === "lost" ? { badge: "Lost", color: "bg-red-500/20 text-red-400" } :
+    status === "won"       ? { badge: "Won",       color: "bg-emerald-500/20 text-emerald-400" } :
+    status === "lost"      ? { badge: "Lost",      color: "bg-red-500/20 text-red-400" } :
+    status === "submitted" ? { badge: "Submitted", color: "bg-indigo-500/20 text-indigo-400" } :
     { badge: "Pending", color: "bg-amber-500/20 text-amber-400" };
 
   const allWosItems: DrawerItem[] = useMemo(() =>
@@ -740,8 +765,12 @@ const AnalyticsDashboard = () => {
       .map(w => ({ id: w.id, primary: "Lost Order", secondary: new Date(w.created_at).toLocaleDateString("en-IN"), amount: w.amount_in_lac ? `₹${w.amount_in_lac}L` : undefined, badge: "Lost", badgeColor: "bg-red-500/20 text-red-400" })), [filteredWorkItems]);
 
   const pendingItems: DrawerItem[] = useMemo(() =>
-    [...filteredWorkItems].filter(w => w.work_status === "pending").sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    [...filteredWorkItems].filter(w => w.work_status === "pending" || !w.work_status).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .map(w => ({ id: w.id, primary: "Pending Order", secondary: new Date(w.created_at).toLocaleDateString("en-IN"), amount: w.amount_in_lac ? `₹${w.amount_in_lac}L` : undefined, badge: "Pending", badgeColor: "bg-amber-500/20 text-amber-400" })), [filteredWorkItems]);
+
+  const submittedItems: DrawerItem[] = useMemo(() =>
+    [...filteredWorkItems].filter(w => w.work_status === "submitted").sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map(w => ({ id: w.id, primary: "Submitted Order", secondary: new Date(w.created_at).toLocaleDateString("en-IN"), amount: w.amount_in_lac ? `₹${w.amount_in_lac}L` : undefined, badge: "Submitted", badgeColor: "bg-indigo-500/20 text-indigo-400" })), [filteredWorkItems]);
 
   // ── Executive List for filter dropdown ───────────────
   const execList = useMemo(() => {
@@ -989,6 +1018,12 @@ const AnalyticsDashboard = () => {
             gradient="bg-gradient-to-br from-amber-500 to-orange-600" accent="#f59e0b"
             change={pctChange(metrics.ordersPending, prevMetrics.ordersPending)}
             onClick={() => openDrawer(`Pending Orders (${metrics.ordersPending})`, pendingItems)}
+          />
+          <ClickableStatCard
+            label="Submitted" value={metrics.ordersSubmitted} icon={Briefcase}
+            gradient="bg-gradient-to-br from-indigo-500 to-indigo-700" accent="#6366f1"
+            change={pctChange(metrics.ordersSubmitted, prevMetrics.ordersSubmitted)}
+            onClick={() => openDrawer(`Submitted Orders (${metrics.ordersSubmitted})`, submittedItems)}
           />
         </motion.div>
 

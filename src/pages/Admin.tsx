@@ -495,6 +495,9 @@ const Admin = () => {
                     <SelectContent className="bg-popover">
                       <SelectItem value="client">Client</SelectItem>
                       <SelectItem value="partner">Partner</SelectItem>
+                      <SelectItem value="showroom">Showroom</SelectItem>
+                      <SelectItem value="hotel">Hotel</SelectItem>
+                      <SelectItem value="home">Home</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

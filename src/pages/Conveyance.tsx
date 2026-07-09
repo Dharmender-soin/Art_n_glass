@@ -77,7 +77,7 @@ const Conveyance = () => {
     return { fromDate: customFrom, toDate: customTo };
   }, [preset, customFrom, customTo]);
 
-  // ── Queries ───────────────────────────────────────────────────────────────
+  // ── Queries ─────────────────────────
   const { data: showrooms = [] } = useQuery({
     queryKey: ["conv2-showrooms"],
     enabled: canSeeAll || isManager,
@@ -90,14 +90,28 @@ const Conveyance = () => {
   const { data: userRoles = [] } = useQuery({
     queryKey: ["conv2-roles", myShowroomId, showroomIds, selectedShowroom, role],
     queryFn: async () => {
+      if (isManager && showroomIds && showroomIds.length > 0) {
+        const targetShowrooms = (selectedShowroom && selectedShowroom !== "all")
+          ? [selectedShowroom]
+          : showroomIds;
+
+        const results = await Promise.all(
+          targetShowrooms.map(async (sid) => {
+            const { data, error } = await supabase.rpc("get_showroom_leaderboard", { p_showroom_id: sid });
+            if (error) return [];
+            return ((data || []) as { user_id: string; role: string }[]).map((item) => ({
+              user_id: item.user_id,
+              role: item.role,
+              showroom_id: sid
+            }));
+          })
+        );
+        return results.flat();
+      }
+
+      // Fallback for Admin/MD
       let q = supabase.from("user_roles").select("user_id, role, showroom_id").in("role", ["executive", "backhand_executive", "tl"]);
-      if (isManager) {
-        if (selectedShowroom && selectedShowroom !== "all") {
-          q = q.eq("showroom_id", selectedShowroom);
-        } else if (showroomIds && showroomIds.length > 0) {
-          q = q.in("showroom_id", showroomIds);
-        }
-      } else if (canSeeAll && selectedShowroom !== "all") {
+      if (canSeeAll && selectedShowroom !== "all") {
         q = q.eq("showroom_id", selectedShowroom);
       }
       const { data } = await q;
@@ -127,11 +141,11 @@ const Conveyance = () => {
   }, [role, user, selectedExec, execUserIds]);
 
   // ── Conveyance records ────────────────────────────────────────────────────
-  // For accountants: enabled even if targetUserIds is empty — RLS scopes to their showroom
   const { data: rawRecords = [], isLoading } = useQuery({
     queryKey: ["conv2-records", fromDate, toDate, targetUserIds, isManager],
     enabled: targetUserIds.length > 0 || canSeeAll || isManager,
     queryFn: async () => {
+      if (isManager && targetUserIds.length === 0) return [];
       let q = supabase
         .from("conveyance_records")
         .select("*")
@@ -139,17 +153,16 @@ const Conveyance = () => {
         .lte("date", toDate)
         .order("date", { ascending: false })
         .order("created_at", { ascending: true });
-      // Only filter by user_id when we have specific targets; otherwise let RLS handle it
       if (targetUserIds.length > 0) q = q.in("user_id", targetUserIds);
       const { data } = await q;
       return data || [];
     },
   });
 
-  // For accountants whose user_roles query returns empty: fetch names from record user_ids
+  // Fetch profiles for all user IDs in rawRecords that are not yet in execUserIds
   const recordUserIds = useMemo(() => [...new Set(rawRecords.map((r) => r.user_id))], [rawRecords]);
   const fallbackProfileIds = useMemo(
-    () => (execUserIds.length === 0 && recordUserIds.length > 0 ? recordUserIds : []),
+    () => recordUserIds.filter(id => !execUserIds.includes(id)),
     [execUserIds, recordUserIds]
   );
   const { data: fallbackProfiles = [] } = useQuery({
@@ -160,6 +173,7 @@ const Conveyance = () => {
       return data || [];
     },
   });
+
   // Merge both profile sources into one map
   const mergedProfileMap = useMemo(() => ({
     ...Object.fromEntries(profiles.map((p) => [p.user_id, p.full_name])),

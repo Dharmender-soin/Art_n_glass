@@ -14,15 +14,22 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { Plus, Search, Phone, MapPin, Briefcase, Pencil, Trash2 } from "lucide-react";
+import { Plus, Search, Phone, MapPin, Briefcase, Pencil, Trash2, UserCircle, Calendar, HardHat, ClipboardList, MessageSquare, ChevronDown } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 import WorkScopeSection from "@/components/WorkScopeSection";
 import VisitHistoryList from "@/components/VisitHistoryList";
+import { format, parseISO } from "date-fns";
+import { useMemo } from "react";
 
 type ClientStatus = Database["public"]["Enums"]["client_status"];
-type Client = Database["public"]["Tables"]["clients"]["Row"] & { partners?: { name: string; type: string } | null };
+type Client = Database["public"]["Tables"]["clients"]["Row"] & {
+  partners?: { name: string; type: string } | null;
+  _creator_name?: string | null;
+  _creator_role?: string | null;
+  architect_name?: string | null;
+};
 
-const emptyForm = { name: "", mobile: "", address: "", city: "", partner_id: "", notes: "", status: "new" as ClientStatus };
+const emptyForm = { name: "", mobile: "", address: "", city: "", architect_name: "", partner_id: "", notes: "", status: "new" as ClientStatus };
 
 const statusColors: Record<ClientStatus, string> = {
   new: "bg-[hsl(var(--status-new))] text-white",
@@ -82,6 +89,11 @@ const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partne
         <Label className="text-xs font-semibold text-foreground">City <span className="text-[10px] text-muted-foreground font-normal">(optional)</span></Label>
         <Input placeholder="City" value={values.city} onChange={(e) => onChange({ ...values, city: e.target.value })} className="h-9 text-sm" />
       </div>
+    </div>
+
+    <div className="space-y-1.5">
+      <Label className="text-xs font-semibold text-foreground">Architect Name <span className="text-[10px] text-muted-foreground font-normal">(optional)</span></Label>
+      <Input placeholder="Architect Name" value={values.architect_name} onChange={(e) => onChange({ ...values, architect_name: e.target.value })} className="h-9 text-sm" />
     </div>
 
     {/* ── Status selector — pill buttons ── */}
@@ -145,6 +157,244 @@ const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partne
 );
 
 
+/* ─── Client Avatar (initials) ────────────────────────────────── */
+const statusBg: Record<string, string> = {
+  new:       "bg-blue-500",
+  hot:       "bg-orange-500",
+  converted: "bg-emerald-500",
+  lost:      "bg-red-500",
+};
+const ClientAvatar = ({ name, status }: { name: string; status: string }) => {
+  const initials = name.split(" ").slice(0, 2).map(w => w[0] || "").join("").toUpperCase();
+  const bg = statusBg[status] ?? "bg-slate-400";
+  return (
+    <div className={`${bg} w-11 h-11 rounded-2xl flex items-center justify-center shrink-0 shadow-sm`}>
+      <span className="text-white font-bold text-sm">{initials || "?"}</span>
+    </div>
+  );
+};
+
+/* ─── WOS status styling ─────────────────────────────────────── */
+const wosStatusStyle = (status: string) => {
+  switch (status) {
+    case 'won':       return 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-500/25';
+    case 'lost':      return 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-300 dark:border-red-500/25';
+    case 'hold':      return 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-500/25';
+    case 'submitted': return 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-500/25';
+    default:          return 'bg-slate-50 dark:bg-white/[0.04] text-slate-600 dark:text-white/70 border-slate-200 dark:border-white/10';
+  }
+};
+const wosDot = (status: string) => {
+  switch (status) {
+    case 'won':       return '#22c55e';
+    case 'lost':      return '#ef4444';
+    case 'hold':      return '#f59e0b';
+    case 'submitted': return '#3b82f6';
+    default:          return '#94a3b8';
+  }
+};
+
+/* ─── Client Card ─────────────────────────────────────────── */
+const ClientCard = ({
+  c,
+  creatorName,
+  creatorRole,
+  architectName,
+  lastVisit,
+  wosItems,
+  hasWos,
+  openEdit,
+  openDelete,
+  setSelectedClient,
+}: {
+  c: Client & { _creator_name?: string | null; _creator_role?: string | null; architect_name?: string | null; partner_id?: string | null };
+  creatorName: string | null;
+  creatorRole: string | null;
+  architectName: string | null;
+  lastVisit: { visit_date: string; remarks: string | null; exec_name: string | null } | null;
+  wosItems: { name: string; status: string }[];
+  hasWos: boolean;
+  openEdit: (c: Client, e: React.MouseEvent) => void;
+  openDelete: (c: Client, e: React.MouseEvent) => void;
+  setSelectedClient: (id: string) => void;
+}) => {
+  const [remarkExpanded, setRemarkExpanded] = useState(false);
+  const [wosExpanded, setWosExpanded] = useState(false);
+
+  const creatorLabel =
+    creatorRole === "manager" ? "Assigned Manager"
+    : creatorRole === "tl"      ? "Assigned TL"
+    : creatorRole === "md"      ? "Assigned MD"
+    : creatorRole === "admin"   ? "Assigned Admin"
+    : "Assigned Executive";
+
+  return (
+    <div className={`group relative flex flex-col bg-white dark:bg-white/[0.03] rounded-2xl border shadow-sm hover:shadow-lg dark:hover:shadow-none transition-all duration-200 ${
+      !hasWos
+        ? 'border-red-300 dark:border-red-500/30'
+        : 'border-gray-100 dark:border-white/8 hover:border-gray-200 dark:hover:border-white/15'
+    }`}>
+
+      {/* ── Edit / Delete ── */}
+      <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        <button type="button" className="h-7 w-7 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 flex items-center justify-center transition-colors" onClick={(e) => openEdit(c, e)} title="Edit client">
+          <Pencil className="h-3.5 w-3.5 text-gray-400" />
+        </button>
+        <button type="button" className="h-7 w-7 rounded-lg bg-red-50 dark:bg-red-500/10 hover:bg-red-100 flex items-center justify-center transition-colors" onClick={(e) => openDelete(c, e)} title="Delete client">
+          <Trash2 className="h-3.5 w-3.5 text-red-400" />
+        </button>
+      </div>
+
+      <div className="p-4 flex flex-col gap-3 flex-1">
+
+        {/* ── Section 1: Header ── */}
+        <div className="flex items-start gap-3">
+          <ClientAvatar name={c.name} status={c.status} />
+          <div className="flex-1 min-w-0 pr-12">
+            <h3 className="font-bold text-[15px] text-gray-900 dark:text-white leading-tight truncate">{c.name}</h3>
+            <p className="text-xs text-gray-500 dark:text-white/40 font-medium mt-0.5 truncate flex items-center gap-1">
+              <Briefcase className="h-3 w-3 shrink-0" />
+              {c.partners ? c.partners.name : "Direct"}
+            </p>
+            {/* Status badge */}
+            <div className="mt-1.5">
+              <Badge className={`${statusColors[c.status as ClientStatus]} capitalize text-[10px] border-0 px-2 py-0.5`}>{c.status}</Badge>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Section 2: Creator row ── */}
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50/70 dark:bg-blue-500/8 border border-blue-100 dark:border-blue-500/15">
+          <UserCircle className="h-4 w-4 text-blue-400 shrink-0" />
+          <div className="min-w-0">
+            <span className="text-[10px] font-semibold text-blue-400 dark:text-blue-500 uppercase tracking-wider">{creatorLabel}</span>
+            <p className="text-xs font-bold text-blue-700 dark:text-blue-300 truncate">
+              {creatorName || <span className="font-normal italic text-blue-300">Unknown</span>}
+            </p>
+          </div>
+        </div>
+
+        {/* ── Section 3: Architect (if any) ── */}
+        {architectName && (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-purple-50/70 dark:bg-purple-500/8 border border-purple-100 dark:border-purple-500/15">
+            <HardHat className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+            <div className="min-w-0">
+              <span className="text-[10px] font-semibold text-purple-400 uppercase tracking-wider">Architect</span>
+              <p className="text-xs font-bold text-purple-700 dark:text-purple-300 truncate">{architectName}</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── Section 4: Contact ── */}
+        <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-white/50">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            <span className="font-medium text-gray-700 dark:text-white/60 truncate">{c.mobile || "—"}</span>
+          </div>
+          {c.city && (
+            <>
+              <div className="w-px h-3.5 bg-gray-200 dark:bg-white/10 shrink-0" />
+              <div className="flex items-center gap-1.5 min-w-0">
+                <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                <span className="capitalize truncate">{c.city}</span>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* ── Section 5: WOS Tags ── */}
+        <div>
+          {hasWos ? (
+            <div className="flex flex-wrap gap-1.5">
+              {(wosExpanded ? wosItems : wosItems.slice(0, 3)).map((wos: { name: string; status: string }, i: number) => (
+                <span key={i} className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border truncate max-w-[140px] ${wosStatusStyle(wos.status)}`} title={wos.name}>
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: wosDot(wos.status) }} />
+                  <span className="truncate">{wos.name}</span>
+                </span>
+              ))}
+              {wosItems.length > 3 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setWosExpanded(!wosExpanded); }}
+                  className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors cursor-pointer"
+                >
+                  {wosExpanded ? "Show Less ↑" : `+${wosItems.length - 3} more`}
+                </button>
+              )}
+            </div>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-300 dark:border-red-500/25 animate-pulse">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
+              No WOS Added
+            </span>
+          )}
+        </div>
+
+        {/* ── Section 6: Last Visit ── */}
+        <div className="rounded-xl border border-amber-100 dark:border-amber-500/15 overflow-hidden">
+          <div className="bg-amber-50 dark:bg-amber-500/8 px-3 py-1.5 flex items-center gap-1.5 border-b border-amber-100 dark:border-amber-500/15">
+            <Calendar className="h-3 w-3 text-amber-500 shrink-0" />
+            <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Last Visit</span>
+          </div>
+          {lastVisit ? (
+            <div className="px-3 py-2.5 space-y-1.5 bg-white dark:bg-white/[0.02]">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs font-bold text-gray-800 dark:text-white/80">{format(parseISO(lastVisit.visit_date), "dd MMM yyyy")}</span>
+                {lastVisit.exec_name && (
+                  <div className="flex items-center gap-1">
+                    <UserCircle className="h-3 w-3 text-blue-400 shrink-0" />
+                    <span className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 truncate max-w-[130px]">{lastVisit.exec_name}</span>
+                  </div>
+                )}
+              </div>
+              {lastVisit.remarks ? (
+                <div>
+                  <p className={`text-[11px] text-gray-500 dark:text-white/40 leading-relaxed ${remarkExpanded ? "" : "line-clamp-2"}`}>
+                    <span className="font-semibold text-gray-600 dark:text-white/50">Remark: </span>{lastVisit.remarks}
+                  </p>
+                  {lastVisit.remarks.length > 80 && (
+                    <button type="button" onClick={(e) => { e.stopPropagation(); setRemarkExpanded(!remarkExpanded); }} className="text-[10px] text-primary font-semibold mt-0.5 hover:underline">
+                      {remarkExpanded ? "View Less" : "View More"}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[11px] text-gray-300 dark:text-white/20 italic">No remarks recorded</p>
+              )}
+            </div>
+          ) : (
+            <div className="px-3 py-3 bg-white dark:bg-white/[0.02] flex items-center gap-2">
+              <MessageSquare className="h-3.5 w-3.5 text-gray-300 dark:text-white/20 shrink-0" />
+              <p className="text-[11px] text-gray-300 dark:text-white/20 italic">No visit recorded yet</p>
+            </div>
+          )}
+        </div>
+
+        {/* ── Section 7: Action buttons ── */}
+        <div className="flex items-center gap-2 pt-1 mt-auto border-t border-gray-100 dark:border-white/5">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setSelectedClient(c.id); }}
+            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl border border-dashed border-primary/30 dark:border-primary/20 text-xs font-semibold text-primary hover:bg-primary/5 transition-all"
+          >
+            <ClipboardList className="h-3.5 w-3.5" />
+            Add Visit Note
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedClient(c.id)}
+            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary/90 active:scale-[0.98] transition-all shadow-sm"
+          >
+            <ChevronDown className="h-3.5 w-3.5 -rotate-90" />
+            View Details
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
 const Clients = () => {
   const { user, role, showroomId, showroomIds, reportsTo } = useAuth();
   const queryClient = useQueryClient();
@@ -160,38 +410,93 @@ const Clients = () => {
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ["clients", user?.id, role],
     queryFn: async () => {
-      let q = supabase.from("clients").select("*, partners(name, type)").order("created_at", { ascending: false });
+      let q = supabase.from("clients")
+        .select("*, partners(name, type)")
+        .order("created_at", { ascending: false });
 
       if (role === "executive" && user) {
-        // Executive: own clients + TL's clients (if has a TL)
         const ids = [user.id, ...(reportsTo ? [reportsTo] : [])];
         q = q.in("created_by", ids);
 
       } else if (role === "tl" && user) {
-        // TL: own clients + all executives who report to this TL
         const { data: myExecs } = await supabase
           .from("user_roles")
           .select("user_id")
           .eq("reports_to", user.id)
           .eq("role", "executive");
-        const execIds = (myExecs || []).map((r: any) => r.user_id);
+        const execIds = (myExecs || []).map((r: { user_id: string }) => r.user_id);
         const ids = [user.id, ...execIds];
         q = q.in("created_by", ids);
 
-      } else if (role === "manager" && showroomIds.length > 0) {
-        // Manager: all clients in any of their showrooms
-        const { data: teamRoles } = await supabase
-          .from("user_roles")
-          .select("user_id")
-          .in("showroom_id", showroomIds);
-        const teamIds = (teamRoles || []).map((r: any) => r.user_id);
-        if (teamIds.length > 0) q = q.in("created_by", teamIds);
+      } else if (role === "manager") {
+        const effectiveShowrooms = [...new Set([...showroomIds, ...(showroomId ? [showroomId] : [])])];
+        if (effectiveShowrooms.length > 0) {
+          const { data: teamRoles } = await supabase
+            .from("user_roles")
+            .select("user_id")
+            .in("showroom_id", effectiveShowrooms);
+          const teamIds = (teamRoles || []).map((r: { user_id: string }) => r.user_id);
+          if (teamIds.length > 0) {
+            q = q.in("created_by", teamIds);
+          } else {
+            return [] as Client[];
+          }
+        }
       }
-      // MD / Admin: no filter — see all
+      // MD / Admin: no filter
 
       const { data, error } = await q;
       if (error) throw error;
-      return data as Client[];
+
+      // ── Fetch creator profiles + roles separately ──
+      const creatorIds = [...new Set((data || []).map(c => c.created_by).filter(Boolean))];
+      const [{ data: profilesData }, { data: rolesData }] = await Promise.all([
+        creatorIds.length > 0
+          ? supabase.from("profiles").select("user_id, full_name").in("user_id", creatorIds)
+          : Promise.resolve({ data: [] }),
+        creatorIds.length > 0
+          ? supabase.from("user_roles").select("user_id, role").in("user_id", creatorIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+      const profileMap = Object.fromEntries((profilesData || []).map(p => [p.user_id, p.full_name]));
+      const roleMap = Object.fromEntries((rolesData || []).map(r => [r.user_id, r.role]));
+
+      return (data || []).map(c => ({
+        ...c,
+        _creator_name: c.created_by ? (profileMap[c.created_by] || null) : null,
+        _creator_role: c.created_by ? (roleMap[c.created_by] || null) : null,
+      })) as Client[];
+    },
+  });
+
+  const clientIds = useMemo(() => clients.map(c => c.id), [clients]);
+
+  // ── Last visit per client (profiles fetched separately) ──
+  const { data: clientLastVisitsMap = {} } = useQuery({
+    queryKey: ["client-last-visits", clientIds],
+    enabled: clientIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("visits")
+        .select("client_id, visit_date, remarks, created_by")
+        .in("client_id", clientIds)
+        .eq("status", "done")
+        .order("visit_date", { ascending: false });
+
+      const creatorIds = [...new Set((data || []).map(v => v.created_by).filter(Boolean))];
+      const { data: profilesData } = creatorIds.length > 0
+        ? await supabase.from("profiles").select("user_id, full_name").in("user_id", creatorIds)
+        : { data: [] };
+      const profileMap = Object.fromEntries((profilesData || []).map(p => [p.user_id, p.full_name]));
+
+      const seen = new Set<string>();
+      const result: Record<string, { visit_date: string; remarks: string | null; exec_name: string | null }> = {};
+      (data || []).forEach((v: { client_id: string | null; visit_date: string; remarks: string | null; created_by: string }) => {
+        if (!v.client_id || seen.has(v.client_id)) return;
+        seen.add(v.client_id);
+        result[v.client_id] = { visit_date: v.visit_date, remarks: v.remarks, exec_name: profileMap[v.created_by] || null };
+      });
+      return result;
     },
   });
 
@@ -209,15 +514,15 @@ const Clients = () => {
           .select("user_id")
           .eq("reports_to", user.id)
           .eq("role", "executive");
-        const execIds = (myExecs || []).map((r: any) => r.user_id);
+        const execIds = (myExecs || []).map((r: { user_id: string }) => r.user_id);
         q = q.in("created_by", [user.id, ...execIds]);
-      } else if (role === "manager" && showroomIds.length > 0) {
-        const { data: teamRoles } = await supabase
-          .from("user_roles")
-          .select("user_id")
-          .in("showroom_id", showroomIds);
-        const teamIds = (teamRoles || []).map((r: any) => r.user_id);
-        if (teamIds.length > 0) q = q.in("created_by", teamIds);
+      } else if (role === "manager") {
+        const effectiveShowrooms = [...new Set([...showroomIds, ...(showroomId ? [showroomId] : [])])];
+        if (effectiveShowrooms.length > 0) {
+          const { data: teamRoles } = await supabase.from("user_roles").select("user_id").in("showroom_id", effectiveShowrooms);
+          const teamIds = (teamRoles || []).map((r: { user_id: string }) => r.user_id);
+          if (teamIds.length > 0) q = q.in("created_by", teamIds);
+        }
       }
 
       const { data, error } = await q;
@@ -235,7 +540,7 @@ const Clients = () => {
       if (error) throw error;
       // Group by client_id: { [clientId]: [{name, status}] }
       const grouped: Record<string, { name: string; status: string }[]> = {};
-      (data || []).forEach((item: any) => {
+      (data || []).forEach((item: { client_id: string | null; work_status: string | null; master_work_types: { type_of_work: string; sub_work: string | null } | null }) => {
         if (!item.client_id) return;
         const typeName = item.master_work_types?.type_of_work || "Work";
         const subWork = item.master_work_types?.sub_work;
@@ -255,8 +560,21 @@ const Clients = () => {
 
   const createClientMutation = useMutation({
     mutationFn: async () => {
-      const insertData: any = { ...form, created_by: user!.id };
-      if (!insertData.partner_id || insertData.partner_id === 'none') delete insertData.partner_id;
+      const { partner_id, ...rest } = { ...form, created_by: user!.id };
+      const rawData = (!partner_id || partner_id === 'none')
+        ? { ...rest, partner_id: null }
+        : { ...rest, partner_id };
+      const insertData: Database["public"]["Tables"]["clients"]["Insert"] = {
+        name: rawData.name,
+        mobile: rawData.mobile,
+        address: rawData.address || null,
+        city: rawData.city || null,
+        architect_name: rawData.architect_name || null,
+        partner_id: rawData.partner_id,
+        notes: rawData.notes || null,
+        status: rawData.status,
+        created_by: rawData.created_by,
+      };
       const { error } = await supabase.from("clients").insert(insertData);
       if (error) throw error;
     },
@@ -272,8 +590,20 @@ const Clients = () => {
   const updateClientMutation = useMutation({
     mutationFn: async () => {
       if (!editClient) return;
-      const updateData: any = { ...editForm };
-      if (!updateData.partner_id || updateData.partner_id === 'none') updateData.partner_id = null;
+      const { partner_id, ...rest } = editForm;
+      const rawData = (!partner_id || partner_id === 'none')
+        ? { ...rest, partner_id: null }
+        : { ...rest, partner_id };
+      const updateData: Database["public"]["Tables"]["clients"]["Update"] = {
+        name: rawData.name,
+        mobile: rawData.mobile,
+        address: rawData.address || null,
+        city: rawData.city || null,
+        architect_name: rawData.architect_name || null,
+        partner_id: rawData.partner_id,
+        notes: rawData.notes || null,
+        status: rawData.status,
+      };
       const { error } = await supabase.from("clients").update(updateData).eq("id", editClient.id);
       if (error) throw error;
     },
@@ -306,7 +636,8 @@ const Clients = () => {
       mobile: c.mobile,
       address: c.address || "",
       city: c.city || "",
-      partner_id: (c as any).partner_id || "",
+      architect_name: c.architect_name || "",
+      partner_id: (c as Client & { partner_id?: string | null }).partner_id || "",
       notes: c.notes || "",
       status: c.status,
     });
@@ -360,81 +691,30 @@ const Clients = () => {
         <p className="text-muted-foreground text-center py-8">No clients found.</p>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((c) => (
-            <Card key={c.id} className={`hover:shadow-md transition-shadow cursor-pointer group relative border-2 ${
-                  !(workScopeCounts as any)[c.id]
-                    ? 'border-red-400 dark:border-red-500/30'
-                    : 'border-border'
-                }`} onClick={() => setSelectedClient(c.id)}>
-              {/* Action buttons — visible on hover */}
-              <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                <Button variant="ghost" size="icon" className="h-7 w-7 bg-background/80 hover:bg-muted" onClick={(e) => openEdit(c, e)} title="Edit">
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button variant="ghost" size="icon" className="h-7 w-7 bg-background/80 text-destructive hover:bg-destructive/10" onClick={(e) => openDelete(c, e)} title="Delete">
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <h3 className="font-semibold pr-16">{c.name}</h3>
-                  <Badge className={`${statusColors[c.status]} capitalize text-xs border-0`}>{c.status}</Badge>
-                </div>
-                <div className="space-y-1 text-sm text-muted-foreground">
-                  <div className="flex items-center gap-1"><Phone className="h-3 w-3" />{c.mobile}</div>
-                  {(c.address || c.city) && <div className="flex items-center gap-1"><MapPin className="h-3 w-3" />{[c.address, c.city].filter(Boolean).join(", ")}</div>}
-                  {c.partners && <div className="flex items-center gap-1"><Briefcase className="h-3 w-3" />{c.partners.name}</div>}
-                </div>
-                {/* WOS Tags */}
-                <div className="mt-3">
-                  {(workScopeByClient[c.id] && workScopeByClient[c.id].length > 0) ? (
-                    <div className="flex flex-wrap gap-1.5">
-                      {workScopeByClient[c.id].slice(0, 3).map((wos, i) => {
-                        const statusStyle =
-                          wos.status === 'won'
-                            ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-300 dark:border-emerald-500/25'
-                            : wos.status === 'lost'
-                              ? 'bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-300 dark:border-red-500/25'
-                              : wos.status === 'hold'
-                                ? 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-500/25'
-                                : wos.status === 'submitted'
-                                  ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-500/25'
-                                  : 'bg-slate-50 dark:bg-white/[0.04] text-slate-600 dark:text-white/70 border-slate-200 dark:border-white/10';
-                        return (
-                          <span
-                            key={i}
-                            className={`inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full border truncate max-w-[140px] ${statusStyle}`}
-                            title={wos.name}
-                          >
-                            <span className="w-1.5 h-1.5 rounded-full shrink-0"
-                              style={{ backgroundColor:
-                                wos.status === 'won' ? '#22c55e'
-                                : wos.status === 'lost' ? '#ef4444'
-                                : wos.status === 'hold' ? '#f59e0b'
-                                : wos.status === 'submitted' ? '#3b82f6'
-                                : '#94a3b8'
-                              }}
-                            />
-                            <span className="truncate">{wos.name}</span>
-                          </span>
-                        );
-                      })}
-                      {workScopeByClient[c.id].length > 3 && (
-                        <span className="inline-flex items-center text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/40 border border-gray-200 dark:border-white/10">
-                          +{workScopeByClient[c.id].length - 3} more
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-1 rounded-full bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border border-red-300 dark:border-red-500/25 animate-pulse">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block" />
-                      No WOS Added
-                    </span>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          {filtered.map((c) => {
+            const lastVisit = (clientLastVisitsMap as Record<string, { visit_date: string; remarks: string | null; exec_name: string | null }>)[c.id] || null;
+            const creatorName = (c as { _creator_name?: string | null })._creator_name || null;
+            const creatorRole = (c as { _creator_role?: string | null })._creator_role || null;
+            const architectName = (c as { architect_name?: string | null }).architect_name || null;
+            const wosItems = workScopeByClient[c.id] || [];
+            const hasWos = wosItems.length > 0;
+
+            return (
+              <ClientCard
+                key={c.id}
+                c={c}
+                creatorName={creatorName}
+                creatorRole={creatorRole}
+                architectName={architectName}
+                lastVisit={lastVisit}
+                wosItems={wosItems}
+                hasWos={hasWos}
+                openEdit={openEdit}
+                openDelete={openDelete}
+                setSelectedClient={setSelectedClient}
+              />
+            );
+          })}
         </div>
       )}
 

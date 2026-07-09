@@ -49,14 +49,38 @@ const DailyVisitDashboard = () => {
   const { data: executives = [] } = useQuery({
     queryKey: ["executives-for-dashboard", filterShowroom, showroomIds],
     queryFn: async () => {
+      if (isManager) {
+        // Multi-showroom managers: bypass RLS by using get_showroom_leaderboard RPC
+        const targetShowrooms = (filterShowroom && filterShowroom !== "all")
+          ? [filterShowroom]
+          : (showroomIds || []);
+
+        if (targetShowrooms.length === 0) return [];
+
+        const results = await Promise.all(
+          targetShowrooms.map(async (sid) => {
+            const { data, error } = await supabase.rpc("get_showroom_leaderboard", { p_showroom_id: sid });
+            if (error) throw error;
+            return ((data || []) as { user_id: string; role: string; full_name: string }[]).map((item) => {
+              return {
+                user_id: item.user_id,
+                role: item.role as "executive" | "manager" | "tl" | "admin" | "accountant" | "backhand_executive",
+                showroom_id: sid,
+                profiles: { full_name: item.full_name }
+              };
+            }).filter((item) => item.role === "executive");
+          })
+        );
+        return results.flat();
+      }
+
+      // Admin / MD / TL: fallback to direct query
       let query = supabase
         .from("user_roles")
         .select("user_id, role, showroom_id")
         .eq("role", "executive");
       if (filterShowroom && filterShowroom !== "all") {
         query = query.eq("showroom_id", filterShowroom);
-      } else if (isManager && showroomIds && showroomIds.length > 0) {
-        query = query.in("showroom_id", showroomIds);
       }
       const { data: roles, error: rolesError } = await query;
       if (rolesError) throw rolesError;
@@ -105,7 +129,7 @@ const DailyVisitDashboard = () => {
   const execData = useMemo(() => {
     const filtered = searchExec
       ? executives.filter((e) =>
-        ((e as any).profiles?.full_name || "").toLowerCase().includes(searchExec.toLowerCase())
+        ((e as { profiles?: { full_name: string } }).profiles?.full_name || "").toLowerCase().includes(searchExec.toLowerCase())
       )
       : executives;
 
@@ -115,7 +139,7 @@ const DailyVisitDashboard = () => {
       const todayAll = execVisits.filter((v) => v.visit_date === today);
       return {
         userId: exec.user_id,
-        name: (exec as any).profiles?.full_name || "Unknown",
+        name: (exec as { profiles?: { full_name: string } }).profiles?.full_name || "Unknown",
         showroomId: exec.showroom_id,
         ydayPlanned: ydayAll.length,
         ydayDone: ydayAll.filter((v) => v.status === "done").length,
@@ -127,7 +151,7 @@ const DailyVisitDashboard = () => {
     });
   }, [executives, visits, yesterday, today, searchExec]);
 
-  const getEntityName = (v: any) => v.clients?.name || v.partners?.name || "—";
+  const getEntityName = (v: { clients?: { name: string } | null; partners?: { name: string } | null }) => v.clients?.name || v.partners?.name || "—";
 
   if (!hasAccess) return <Navigate to="/" replace />;
 
@@ -349,7 +373,30 @@ const CompletionCard = ({ rate, delay }: { rate: number, delay: number }) => (
   </motion.div>
 );
 
-const ExecutiveCard = ({ exec, showroomName, getEntityName }: { exec: any, showroomName?: string, getEntityName: (v: any) => string }) => {
+interface VisitRecord {
+  id: string;
+  visit_date: string;
+  status: string;
+  purpose: string | null;
+  remarks: string | null;
+  visit_with_type: string | null;
+  clients?: { name: string } | null;
+  partners?: { name: string } | null;
+}
+
+interface ExecutiveData {
+  userId: string;
+  name: string;
+  showroomId: string | null;
+  ydayPlanned: number;
+  ydayDone: number;
+  ydayPending: number;
+  todayPlanned: number;
+  ydayVisits: VisitRecord[];
+  todayVisits: VisitRecord[];
+}
+
+const ExecutiveCard = ({ exec, showroomName, getEntityName }: { exec: ExecutiveData, showroomName?: string, getEntityName: (v: VisitRecord) => string }) => {
   return (
     <Card className="group overflow-hidden border-[#F5F5F7]/5 shadow-sm hover:shadow-xl transition-all duration-300 bg-[#12141A]">
       {/* Executive Header */}
@@ -398,7 +445,7 @@ const ExecutiveCard = ({ exec, showroomName, getEntityName }: { exec: any, showr
           <VisitColumn
             title="Yesterday Actual"
             subtitle="Completed visits"
-            visits={exec.ydayVisits.filter((v: any) => v.status === "done")}
+            visits={exec.ydayVisits.filter((v) => v.status === "done")}
             type="success"
             getEntityName={getEntityName}
             showRemarks
@@ -420,7 +467,13 @@ const ExecutiveCard = ({ exec, showroomName, getEntityName }: { exec: any, showr
 };
 
 const VisitColumn = ({ title, subtitle, visits, type, getEntityName, showRemarks, showStatus }: {
-  title: string, subtitle: string, visits: any[], type: 'pending' | 'success' | 'info', getEntityName: (v: any) => string, showRemarks?: boolean, showStatus?: boolean
+  title: string,
+  subtitle: string,
+  visits: VisitRecord[],
+  type: 'pending' | 'success' | 'info',
+  getEntityName: (v: VisitRecord) => string,
+  showRemarks?: boolean,
+  showStatus?: boolean
 }) => {
   const styles = {
     pending: { header: "text-amber-400", bg: "bg-amber-500/5", badge: "text-amber-400 bg-amber-500/15" },

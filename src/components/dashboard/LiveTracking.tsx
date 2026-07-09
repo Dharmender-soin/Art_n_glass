@@ -165,13 +165,41 @@ export const LiveTracking = () => {
   // ── Fetch live locations + enrich with reverse geocode ──────────────────────
   useEffect(() => {
     const fetchLocations = async () => {
-      const { data: locData } = await (supabase as any).from("live_locations").select("*");
+      const { data: locData } = await supabase.from("live_locations").select("*");
       const { data: profiles } = await supabase.from("profiles").select("user_id, full_name");
-      const { data: roles } = await supabase.from("user_roles").select("user_id, role, showroom_id, showrooms(name)");
+      const { data: showrooms } = await supabase.from("showrooms").select("id, name");
+      const showroomMap = Object.fromEntries((showrooms || []).map(s => [s.id, s.name]));
 
-      const enriched: ExecutiveLocation[] = (locData || []).map((loc: any) => {
-        const profile = profiles?.find((p: any) => p.user_id === loc.user_id);
-        const roleData = roles?.find((r: any) => r.user_id === loc.user_id);
+      let rolesList: { user_id: string; role: string; showroom_id: string | null; showroom_name: string }[] = [];
+      const isManager = role === "manager";
+
+      if (isManager && showroomIds && showroomIds.length > 0) {
+        const results = await Promise.all(
+          showroomIds.map(async (sid) => {
+            const { data, error } = await supabase.rpc("get_showroom_leaderboard", { p_showroom_id: sid });
+            if (error) return [];
+            return ((data || []) as { user_id: string; role: string }[]).map((item) => ({
+              user_id: item.user_id,
+              role: item.role,
+              showroom_id: sid,
+              showroom_name: showroomMap[sid] || "—"
+            }));
+          })
+        );
+        rolesList = results.flat();
+      } else {
+        const { data: rawRoles } = await supabase.from("user_roles").select("user_id, role, showroom_id, showrooms(name)");
+        rolesList = ((rawRoles || []) as { user_id: string; role: string; showroom_id: string | null; showrooms: { name: string } | null }[]).map((r) => ({
+          user_id: r.user_id,
+          role: r.role,
+          showroom_id: r.showroom_id,
+          showroom_name: r.showrooms?.name || "—"
+        }));
+      }
+
+      const enriched: ExecutiveLocation[] = ((locData || []) as { user_id: string; lat: number; lng: number; updated_at: string }[]).map((loc) => {
+        const profile = profiles?.find((p) => p.user_id === loc.user_id);
+        const roleData = rolesList.find((r) => r.user_id === loc.user_id);
         const isLive = differenceInMinutes(new Date(), new Date(loc.updated_at)) <= 15;
         return {
           user_id: loc.user_id,
@@ -179,8 +207,8 @@ export const LiveTracking = () => {
           lng: loc.lng,
           updated_at: loc.updated_at,
           full_name: profile?.full_name || "Unknown",
-          showroom_id: roleData?.showroom_id,
-          showroom_name: (roleData as any)?.showrooms?.name || "—",
+          showroom_id: roleData?.showroom_id || undefined,
+          showroom_name: roleData?.showroom_name || "—",
           current_address: undefined,
           is_live: isLive,
           // Store role so we can filter out md/admin below
@@ -189,8 +217,7 @@ export const LiveTracking = () => {
       });
 
       // Never show MD or Admin users on the live map — they are observers, not field staff
-      const withoutAdmins = enriched.filter((e: any) => e._role !== "md" && e._role !== "admin");
-      const isManager = role === "manager";
+      const withoutAdmins = enriched.filter((e) => e._role !== "md" && e._role !== "admin");
       const filtered = isAdminOrMd 
         ? withoutAdmins 
         : (isManager && showroomIds && showroomIds.length > 0)
@@ -226,11 +253,11 @@ export const LiveTracking = () => {
     };
 
     fetchLocations();
-    const channel = (supabase as any)
+    const channel = supabase
       .channel("live-tracking-v3")
       .on("postgres_changes", { event: "*", schema: "public", table: "live_locations" }, fetchLocations)
       .subscribe();
-    return () => { (supabase as any).removeChannel(channel); };
+    return () => { supabase.removeChannel(channel); };
   }, [role, isAdminOrMd, showroomId, showroomIds, isLoaded]);
 
   // ── Visits query ────────────────────────────────────────────────────────────

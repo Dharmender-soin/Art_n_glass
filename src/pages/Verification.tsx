@@ -23,6 +23,7 @@ const Verification = () => {
   const [showroomFilter, setShowroomFilter] = useState<string>("all");
   const [selectedItem, setSelectedItem] = useState<any>(null);
   const [verificationRemarks, setVerificationRemarks] = useState("");
+  const [verificationReason, setVerificationReason] = useState("");
   const [workStatus, setWorkStatus] = useState<string>("pending");
   const [visibleCount, setVisibleCount] = useState(20);
 
@@ -103,6 +104,7 @@ const Verification = () => {
         .update({
           work_status: workStatus as "pending" | "submitted" | "draft" | "won" | "lost" | "rejected" | "hold",
           verification_remarks: verificationRemarks,
+          verification_reason: verificationReason || null,
           is_verified: workStatus === "won" || workStatus === "lost",
           verified_by: user?.id,
           verified_at: new Date().toISOString(),
@@ -121,12 +123,14 @@ const Verification = () => {
 
   const resetForm = () => {
     setVerificationRemarks("");
+    setVerificationReason("");
     setWorkStatus("pending");
   };
 
   const openVerifyDialog = (item: any) => {
     setSelectedItem(item);
     setVerificationRemarks(item.verification_remarks || "");
+    setVerificationReason(item.verification_reason || "");
     // Preserve current status if it's a recognized status, otherwise default to pending
     const recognized = ["won", "lost", "pending", "hold", "submitted"];
     setWorkStatus(recognized.includes(item.work_status) ? item.work_status : "pending");
@@ -474,7 +478,18 @@ const Verification = () => {
                     placeholder="Add any verification notes..."
                     value={verificationRemarks}
                     onChange={(e) => setVerificationRemarks(e.target.value)}
-                    rows={3}
+                    rows={2}
+                    className="resize-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-xs font-semibold text-muted-foreground uppercase">Verification Reason <span className="text-[10px] text-muted-foreground font-normal">(optional)</span></Label>
+                  <Textarea
+                    placeholder="Provide reason for verifying won/lost status..."
+                    value={verificationReason}
+                    onChange={(e) => setVerificationReason(e.target.value)}
+                    rows={2}
                     className="resize-none"
                   />
                 </div>
@@ -570,7 +585,15 @@ const VerificationCard = ({ item, onVerify }: { item: any, onVerify: () => void 
 
           {item.verification_remarks && (
             <div className="text-xs italic text-muted-foreground px-2 py-1 border-l-2 border-primary/20">
+              <span className="font-semibold not-italic text-[10px] text-foreground block">Verification Remarks:</span>
               {item.verification_remarks}
+            </div>
+          )}
+
+          {item.verification_reason && (
+            <div className="text-xs italic text-muted-foreground px-2 py-1 border-l-2 border-amber-500/40 mt-1">
+              <span className="font-semibold not-italic text-[10px] text-amber-600 dark:text-amber-400 block">Verification Reason:</span>
+              {item.verification_reason}
             </div>
           )}
         </div>

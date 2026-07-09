@@ -10,11 +10,16 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { Plus, Search, Phone, MapPin, Pencil, Trash2, Building2, Users, ChevronDown, X } from "lucide-react";
+import { Plus, Search, Phone, MapPin, Pencil, Trash2, Building2, Users, ChevronDown, X, UserCircle, Calendar, MessageSquare } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 import VisitHistoryList from "@/components/VisitHistoryList";
+import { format, parseISO } from "date-fns";
+import { useMemo } from "react";
 
-type Partner = Database["public"]["Tables"]["partners"]["Row"];
+type Partner = Database["public"]["Tables"]["partners"]["Row"] & {
+  _creator_name?: string | null;
+  _creator_role?: string | null;
+};
 type PartnerType = Database["public"]["Enums"]["partner_type"];
 
 const emptyForm = { type: "builder" as PartnerType, name: "", mobile: "", company_name: "", address: "", city: "" };
@@ -138,9 +143,35 @@ const PartnerForm = ({ values, onChange, onSubmit, isPending, submitLabel }: {
   </form>
 );
 
+interface PartnerCardProps {
+  p: Partner;
+  execName: string | null;
+  execRole: string | null;
+  clientCount: number;
+  wosCount: number;
+  wonCount: number;
+  lostCount: number;
+  lastVisit: { visit_date: string; remarks: string | null; exec_name: string | null } | null;
+  showClientForm: string | null;
+  setShowClientForm: (id: string | null) => void;
+  clientForm: { name: string; mobile: string; address: string; city: string; notes: string; status: "new" };
+  setClientForm: (form: { name: string; mobile: string; address: string; city: string; notes: string; status: "new" }) => void;
+  createClientForPartner: { mutate: (partnerId: string) => void; isPending: boolean };
+  openEdit: (p: Partner, e: React.MouseEvent) => void;
+  setDeletePartner: (p: Partner) => void;
+  setSelectedPartner: (id: string) => void;
+}
+
 /* ─── Partner Card ─────────────────────────────────────────── */
 const PartnerCard = ({
   p,
+  execName,
+  execRole,
+  clientCount,
+  wosCount,
+  wonCount,
+  lostCount,
+  lastVisit,
   showClientForm,
   setShowClientForm,
   clientForm,
@@ -149,113 +180,214 @@ const PartnerCard = ({
   openEdit,
   setDeletePartner,
   setSelectedPartner,
-}: any) => (
-  <div
-    className="group relative bg-white dark:bg-white/[0.03] rounded-2xl border border-gray-100 dark:border-white/5
-               shadow-sm hover:shadow-md dark:hover:shadow-none
-               hover:border-gray-200 dark:hover:border-white/10
-               transition-all duration-200 cursor-pointer
-               hover:-translate-y-0.5 active:scale-[0.99]"
-    onClick={() => setSelectedPartner(p.id)}
-  >
-    {/* Action buttons — top right, visible on hover */}
-    <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-      <button
-        className="h-7 w-7 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 flex items-center justify-center transition-colors"
-        onClick={(e) => openEdit(p, e)}
-        title="Edit"
-      >
-        <Pencil className="h-3.5 w-3.5 text-gray-500 dark:text-white/60" />
-      </button>
-      <button
-        className="h-7 w-7 rounded-lg bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 flex items-center justify-center transition-colors"
-        onClick={(e) => { e.stopPropagation(); setDeletePartner(p); }}
-        title="Delete"
-      >
-        <Trash2 className="h-3.5 w-3.5 text-red-500" />
-      </button>
-    </div>
+}: PartnerCardProps) => {
+  const [remarkExpanded, setRemarkExpanded] = useState(false);
 
-    <div className="p-4">
-      {/* Top row: avatar + info + badge */}
-      <div className="flex items-start gap-3 mb-3">
-        <PartnerAvatar name={p.name} type={p.type} />
-        <div className="flex-1 min-w-0 pr-14">
-          <h3 className="font-bold text-[15px] text-gray-900 dark:text-white leading-tight truncate">
-            {p.name}
-          </h3>
-          {p.company_name && (
-            <p className="text-xs text-gray-400 dark:text-white/40 font-medium mt-0.5 truncate">
-              {p.company_name}
+  const stats = [
+    { label: "Clients", value: clientCount ?? 0, num: clientCount ?? 0, valueCls: "text-blue-600 dark:text-blue-400", bgCls: "bg-blue-50 dark:bg-blue-500/10", borderCls: "border-blue-100 dark:border-blue-500/20" },
+    { label: "WOS",     value: wosCount  ?? 0, num: wosCount  ?? 0, valueCls: "text-slate-700 dark:text-slate-300", bgCls: "bg-slate-50 dark:bg-white/5",       borderCls: "border-slate-100 dark:border-white/10" },
+    { label: "Won",     value: wonCount  ?? 0, num: wonCount  ?? 0, valueCls: "text-emerald-600 dark:text-emerald-400", bgCls: "bg-emerald-50 dark:bg-emerald-500/10", borderCls: "border-emerald-100 dark:border-emerald-500/20" },
+    { label: "Lost",    value: lostCount ?? 0, num: lostCount ?? 0, valueCls: "text-red-500 dark:text-red-400",     bgCls: "bg-red-50 dark:bg-red-500/10",        borderCls: "border-red-100 dark:border-red-500/20" },
+  ];
+
+  return (
+    <div className="group relative flex flex-col bg-white dark:bg-white/[0.03] rounded-2xl border border-gray-100 dark:border-white/8 shadow-sm hover:shadow-lg dark:hover:shadow-none hover:border-gray-200 dark:hover:border-white/15 transition-all duration-200">
+
+      {/* ── Edit / Delete icons ── */}
+      <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+        <button
+          className="h-7 w-7 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/15 flex items-center justify-center transition-colors"
+          onClick={(e) => openEdit(p, e)}
+          title="Edit partner"
+        >
+          <Pencil className="h-3.5 w-3.5 text-gray-400 dark:text-white/50" />
+        </button>
+        <button
+          className="h-7 w-7 rounded-lg bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 flex items-center justify-center transition-colors"
+          onClick={(e) => { e.stopPropagation(); setDeletePartner(p); }}
+          title="Delete partner"
+        >
+          <Trash2 className="h-3.5 w-3.5 text-red-400" />
+        </button>
+      </div>
+
+      <div className="p-4 flex flex-col gap-3 flex-1">
+
+        {/* ── Section 1: Header ── */}
+        <div className="flex items-start gap-3">
+          <PartnerAvatar name={p.name} type={p.type} />
+          <div className="flex-1 min-w-0 pr-12">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="font-bold text-[15px] text-gray-900 dark:text-white leading-tight truncate">
+                {p.name}
+              </h3>
+            </div>
+            {p.company_name ? (
+              <p className="text-xs text-gray-500 dark:text-white/40 font-medium mt-0.5 truncate">
+                {p.company_name}
+              </p>
+            ) : (
+              <p className="text-xs text-gray-300 dark:text-white/20 italic mt-0.5">No firm name</p>
+            )}
+            {/* Type badge below name */}
+            <div className="mt-1.5">
+              <TypeBadge type={p.type} />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Section 2: Assigned By ── */}
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50/70 dark:bg-blue-500/8 border border-blue-100 dark:border-blue-500/15">
+          <UserCircle className="h-4 w-4 text-blue-400 shrink-0" />
+          <div className="min-w-0">
+            <span className="text-[10px] font-semibold text-blue-400 dark:text-blue-500 uppercase tracking-wider">
+              {execRole === "manager" ? "Assigned Manager"
+                : execRole === "tl" ? "Assigned TL"
+                : execRole === "md" ? "Assigned MD"
+                : execRole === "admin" ? "Assigned Admin"
+                : "Assigned Executive"}
+            </span>
+            <p className="text-xs font-bold text-blue-700 dark:text-blue-300 truncate">
+              {execName ? execName : <span className="font-normal italic text-blue-300">Not Assigned</span>}
             </p>
+          </div>
+        </div>
+
+        {/* ── Section 3: Contact info ── */}
+        <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-white/50">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Phone className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+            <span className="font-medium text-gray-700 dark:text-white/60 truncate">{p.mobile || "—"}</span>
+          </div>
+          {p.city && (
+            <>
+              <div className="w-px h-3.5 bg-gray-200 dark:bg-white/10 shrink-0" />
+              <div className="flex items-center gap-1.5 min-w-0">
+                <MapPin className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                <span className="capitalize truncate">{p.city}</span>
+              </div>
+            </>
           )}
         </div>
-        <div className="absolute top-4 right-[72px] group-hover:right-[76px] transition-all">
-          <TypeBadge type={p.type} />
-        </div>
-      </div>
 
-      {/* Contact info */}
-      <div className="space-y-1.5 mb-3 pl-14">
-        <div className="flex items-center gap-2">
-          <Phone className="h-3.5 w-3.5 text-gray-400 dark:text-white/30 shrink-0" />
-          <span className="text-sm text-gray-600 dark:text-white/60 font-medium">{p.mobile}</span>
+        {/* ── Section 4: Stats ── */}
+        <div className="grid grid-cols-4 gap-1.5">
+          {stats.map(s => (
+            <div key={s.label} className={`${s.bgCls} ${s.borderCls} border rounded-xl py-2 px-1 text-center`}>
+              <p className={`text-base font-extrabold leading-none ${s.valueCls}`}>{s.num}</p>
+              <p className="text-[9px] font-semibold text-gray-400 dark:text-white/30 mt-1 leading-none tracking-wide uppercase">{s.label}</p>
+            </div>
+          ))}
         </div>
-        {p.city && (
-          <div className="flex items-center gap-2">
-            <MapPin className="h-3.5 w-3.5 text-gray-400 dark:text-white/30 shrink-0" />
-            <span className="text-sm text-gray-500 dark:text-white/50 capitalize">{p.city}</span>
+
+        {/* ── Section 5: Last Visit ── */}
+        <div className="rounded-xl border border-amber-100 dark:border-amber-500/15 overflow-hidden">
+          <div className="bg-amber-50 dark:bg-amber-500/8 px-3 py-1.5 flex items-center gap-1.5 border-b border-amber-100 dark:border-amber-500/15">
+            <Calendar className="h-3 w-3 text-amber-500 shrink-0" />
+            <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Last Visit</span>
           </div>
+          {lastVisit ? (
+            <div className="px-3 py-2.5 space-y-1.5 bg-white dark:bg-white/[0.02]">
+              {/* Date + exec */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs font-bold text-gray-800 dark:text-white/80">
+                    {format(parseISO(lastVisit.visit_date), "dd MMM yyyy")}
+                  </span>
+                </div>
+                {lastVisit.exec_name && (
+                  <div className="flex items-center gap-1">
+                    <UserCircle className="h-3 w-3 text-blue-400 shrink-0" />
+                    <span className="text-[11px] font-semibold text-blue-500 dark:text-blue-400 truncate max-w-[130px]">
+                      {lastVisit.exec_name}
+                    </span>
+                  </div>
+                )}
+              </div>
+              {/* Remark */}
+              {lastVisit.remarks ? (
+                <div>
+                  <p className={`text-[11px] text-gray-500 dark:text-white/40 leading-relaxed ${remarkExpanded ? "" : "line-clamp-2"}`}>
+                    <span className="font-semibold text-gray-600 dark:text-white/50">Remark: </span>
+                    {lastVisit.remarks}
+                  </p>
+                  {lastVisit.remarks.length > 80 && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setRemarkExpanded(!remarkExpanded); }}
+                      className="text-[10px] text-primary font-semibold mt-0.5 hover:underline"
+                    >
+                      {remarkExpanded ? "View Less" : "View More"}
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <p className="text-[11px] text-gray-300 dark:text-white/20 italic">No remarks recorded</p>
+              )}
+            </div>
+          ) : (
+            <div className="px-3 py-3 bg-white dark:bg-white/[0.02] flex items-center gap-2">
+              <MessageSquare className="h-3.5 w-3.5 text-gray-300 dark:text-white/20 shrink-0" />
+              <p className="text-[11px] text-gray-300 dark:text-white/20 italic">No visit recorded yet</p>
+            </div>
+          )}
+        </div>
+
+        {/* ── Section 6: Add Client inline form ── */}
+        {showClientForm === p.id && (
+          <form
+            onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); createClientForPartner.mutate(p.id); }}
+            className="space-y-2.5 border-t border-gray-100 dark:border-white/5 pt-3"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-bold text-gray-700 dark:text-white/70 flex items-center gap-1.5">
+                <Users className="h-3.5 w-3.5 text-primary" /> Quick Add Client
+              </p>
+              <button type="button" onClick={() => setShowClientForm(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Name *" value={clientForm.name} onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })} required className="h-8 text-xs" />
+              <Input placeholder="Mobile *" value={clientForm.mobile} onChange={(e) => setClientForm({ ...clientForm, mobile: e.target.value })} required className="h-8 text-xs" />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Input placeholder="Address" value={clientForm.address} onChange={(e) => setClientForm({ ...clientForm, address: e.target.value })} className="h-8 text-xs" />
+              <Input placeholder="City" value={clientForm.city} onChange={(e) => setClientForm({ ...clientForm, city: e.target.value })} className="h-8 text-xs" />
+            </div>
+            <div className="flex gap-2">
+              <Button size="sm" type="submit" disabled={createClientForPartner.isPending} className="flex-1 h-8 text-xs font-bold">
+                {createClientForPartner.isPending ? "Saving..." : "Save Client"}
+              </Button>
+              <Button size="sm" variant="outline" type="button" onClick={() => setShowClientForm(null)} className="h-8 text-xs px-3">
+                Cancel
+              </Button>
+            </div>
+          </form>
         )}
-      </div>
 
-      {/* Add Client section */}
-      {showClientForm === p.id ? (
-        <form
-          onSubmit={(e) => { e.preventDefault(); e.stopPropagation(); createClientForPartner.mutate(p.id); }}
-          className="mt-2 space-y-2.5 border-t border-gray-100 dark:border-white/5 pt-3"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-bold text-gray-700 dark:text-white/70 flex items-center gap-1.5">
-              <Users className="h-3.5 w-3.5 text-primary" /> Quick Add Client
-            </p>
-            <button type="button" onClick={() => setShowClientForm(null)} className="text-gray-400 hover:text-gray-600 transition-colors">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Input placeholder="Name *" value={clientForm.name} onChange={(e) => setClientForm({ ...clientForm, name: e.target.value })} required className="h-8 text-xs" />
-            <Input placeholder="Mobile *" value={clientForm.mobile} onChange={(e) => setClientForm({ ...clientForm, mobile: e.target.value })} required className="h-8 text-xs" />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <Input placeholder="Address" value={clientForm.address} onChange={(e) => setClientForm({ ...clientForm, address: e.target.value })} className="h-8 text-xs" />
-            <Input placeholder="City" value={clientForm.city} onChange={(e) => setClientForm({ ...clientForm, city: e.target.value })} className="h-8 text-xs" />
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" type="submit" disabled={createClientForPartner.isPending} className="flex-1 h-8 text-xs font-bold">
-              {createClientForPartner.isPending ? "Saving..." : "Save Client"}
-            </Button>
-            <Button size="sm" variant="outline" type="button" onClick={() => setShowClientForm(null)} className="h-8 text-xs px-3">
-              Cancel
-            </Button>
-          </div>
-        </form>
-      ) : (
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowClientForm(p.id); }}
-          className="w-full mt-1 h-9 rounded-xl border border-dashed border-gray-200 dark:border-white/10
-                     text-xs font-semibold text-gray-400 dark:text-white/30
-                     hover:border-primary/40 hover:text-primary hover:bg-red-50/50 dark:hover:bg-red-500/5
-                     transition-all flex items-center justify-center gap-1.5"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add Client
-        </button>
-      )}
+        {/* ── Section 7: Action buttons ── */}
+        <div className="flex items-center gap-2 pt-1 mt-auto border-t border-gray-100 dark:border-white/5">
+          <button
+            onClick={(e) => { e.stopPropagation(); setShowClientForm(showClientForm === p.id ? null : p.id); }}
+            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl border border-dashed border-primary/30 dark:border-primary/20 text-xs font-semibold text-primary hover:bg-primary/5 transition-all"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add Client
+          </button>
+          <button
+            onClick={() => setSelectedPartner(p.id)}
+            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary/90 active:scale-[0.98] transition-all shadow-sm"
+          >
+            <ChevronDown className="h-3.5 w-3.5 -rotate-90" />
+            View Details
+          </button>
+        </div>
+
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* ─── Empty State ──────────────────────────────────────────── */
 const EmptyState = ({ isFiltered, onAdd }: { isFiltered: boolean; onAdd: () => void }) => (
@@ -314,22 +446,43 @@ const Partners = () => {
           .select("user_id")
           .eq("reports_to", user.id)
           .eq("role", "executive");
-        const execIds = (myExecs || []).map((r: any) => r.user_id);
+        const execIds = (myExecs || []).map((r: { user_id: string }) => r.user_id);
         q = q.in("created_by", [user.id, ...execIds]);
 
-      } else if (role === "manager" && showroomIds.length > 0) {
-        const { data: teamRoles } = await supabase
-          .from("user_roles")
-          .select("user_id")
-          .in("showroom_id", showroomIds);
-        const teamIds = (teamRoles || []).map((r: any) => r.user_id);
-        if (teamIds.length > 0) q = q.in("created_by", teamIds);
+      } else if (role === "manager") {
+        const effectiveShowrooms = [...new Set([...showroomIds, ...(showroomId ? [showroomId] : [])])];
+        if (effectiveShowrooms.length > 0) {
+          const { data: teamRoles } = await supabase
+            .from("user_roles")
+            .select("user_id")
+            .in("showroom_id", effectiveShowrooms);
+          const teamIds = (teamRoles || []).map((r: { user_id: string }) => r.user_id);
+          if (teamIds.length > 0) q = q.in("created_by", teamIds);
+        }
       }
       // MD / Admin: no filter
 
       const { data, error } = await q;
       if (error) throw error;
-      return data;
+
+      // ── Fetch creator profiles + roles separately ──
+      const creatorIds = [...new Set((data || []).map(p => p.created_by).filter(Boolean))];
+      const [{ data: profilesData }, { data: rolesData }] = await Promise.all([
+        creatorIds.length > 0
+          ? supabase.from("profiles").select("user_id, full_name").in("user_id", creatorIds)
+          : Promise.resolve({ data: [] }),
+        creatorIds.length > 0
+          ? supabase.from("user_roles").select("user_id, role").in("user_id", creatorIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+      const profileMap = Object.fromEntries((profilesData || []).map(pr => [pr.user_id, pr.full_name]));
+      const roleMap = Object.fromEntries((rolesData || []).map(r => [r.user_id, r.role]));
+
+      return (data || []).map(p => ({
+        ...p,
+        _creator_name: p.created_by ? (profileMap[p.created_by] || null) : null,
+        _creator_role: p.created_by ? (roleMap[p.created_by] || null) : null,
+      }));
     },
   });
 
@@ -404,6 +557,67 @@ const Partners = () => {
     return matchSearch && matchCity && matchType;
   });
 
+  const partnerIds = useMemo(() => partners.map(p => p.id), [partners]);
+
+  // ── Partner stats: clients count + WOS totals ──
+  const { data: partnerClients = [] } = useQuery({
+    queryKey: ["partner-clients-stats", partnerIds],
+    enabled: partnerIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("clients")
+        .select("id, partner_id, work_scope_items(work_status)")
+        .in("partner_id", partnerIds);
+      return data || [];
+    },
+  });
+
+  const statsMap = useMemo(() => {
+    const map: Record<string, { clients: number; total: number; won: number; lost: number }> = {};
+    (partnerClients as { id: string; partner_id?: string; work_scope_items?: { work_status?: string }[] }[]).forEach(c => {
+      if (!c.partner_id) return;
+      if (!map[c.partner_id]) map[c.partner_id] = { clients: 0, total: 0, won: 0, lost: 0 };
+      map[c.partner_id].clients++;
+      (c.work_scope_items || []).forEach(w => {
+        map[c.partner_id!].total++;
+        if (w.work_status === "won") map[c.partner_id!].won++;
+        if (w.work_status === "lost") map[c.partner_id!].lost++;
+      });
+    });
+    return map;
+  }, [partnerClients]);
+
+  // ── Last visit per partner ──
+  const { data: partnerVisits = {} } = useQuery({
+    queryKey: ["partner-last-visits", partnerIds],
+    enabled: partnerIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase
+        .from("visits")
+        .select("partner_id, visit_date, remarks, created_by")
+        .in("partner_id", partnerIds)
+        .eq("status", "done")
+        .order("visit_date", { ascending: false });
+
+      // Fetch profiles separately to get exec names and avoid FK join issues
+      const creatorIds = [...new Set((data || []).map(v => v.created_by).filter(Boolean))];
+      const { data: profilesData } = creatorIds.length > 0
+        ? await supabase.from("profiles").select("user_id, full_name").in("user_id", creatorIds)
+        : { data: [] };
+      const profileMap = Object.fromEntries((profilesData || []).map(pr => [pr.user_id, pr.full_name]));
+
+      // keep only most recent per partner
+      const seen = new Set<string>();
+      const result: Record<string, { visit_date: string; remarks: string | null; exec_name: string | null }> = {};
+      (data || []).forEach((v: { partner_id: string | null; visit_date: string; remarks: string | null; created_by: string }) => {
+        if (!v.partner_id || seen.has(v.partner_id)) return;
+        seen.add(v.partner_id);
+        result[v.partner_id] = { visit_date: v.visit_date, remarks: v.remarks, exec_name: profileMap[v.created_by] || null };
+      });
+      return result;
+    },
+  });
+
   const isFiltered = !!(search || filterType);
 
   return (
@@ -470,20 +684,34 @@ const Partners = () => {
         <EmptyState isFiltered={isFiltered} onAdd={() => setCreateOpen(true)} />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((p) => (
-            <PartnerCard
-              key={p.id}
-              p={p}
-              showClientForm={showClientForm}
-              setShowClientForm={setShowClientForm}
-              clientForm={clientForm}
-              setClientForm={setClientForm}
-              createClientForPartner={createClientForPartner}
-              openEdit={openEdit}
-              setDeletePartner={setDeletePartner}
-              setSelectedPartner={setSelectedPartner}
-            />
-          ))}
+          {filtered.map((p) => {
+            const execName = (p as { _creator_name?: string | null })._creator_name || null;
+            const execRole = (p as { _creator_role?: string | null })._creator_role || null;
+            const stats = statsMap[p.id] || { clients: 0, total: 0, won: 0, lost: 0 };
+            const lastVisit = (partnerVisits as Record<string, { visit_date: string; remarks: string | null; exec_name: string | null }>)[p.id] || null;
+
+            return (
+              <PartnerCard
+                key={p.id}
+                p={p}
+                execName={execName}
+                execRole={execRole}
+                clientCount={stats.clients}
+                wosCount={stats.total}
+                wonCount={stats.won}
+                lostCount={stats.lost}
+                lastVisit={lastVisit}
+                showClientForm={showClientForm}
+                setShowClientForm={setShowClientForm}
+                clientForm={clientForm}
+                setClientForm={setClientForm}
+                createClientForPartner={createClientForPartner}
+                openEdit={openEdit}
+                setDeletePartner={setDeletePartner}
+                setSelectedPartner={setSelectedPartner}
+              />
+            );
+          })}
         </div>
       )}
 

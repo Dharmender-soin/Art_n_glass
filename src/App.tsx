@@ -28,7 +28,15 @@ import PageTransition from "@/components/PageTransition";
 import { AIAssistant } from "@/components/AIAssistant";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 5, // 5 minutes cache
+      refetchOnWindowFocus: false, // disable reload on window focus
+      retry: 1, // snappier error handling
+    },
+  },
+});
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();

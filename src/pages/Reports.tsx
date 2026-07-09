@@ -9,11 +9,22 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { format, parseISO, startOfMonth, getDaysInMonth, eachDayOfInterval, startOfMonth as som, endOfMonth } from "date-fns";
+import { format, parseISO, startOfMonth, getDaysInMonth, eachDayOfInterval, startOfMonth as som, endOfMonth, subDays } from "date-fns";
 import { CalendarCheck, Users, Building2, CheckCircle, Clock, Package, Filter, ArrowUpRight, Download, Navigation, FileText, Printer, ChevronDown } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence } from "framer-motion";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { Database } from "@/integrations/supabase/types";
+
+type VisitWithRelations = Database["public"]["Tables"]["visits"]["Row"] & {
+  clients: { name: string; address?: string | null } | null;
+  partners: { name: string; address?: string | null } | null;
+};
+
+type WorkScopeItemWithJoins = Database["public"]["Tables"]["work_scope_items"]["Row"] & {
+  master_work_types: { type_of_work: string; sub_work: string | null } | null;
+  clients: { name: string } | null;
+};
 
 const MONTHS = [
   "January","February","March","April","May","June",
@@ -31,6 +42,10 @@ const Reports = () => {
   const [dsrEmployee, setDsrEmployee] = useState<string>("");
   const [dsrMonth, setDsrMonth] = useState<number>(new Date().getMonth());
   const [dsrYear, setDsrYear] = useState<number>(new Date().getFullYear());
+  type DsrFilterMode = "weekly" | "15_days" | "this_month" | "custom";
+  const [dsrFilterMode, setDsrFilterMode] = useState<DsrFilterMode>("this_month");
+  const [dsrCustomFrom, setDsrCustomFrom] = useState<string>(format(startOfMonth(new Date()), "yyyy-MM-dd"));
+  const [dsrCustomTo, setDsrCustomTo] = useState<string>(format(new Date(), "yyyy-MM-dd"));
 
   const { data: visits = [], isLoading: isLoadingVisits } = useQuery({
     queryKey: ["report-visits", dateFrom, dateTo],
@@ -42,7 +57,7 @@ const Reports = () => {
         .lte("visit_date", dateTo)
         .order("visit_date", { ascending: false });
       if (error) throw error;
-      return data;
+      return (data || []) as VisitWithRelations[];
     },
   });
 
@@ -60,7 +75,7 @@ const Reports = () => {
         .lte("created_at", dateTo + "T23:59:59")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return data;
+      return (data || []) as WorkScopeItemWithJoins[];
     },
   });
 
@@ -69,9 +84,9 @@ const Reports = () => {
   const uniqueClients = new Set(visits.filter((v) => v.client_id).map((v) => v.client_id)).size;
   const uniquePartners = new Set(visits.filter((v) => v.partner_id).map((v) => v.partner_id)).size;
 
-  const totalWorkAmount = workScopeItems.reduce((sum, i) => sum + ((i as any).amount_in_lac || 0), 0);
-  const verifiedWorkAmount = workScopeItems.filter((i) => (i as any).is_verified).reduce((sum, i) => sum + ((i as any).amount_in_lac || 0), 0);
-  const verifiedCount = workScopeItems.filter((i) => (i as any).is_verified).length;
+  const totalWorkAmount = workScopeItems.reduce((sum, i) => sum + (i.amount_in_lac || 0), 0);
+  const verifiedWorkAmount = workScopeItems.filter((i) => i.is_verified).reduce((sum, i) => sum + (i.amount_in_lac || 0), 0);
+  const verifiedCount = workScopeItems.filter((i) => i.is_verified).length;
 
   const { data: conveyanceRecords = [] } = useQuery({
     queryKey: ["report-conveyance", dateFrom, dateTo],
@@ -101,13 +116,31 @@ const Reports = () => {
         .select("user_id, full_name")
         .order("full_name");
       if (error) throw error;
-      return data;
+      return (data || []) as { user_id: string; full_name: string }[];
     },
   });
 
-  // DSR — fetch visits for selected employee + month
-  const dsrFrom = `${dsrYear}-${String(dsrMonth + 1).padStart(2, "0")}-01`;
-  const dsrTo = `${dsrYear}-${String(dsrMonth + 1).padStart(2, "0")}-${String(getDaysInMonth(new Date(dsrYear, dsrMonth))).padStart(2, "0")}`;
+  // DSR — fetch visits for selected employee + month/range
+  const { dsrFrom, dsrTo } = useMemo(() => {
+    const today = new Date();
+    if (dsrFilterMode === "weekly") {
+      const from = format(subDays(today, 6), "yyyy-MM-dd");
+      const to = format(today, "yyyy-MM-dd");
+      return { dsrFrom: from, dsrTo: to };
+    }
+    if (dsrFilterMode === "15_days") {
+      const from = format(subDays(today, 14), "yyyy-MM-dd");
+      const to = format(today, "yyyy-MM-dd");
+      return { dsrFrom: from, dsrTo: to };
+    }
+    if (dsrFilterMode === "custom") {
+      return { dsrFrom: dsrCustomFrom, dsrTo: dsrCustomTo };
+    }
+    // Default: 'this_month'
+    const from = `${dsrYear}-${String(dsrMonth + 1).padStart(2, "0")}-01`;
+    const to = `${dsrYear}-${String(dsrMonth + 1).padStart(2, "0")}-${String(getDaysInMonth(new Date(dsrYear, dsrMonth))).padStart(2, "0")}`;
+    return { dsrFrom: from, dsrTo: to };
+  }, [dsrFilterMode, dsrMonth, dsrYear, dsrCustomFrom, dsrCustomTo]);
 
   const { data: dsrVisits = [], isLoading: dsrLoading } = useQuery({
     queryKey: ["dsr-visits", dsrEmployee, dsrFrom, dsrTo],
@@ -122,7 +155,7 @@ const Reports = () => {
         .order("visit_date", { ascending: true })
         .order("created_at", { ascending: true });
       if (error) throw error;
-      return data || [];
+      return (data || []) as VisitWithRelations[];
     },
   });
 
@@ -147,15 +180,18 @@ const Reports = () => {
     const win = window.open("", "_blank", "width=900,height=700");
     if (!win) return;
 
-    const monthLabel = `${MONTHS[dsrMonth].toUpperCase()} ${dsrYear}`;
+    const monthLabel = dsrFilterMode === "weekly" ? "LAST 7 DAYS"
+                     : dsrFilterMode === "15_days" ? "LAST 15 DAYS"
+                     : dsrFilterMode === "custom" ? `${format(parseISO(dsrFrom), "dd-MMM-yyyy")} TO ${format(parseISO(dsrTo), "dd-MMM-yyyy")}`
+                     : `${MONTHS[dsrMonth].toUpperCase()} ${dsrYear}`;
     const generatedAt = format(new Date(), "dd-MMM-yyyy, hh:mm a");
 
     const daysHtml = Array.from(dsrByDate.entries()).map(([date, dayVisits]) => {
-      const plannedCount = dayVisits.filter((v: any) => v.status === "planned" || v.status === "done").length;
-      const doneCount = dayVisits.filter((v: any) => v.status === "done").length;
+      const plannedCount = dayVisits.filter((v: VisitWithRelations) => v.status === "planned" || v.status === "done").length;
+      const doneCount = dayVisits.filter((v: VisitWithRelations) => v.status === "done").length;
       const dateLabel = format(parseISO(date), "EEEE, dd MMM yyyy");
 
-      const rowsHtml = dayVisits.map((v: any, idx: number) => {
+      const rowsHtml = dayVisits.map((v: VisitWithRelations, idx: number) => {
         const name = v.clients?.name || v.partners?.name || "\u2014";
         const addr = v.address || v.clients?.address || v.partners?.address || "\u2014";
         const purpose = v.purpose || "\u2014";
@@ -163,19 +199,25 @@ const Reports = () => {
         const type = v.visit_with_type || "solo";
         const statusColor = v.status === "done" ? "#16a34a" : v.status === "cancelled" ? "#dc2626" : "#d97706";
         const statusLabel = v.status === "done" ? "\u2713 Done" : v.status === "cancelled" ? "\u2717 Cancelled" : "\u23f3 Planned";
+        const startTime = v.created_at ? format(parseISO(v.created_at), "hh:mm a") : "\u2014";
+        const endTime = (v.done_at && v.status === "done") ? format(parseISO(v.done_at), "hh:mm a") : null;
         return `<tr style="border-bottom:1px solid #e5e7eb;">
           <td style="padding:5px 7px;border:1px solid #e5e7eb;color:#888;font-size:10px;">${idx + 1}</td>
           <td style="padding:5px 7px;border:1px solid #e5e7eb;"><strong style="font-size:11px;">${name}</strong><br/><span style="font-size:9px;color:#888;text-transform:capitalize;">${type}</span></td>
           <td style="padding:5px 7px;border:1px solid #e5e7eb;font-size:10px;color:#555;">${addr}</td>
           <td style="padding:5px 7px;border:1px solid #e5e7eb;font-size:10px;">${purpose}</td>
           <td style="padding:5px 7px;border:1px solid #e5e7eb;"><span style="font-size:10px;font-weight:bold;color:${statusColor};">${statusLabel}</span></td>
+          <td style="padding:5px 7px;border:1px solid #e5e7eb;font-size:10px;white-space:nowrap;">
+            <span style="font-weight:600;color:#111;">${startTime}</span>
+            ${endTime ? `<br/><span style="color:#d97706;font-size:9px;font-weight:500;">Done: ${endTime}</span>` : ""}
+          </td>
           <td style="padding:5px 7px;border:1px solid #e5e7eb;font-size:10px;color:#555;">${remarks}</td>
         </tr>`;
       }).join("");
 
       // Day-level start/end time
-      const validCreatedAts = dayVisits.filter((v: any) => v.created_at).map((v: any) => v.created_at as string);
-      const validDoneAts = dayVisits.filter((v: any) => v.done_at && v.status === "done").map((v: any) => v.done_at as string);
+      const validCreatedAts = dayVisits.filter((v: VisitWithRelations) => v.created_at).map((v: VisitWithRelations) => v.created_at as string);
+      const validDoneAts = dayVisits.filter((v: VisitWithRelations) => v.done_at && v.status === "done").map((v: VisitWithRelations) => v.done_at as string);
       const dayStartTime = validCreatedAts.length > 0 ? format(parseISO(validCreatedAts.sort()[0]), "hh:mm a") : "\u2014";
       const dayEndTime = validDoneAts.length > 0 ? format(parseISO(validDoneAts.sort().reverse()[0]), "hh:mm a") : "\u2014";
 
@@ -197,6 +239,7 @@ const Reports = () => {
             <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Address</th>
             <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Purpose</th>
             <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Status</th>
+            <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;white-space:nowrap;">Time</th>
             <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Remarks</th>
           </tr></thead>
           <tbody>${rowsHtml}</tbody>
@@ -252,7 +295,7 @@ const Reports = () => {
     const map = new Map<string, { name: string; address: string; count: number }>();
     visits.filter((v) => type === 'partner' ? v.partner_id : v.client_id).forEach((v) => {
       const id = type === 'partner' ? v.partner_id : v.client_id;
-      const split = (v as any)[type === 'partner' ? 'partners' : 'clients'];
+      const split = type === 'partner' ? v.partners : v.clients;
       if (!id || !split) return;
 
       const existing = map.get(id);
@@ -272,7 +315,7 @@ const Reports = () => {
   const partnerVisitList = processVisits('partner');
   const clientVisitList = processVisits('client');
 
-  const exportToCSV = (data: any[], filename: string, isPartner: boolean) => {
+  const exportToCSV = (data: { name: string; address: string; count: number }[], filename: string, isPartner: boolean) => {
     const headers = [isPartner ? "Partner Name" : "Client Name", "Address", "Visit Count"];
     const csvContent = [
       headers.join(","),
@@ -386,27 +429,57 @@ const Reports = () => {
                     </Select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Month</Label>
-                    <Select value={String(dsrMonth)} onValueChange={v => setDsrMonth(Number(v))}>
-                      <SelectTrigger className="w-[140px] h-9">
+                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Range Mode</Label>
+                    <Select value={dsrFilterMode} onValueChange={(v) => setDsrFilterMode(v as DsrFilterMode)}>
+                      <SelectTrigger className="w-[180px] h-9">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {MONTHS.map((m, i) => <SelectItem key={i} value={String(i)}>{m}</SelectItem>)}
+                        <SelectItem value="this_month">This Month</SelectItem>
+                        <SelectItem value="weekly">Weekly (Last 7 Days)</SelectItem>
+                        <SelectItem value="15_days">Last 15 Days</SelectItem>
+                        <SelectItem value="custom">Custom Range</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Year</Label>
-                    <Select value={String(dsrYear)} onValueChange={v => setDsrYear(Number(v))}>
-                      <SelectTrigger className="w-[100px] h-9">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[2024,2025,2026,2027].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                  {dsrFilterMode === "this_month" && (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Month</Label>
+                        <Select value={String(dsrMonth)} onValueChange={v => setDsrMonth(Number(v))}>
+                          <SelectTrigger className="w-[140px] h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {MONTHS.map((m, i) => <SelectItem key={i} value={String(i)}>{m}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">Year</Label>
+                        <Select value={String(dsrYear)} onValueChange={v => setDsrYear(Number(v))}>
+                          <SelectTrigger className="w-[100px] h-9">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[2024,2025,2026,2027].map(y => <SelectItem key={y} value={String(y)}>{y}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
+                  {dsrFilterMode === "custom" && (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">From Date</Label>
+                        <Input type="date" value={dsrCustomFrom} onChange={(e) => setDsrCustomFrom(e.target.value)} className="w-[150px] h-9 bg-background" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-[10px] uppercase text-muted-foreground font-bold tracking-wider">To Date</Label>
+                        <Input type="date" value={dsrCustomTo} onChange={(e) => setDsrCustomTo(e.target.value)} className="w-[150px] h-9 bg-background" />
+                      </div>
+                    </>
+                  )}
                   {dsrEmployee && (
                     <Button onClick={printDSR} variant="outline" size="sm" className="h-9 gap-2 ml-auto print:hidden">
                       <Printer className="h-4 w-4" />
@@ -454,13 +527,27 @@ const Reports = () => {
                 <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
                   <CalendarCheck className="h-7 w-7 text-muted-foreground" />
                 </div>
-                <p className="text-muted-foreground font-medium">No visits found for {dsrEmployeeName} in {MONTHS[dsrMonth]} {dsrYear}</p>
+                <p className="text-muted-foreground font-medium">
+                  No visits found for {dsrEmployeeName} in {
+                    dsrFilterMode === "weekly" ? "Last 7 Days"
+                    : dsrFilterMode === "15_days" ? "Last 15 Days"
+                    : dsrFilterMode === "custom" ? `${format(parseISO(dsrFrom), "dd MMM yyyy")} - ${format(parseISO(dsrTo), "dd MMM yyyy")}`
+                    : `${MONTHS[dsrMonth]} ${dsrYear}`
+                  }
+                </p>
               </div>
             ) : (
               <div id="dsr-printable">
                 {/* Print Header - visible ONLY when printing */}
                 <div className="dsr-print-header hidden print:block text-center mb-4 pb-3" style={{borderBottom: "2px solid #222"}}>
-                  <h1 style={{fontSize: "16px", fontWeight: "bold", margin: 0}}>DAILY VISIT REPORT — {MONTHS[dsrMonth].toUpperCase()} {dsrYear}</h1>
+                  <h1 style={{fontSize: "16px", fontWeight: "bold", margin: 0}}>
+                    DAILY VISIT REPORT — {
+                      dsrFilterMode === "weekly" ? "LAST 7 DAYS"
+                      : dsrFilterMode === "15_days" ? "LAST 15 DAYS"
+                      : dsrFilterMode === "custom" ? `${format(parseISO(dsrFrom), "dd-MMM-yyyy")} TO ${format(parseISO(dsrTo), "dd-MMM-yyyy")}`
+                      : `${MONTHS[dsrMonth].toUpperCase()} ${dsrYear}`
+                    }
+                  </h1>
                   <p style={{fontSize: "11px", marginTop: "4px"}}>Employee: <strong>{dsrEmployeeName}</strong> &nbsp;|&nbsp; Generated: {format(new Date(), "dd-MMM-yyyy, hh:mm a")}</p>
                   <p style={{fontSize: "11px"}}>Total Visits: <strong>{dsrTotalPlanned}</strong> &nbsp;|&nbsp; Done: <strong>{dsrTotalDone}</strong> &nbsp;|&nbsp; Success Rate: <strong>{dsrSuccessRate}%</strong></p>
                 </div>
@@ -492,7 +579,7 @@ const Reports = () => {
                           {/* Day-level start/end time */}
                           {(() => {
                             const validCreated = dayVisits.filter(v => v.created_at).map(v => v.created_at as string);
-                            const validDone = dayVisits.filter(v => (v as any).done_at && v.status === "done").map(v => (v as any).done_at as string);
+                            const validDone = dayVisits.filter(v => v.done_at && v.status === "done").map(v => v.done_at as string);
                             const dayStart = validCreated.length > 0 ? format(parseISO([...validCreated].sort()[0]), "hh:mm a") : "—";
                             const dayEnd = validDone.length > 0 ? format(parseISO([...validDone].sort().reverse()[0]), "hh:mm a") : "—";
                             return (
@@ -520,15 +607,18 @@ const Reports = () => {
                                 <th className="text-[11px] py-2 px-3 text-left font-semibold border-b">Address</th>
                                 <th className="text-[11px] py-2 px-3 text-left font-semibold border-b">Purpose</th>
                                 <th className="text-[11px] py-2 px-3 text-left font-semibold border-b">Status</th>
+                                <th className="text-[11px] py-2 px-3 text-left font-semibold border-b">Time</th>
                                 <th className="text-[11px] py-2 px-3 text-left font-semibold border-b">Remarks</th>
                               </tr>
                             </thead>
                             <tbody>
                               {dayVisits.map((v, idx) => {
-                                const name = (v as any).clients?.name || (v as any).partners?.name || "—";
-                                const addr = v.address || (v as any).clients?.address || (v as any).partners?.address || "—";
+                                const name = v.clients?.name || v.partners?.name || "—";
+                                const addr = v.address || v.clients?.address || v.partners?.address || "—";
                                 const statusClass = v.status === "done" ? "dsr-status-done" : v.status === "cancelled" ? "dsr-status-cancelled" : "dsr-status-planned";
                                 const statusLabel = v.status === "done" ? "✓ Done" : v.status === "cancelled" ? "✗ Cancelled" : "⏳ Planned";
+                                const startTime = v.created_at ? format(parseISO(v.created_at), "hh:mm a") : "—";
+                                const endTime = (v.done_at && v.status === "done") ? format(parseISO(v.done_at), "hh:mm a") : null;
                                 return (
                                   <tr key={v.id} className="border-b hover:bg-muted/10">
                                     <td className="text-[11px] py-2 px-3 text-muted-foreground font-mono">{idx + 1}</td>
@@ -540,6 +630,10 @@ const Reports = () => {
                                     <td className="text-xs py-2 px-3 max-w-[160px]">{v.purpose}</td>
                                     <td className="py-2 px-3">
                                       <span className={`text-[10px] font-bold ${statusClass}`}>{statusLabel}</span>
+                                    </td>
+                                    <td className="py-2 px-3 whitespace-nowrap text-xs text-muted-foreground">
+                                      <span className="font-semibold text-foreground">{startTime}</span>
+                                      {endTime && <span className="block text-[10px] text-amber-500 font-medium">Done: {endTime}</span>}
                                     </td>
                                     <td className="text-xs text-muted-foreground py-2 px-3 max-w-[160px]">{v.remarks || "—"}</td>
                                   </tr>
@@ -665,10 +759,10 @@ const Reports = () => {
                         <p className="text-center text-muted-foreground py-10">No items found.</p>
                       ) : (
                         workScopeItems.map((item, index) => {
-                          const wt = (item as any).master_work_types;
-                          const client = (item as any).clients;
-                          const verified = (item as any).is_verified;
-                          const amt = (item as any).amount_in_lac;
+                          const wt = item.master_work_types;
+                          const client = item.clients;
+                          const verified = item.is_verified;
+                          const amt = item.amount_in_lac;
                           return (
                             <motion.div
                               key={item.id}
@@ -846,7 +940,7 @@ const Reports = () => {
                 <button
                   key={exec.name}
                   onClick={() => {
-                    const found = executivesList.find((e) => (e as any).full_name === exec.name);
+                    const found = executivesList.find((e) => e.full_name === exec.name);
                     if (found) setFilterExecutive(found.user_id);
                   }}
                   className="bg-card border border-border rounded-xl p-4 text-left hover:border-primary/40 hover:shadow-md transition-all group"

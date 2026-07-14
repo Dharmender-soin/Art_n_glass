@@ -368,6 +368,14 @@ export const ExecutiveHome = () => {
             if (fromLat && fromLng && profile?.conveyance_type) {
                 const distance = await calculateRouteDistance(fromLat, fromLng, gpsLat, gpsLng);
                 const amount = Number((distance * (profile.conveyance_rate || 0)).toFixed(2));
+
+                // Office-to-home commute check: starts at showroom/office and ends at "End Day Location"
+                const isCommute = 
+                  (fromLocationName.toLowerCase().includes("office") || fromLocationName.toLowerCase().includes("showroom"));
+
+                const finalDistance = isCommute ? 0 : distance;
+                const finalAmount = isCommute ? 0 : amount;
+
                 const { error } = await supabase.from("conveyance_records").insert({
                     user_id: user.id,
                     visit_id: null,
@@ -378,13 +386,13 @@ export const ExecutiveHome = () => {
                     to_location_name: "End Day Location",
                     to_lat: gpsLat,
                     to_lng: gpsLng,
-                    distance_km: distance,
+                    distance_km: finalDistance,
                     vehicle_type: profile.conveyance_type,
                     rate_per_km: profile.conveyance_rate || 0,
-                    amount: amount
+                    amount: finalAmount
                 });
                 if (error) throw error;
-                toast.success(`Day Ended! Return trip: ${distance} km (₹${amount})`);
+                toast.success(isCommute ? "Day Ended! (Commute trip home - ₹0 conveyance)" : `Day Ended! Return trip: ${distance} km (₹${amount})`);
                 refetchEndDay();
                 refetchConveyance();
             } else {
@@ -812,6 +820,16 @@ export const ExecutiveHome = () => {
 
     const markDone = async (visit: Visit) => {
         try {
+            // Block if day is already ended
+            const { data: dayEnded } = await supabase
+                .from("conveyance_records")
+                .select("id")
+                .eq("user_id", user?.id)
+                .eq("date", visit.visit_date)
+                .is("visit_id", null)
+                .maybeSingle();
+            if (dayEnded) throw new Error("This day has already been marked ended. Visits cannot be modified.");
+
             let gpsLat: number | null = null;
             let gpsLng: number | null = null;
             try {
@@ -838,6 +856,16 @@ export const ExecutiveHome = () => {
 
     const cancelVisit = async (visit: Visit) => {
         try {
+            // Block if day is already ended
+            const { data: dayEnded } = await supabase
+                .from("conveyance_records")
+                .select("id")
+                .eq("user_id", user?.id)
+                .eq("date", visit.visit_date)
+                .is("visit_id", null)
+                .maybeSingle();
+            if (dayEnded) throw new Error("This day has already been marked ended. Visits cannot be modified.");
+
             const { error } = await supabase.from("visits").update({ status: "cancelled" }).eq("id", visit.id);
             if (error) throw error;
             toast.success("Visit cancelled.");

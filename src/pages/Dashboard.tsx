@@ -234,7 +234,7 @@ const RankBadge = ({ rank }: { rank: number }) => {
 // ─── Analytics Dashboard Component ────────────────
 // ═══════════════════════════════════════════════════
 const AnalyticsDashboard = () => {
-  const { user, role, showroomId: myShowroomId } = useAuth();
+  const { user, role, showroomId: myShowroomId, showroomIds } = useAuth();
 
   // ── Drawer State ─────────────────────────────────
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -292,7 +292,7 @@ const AnalyticsDashboard = () => {
   // ── Fetch Showrooms ──────────────────────────────
   const { data: showrooms = [] } = useQuery({
     queryKey: ["dashboard-showrooms"],
-    enabled: canSeeAll,
+    enabled: canSeeAll || (isManager && showroomIds && showroomIds.length > 0),
     queryFn: async () => {
       const { data, error } = await supabase.from("showrooms").select("*").order("name");
       if (error) throw error;
@@ -302,11 +302,13 @@ const AnalyticsDashboard = () => {
 
   // ── Fetch User Roles (executives per showroom) ───
   const { data: allUserRoles = [] } = useQuery({
-    queryKey: ["dashboard-user-roles"],
+    queryKey: ["dashboard-user-roles", showroomIds],
     enabled: canSeeShowroom,
     queryFn: async () => {
       let q = supabase.from("user_roles").select("user_id, role, showroom_id");
-      if (isManager && myShowroomId) {
+      if (isManager && showroomIds && showroomIds.length > 0) {
+        q = q.in("showroom_id", showroomIds);
+      } else if (isManager && myShowroomId) {
         q = q.eq("showroom_id", myShowroomId);
       }
       const { data, error } = await q;
@@ -339,15 +341,18 @@ const AnalyticsDashboard = () => {
   // ── Build the user IDs we should filter by ─────
   const targetUserIds = useMemo(() => {
     if (isExec && user) return [user.id];
-    if (isManager && myShowroomId) {
-      return allUserRoles.filter(r => r.showroom_id === myShowroomId).map(r => r.user_id);
+    if (isManager) {
+      const activeShowrooms = selectedShowroom === "all"
+        ? (showroomIds && showroomIds.length > 0 ? showroomIds : (myShowroomId ? [myShowroomId] : []))
+        : [selectedShowroom];
+      return allUserRoles.filter(r => r.showroom_id && activeShowrooms.includes(r.showroom_id)).map(r => r.user_id);
     }
     // Admin / MD – if a specific showroom is selected, filter to it
     if (canSeeAll && selectedShowroom !== "all") {
       return allUserRoles.filter(r => r.showroom_id === selectedShowroom).map(r => r.user_id);
     }
     return []; // empty = no filter (fetch all)
-  }, [isExec, isManager, canSeeAll, user, myShowroomId, selectedShowroom, allUserRoles]);
+  }, [isExec, isManager, canSeeAll, user, myShowroomId, showroomIds, selectedShowroom, allUserRoles]);
 
   // ── Fetch Visits ─────────────────────────────────
   const { data: visits = [], isLoading: visitsLoading } = useQuery({
@@ -887,23 +892,25 @@ const AnalyticsDashboard = () => {
             )}
 
             {/* Divider */}
-            {(canSeeAll && showrooms.length > 0) || (canSeeShowroom && execList.length > 0) ? (
+            {((canSeeAll || (isManager && showroomIds && showroomIds.length > 1)) && showrooms.length > 0) || (canSeeShowroom && execList.length > 0) ? (
               <div className="h-5 w-px bg-white/10 shrink-0 mx-1" />
             ) : null}
 
             {/* Showroom dropdown */}
-            {canSeeAll && showrooms.length > 0 && (
+            {(canSeeAll || (isManager && showroomIds && showroomIds.length > 1)) && showrooms.length > 0 && (
               <div className="shrink-0 flex items-center gap-1 bg-[#1A1D24] border border-white/10 rounded-full px-2.5 py-1">
                 <Building2 className="h-3 w-3 text-[#A1A5AE]" />
                 <Select value={selectedShowroom} onValueChange={setSelectedShowroom}>
                   <SelectTrigger className="border-none shadow-none bg-transparent h-5 text-[11px] text-[#F5F5F7] w-[120px] p-0 focus:ring-0 font-medium">
                     <SelectValue placeholder="All Showrooms" />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Showrooms</SelectItem>
-                    {showrooms.map(sr => (
-                      <SelectItem key={sr.id} value={sr.id}>{sr.name}</SelectItem>
-                    ))}
+                  <SelectContent className="bg-popover border-white/10 text-[#F5F5F7]">
+                    <SelectItem value="all" className="hover:bg-[#A6192E]/10">All Showrooms</SelectItem>
+                    {showrooms
+                      .filter(s => canSeeAll || (showroomIds && showroomIds.includes(s.id)))
+                      .map(sr => (
+                        <SelectItem key={sr.id} value={sr.id} className="hover:bg-[#A6192E]/10">{sr.name}</SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>

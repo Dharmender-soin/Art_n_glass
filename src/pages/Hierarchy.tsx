@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
+import * as XLSX from "xlsx";
 
 type WorkStatus = "pending" | "submitted" | "won" | "lost" | "draft" | "rejected" | "hold";
 
@@ -414,8 +415,8 @@ const Hierarchy = () => {
     setConfirmClose({ clientId, clientName, currentStatus });
   };
 
-  // ── Export active pivot data to CSV ──────────────────────────────────────
-  const exportToCSV = () => {
+  // ── Export active pivot data to Excel ────────────────────────────────────
+  const exportToExcel = () => {
     const headers = [
       "Executive", "Partner", "Client Name", "Address", "Mobile",
       ...colIds.map(id => {
@@ -425,39 +426,46 @@ const Hierarchy = () => {
       "WOS Summary", "Project Status"
     ];
 
-    const rows: string[][] = [];
+    const rows: any[] = [];
     activePivot.forEach(exec => {
       exec.clients.forEach(client => {
-        const wosStatuses = colIds.map(id => {
+        const rowData: Record<string, any> = {
+          "Executive": exec.executive_name,
+          "Partner": client.partner_name || "-",
+          "Client Name": client.client_name,
+          "Address": client.client_address || "-",
+          "Mobile": client.client_mobile || "-"
+        };
+
+        colIds.forEach(id => {
+          const wt = allWorkTypes.find(t => t.id === id);
+          const colName = wt ? `${wt.type_of_work} - ${wt.sub_work}` : id;
           const rec = client.wos[id];
-          if (!rec) return "—";
-          return rec.work_status.charAt(0).toUpperCase() + rec.work_status.slice(1);
+          rowData[colName] = rec ? rec.work_status.charAt(0).toUpperCase() + rec.work_status.slice(1) : "-";
         });
-        rows.push([
-          exec.executive_name,
-          client.partner_name || "—",
-          client.client_name,
-          client.client_address,
-          client.client_mobile,
-          ...wosStatuses,
-          client.partners.join(", ") || "—",
-          client.project_status === "closed" ? "Closed" : "Active",
-        ]);
+
+        rowData["WOS Summary"] = client.partners.join(", ") || "-";
+        rowData["Project Status"] = client.project_status === "closed" ? "Closed" : "Active";
+
+        rows.push(rowData);
       });
     });
 
-    const csvContent = [headers, ...rows]
-      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(","))
-      .join("\n");
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "WOS Pipeline");
 
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `wos-pipeline-${new Date().toISOString().split("T")[0]}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Exported to CSV ✓");
+    // Auto-fit column widths
+    const maxProps = headers.map(() => ({ wch: 15 }));
+    maxProps[0] = { wch: 20 }; // Executive
+    maxProps[1] = { wch: 18 }; // Partner
+    maxProps[2] = { wch: 22 }; // Client Name
+    maxProps[3] = { wch: 35 }; // Address
+    maxProps[4] = { wch: 15 }; // Mobile
+    worksheet['!cols'] = maxProps;
+
+    XLSX.writeFile(workbook, `wos-pipeline-${new Date().toISOString().split("T")[0]}.xlsx`);
+    toast.success("Exported to Excel successfully ✓");
   };
 
   if(!canAccess) return (
@@ -485,8 +493,8 @@ const Hierarchy = () => {
             </div>
             {isLoading && <Loader2 className="h-3.5 w-3.5 text-slate-400 animate-spin ml-1"/>}
           </div>
-          <button onClick={exportToCSV} className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-all">
-            <Download className="h-3.5 w-3.5"/>Export CSV
+          <button onClick={exportToExcel} className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-all">
+            <Download className="h-3.5 w-3.5"/>Export Excel
           </button>
         </div>
       </div>

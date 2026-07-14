@@ -13,7 +13,9 @@ import {
   LayoutList, LayoutGrid, ArrowUpDown, ArrowUp, ArrowDown,
   Car, Bike, Bus,
 } from "lucide-react";
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subDays } from "date-fns";
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subDays, parseISO } from "date-fns";
+import * as XLSX from "xlsx";
+import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
 type DatePreset = "today" | "this_week" | "last_15" | "this_month" | "last_30" | "custom";
@@ -148,14 +150,21 @@ const Conveyance = () => {
       if (isManager && targetUserIds.length === 0) return [];
       let q = supabase
         .from("conveyance_records")
-        .select("*")
+        .select(`
+          *,
+          visits (
+            purpose,
+            clients (name),
+            partners (name)
+          )
+        `)
         .gte("date", fromDate)
         .lte("date", toDate)
         .order("date", { ascending: false })
         .order("created_at", { ascending: true });
       if (targetUserIds.length > 0) q = q.in("user_id", targetUserIds);
       const { data } = await q;
-      return data || [];
+      return (data || []) as any[];
     },
   });
 
@@ -280,23 +289,96 @@ const Conveyance = () => {
     });
   }, [records, mergedProfileMap, execShowroomIdMap, showroomMap, tableSort]);
 
-  // ── CSV Export ────────────────────────────────────────────────────────────
-  const exportCSV = () => {
-    const rows = [["Date", "Executive", "Showroom", "From", "To", "Vehicle", "KM", "Rate ₹/km", "Amount ₹", "Type"]];
+  // ── Excel Export ───────────────────────────────────────────────────────────
+  const exportToExcel = () => {
+    let html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+      <head>
+        <meta charset="utf-8" />
+        <!--[if gte mso 9]>
+        <xml>
+          <x:ExcelWorkbook>
+            <x:ExcelWorksheets>
+              <x:ExcelWorksheet>
+                <x:Name>Conveyance Report</x:Name>
+                <x:WorksheetOptions>
+                  <x:DisplayGridlines/>
+                </x:WorksheetOptions>
+              </x:ExcelWorksheet>
+            </x:ExcelWorksheets>
+          </x:ExcelWorkbook>
+        </xml>
+        <![endif]-->
+        <style>
+          table { border-collapse: collapse; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+          td { border: 1px solid #D1D5DB; padding: 8px 12px; font-size: 11px; color: #374151; }
+          th { border: 1px solid #D1D5DB; padding: 10px 12px; font-size: 11px; text-align: left; background-color: #1E293B; color: #FFFFFF; font-weight: bold; }
+          .title-row { font-size: 16px; font-weight: bold; color: #1E3A8A; height: 40px; }
+          .amount-cell { color: #059669; font-weight: bold; }
+          .empty-row { height: 18px; }
+          .empty-cell { border: none; background: transparent; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tr>
+            <td colspan="12" class="title-row" style="vertical-align: middle;">CONVEYANCE EXPENSES REPORT (FROM ${format(parseISO(fromDate), "dd MMM yyyy")} TO ${format(parseISO(toDate), "dd MMM yyyy")})</td>
+          </tr>
+          <tr class="empty-row"><td colspan="12" class="empty-cell"></td></tr>
+          <tr>
+            <th style="width: 90px;">Date</th>
+            <th style="width: 150px;">Executive</th>
+            <th style="width: 110px;">Showroom</th>
+            <th style="width: 200px;">From</th>
+            <th style="width: 200px;">To</th>
+            <th style="width: 80px;">Vehicle</th>
+            <th style="width: 95px; text-align: right;">Distance (KM)</th>
+            <th style="width: 95px; text-align: right;">Rate (INR/km)</th>
+            <th style="width: 95px; text-align: right;">Amount (INR)</th>
+            <th style="width: 100px;">Trip Category</th>
+            <th style="width: 180px;">Visited Client/Partner</th>
+            <th style="width: 150px;">Visit Purpose</th>
+          </tr>
+    `;
+
     tableRows.forEach((r) => {
-      rows.push([
-        format(new Date(r.date), "dd MMM yyyy"),
-        r.execName, r.showroomName, r.from, r.to, r.vehicle,
-        r.km.toFixed(2), r.rate.toFixed(2), r.amount.toFixed(2), r.type,
-      ]);
+      const rawRec = rawRecords.find(x => x.id === r.id);
+      const visitInfo = rawRec?.visits;
+      const visitedName = visitInfo?.clients?.name || visitInfo?.partners?.name || "-";
+      const purpose = visitInfo?.purpose || "-";
+
+      html += `
+        <tr>
+          <td>${format(new Date(r.date), "dd MMM yyyy")}</td>
+          <td>${r.execName}</td>
+          <td>${r.showroomName}</td>
+          <td>${r.from}</td>
+          <td>${r.to}</td>
+          <td style="text-transform: capitalize;">${r.vehicle}</td>
+          <td style="text-align: right;">${r.km.toFixed(2)}</td>
+          <td style="text-align: right;">${r.rate.toFixed(2)}</td>
+          <td style="text-align: right;" class="amount-cell">${r.amount.toFixed(2)}</td>
+          <td>${r.type}</td>
+          <td>${visitedName}</td>
+          <td>${purpose}</td>
+        </tr>
+      `;
     });
-    const csv = rows.map((r) => r.map((c) => `"${c}"`).join(",")).join("\n");
-    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+
+    html += `
+        </table>
+      </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `conveyance_${fromDate}_to_${toDate}.csv`;
+    a.download = `conveyance_${fromDate}_to_${toDate}.xls`;
     a.click();
     URL.revokeObjectURL(url);
+    toast.success("Conveyance report exported successfully ✓");
   };
 
   const toggleExec = (uid: string) => setExpandedExecs((prev) => {
@@ -350,8 +432,8 @@ const Conveyance = () => {
               <LayoutList className="h-3.5 w-3.5" /> Table
             </button>
           </div>
-          <Button onClick={exportCSV} size="sm" variant="outline" className="gap-2">
-            <Download className="h-4 w-4" /> Export CSV
+          <Button onClick={exportToExcel} size="sm" variant="outline" className="gap-2">
+            <Download className="h-4 w-4" /> Export Excel
           </Button>
         </div>
       </div>

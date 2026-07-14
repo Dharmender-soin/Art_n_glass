@@ -294,8 +294,30 @@ const Visits = () => {
     enabled: !!user,
   });
 
+  const checkIfDayEnded = async (date: string) => {
+    if (!user || role !== "executive") return false;
+    const { data, error } = await supabase
+      .from("conveyance_records")
+      .select("id")
+      .eq("user_id", user.id)
+      .eq("date", date)
+      .is("visit_id", null)
+      .maybeSingle();
+    
+    if (error) {
+      console.error("Error checking day status:", error);
+      return false;
+    }
+    return !!data;
+  };
+
   const createVisit = useMutation({
     mutationFn: async () => {
+      const isDayEnded = await checkIfDayEnded(form.visit_date);
+      if (isDayEnded) {
+        throw new Error("This day has already been marked ended. Visits cannot be added.");
+      }
+
       const insertData: InsertVisitData = {
         visit_date: form.visit_date,
         visit_with_type: form.visit_with_type,
@@ -325,6 +347,13 @@ const Visits = () => {
 
   const markDone = useMutation({
     mutationFn: async (visitId: string) => {
+      const { data: visit } = await supabase.from("visits").select("visit_date").eq("id", visitId).single();
+      if (!visit) throw new Error("Visit not found");
+      const isDayEnded = await checkIfDayEnded(visit.visit_date);
+      if (isDayEnded) {
+        throw new Error("This day has already been marked ended. Visits cannot be modified.");
+      }
+
       if (!remarks.trim()) throw new Error("Remarks are required");
 
       // GPS is mandatory — force fresh fix, never use cached stale location
@@ -433,6 +462,14 @@ const Visits = () => {
          const { data: currentVisit } = await supabase.from("visits").select("address").eq("id", visitId).single();
          const toLocationName = currentVisit?.address || "Visit Location";
 
+         // Home-to-office commute check: starts at "Start Day Check-In" and ends at a showroom/office
+         const isCommute = 
+           (fromLocationName === "Start Day Check-In" || fromLocationName === "Start Day Location") && 
+           (toLocationName.toLowerCase().includes("office") || toLocationName.toLowerCase().includes("showroom"));
+
+         const finalDistance = isCommute ? 0 : distance;
+         const finalAmount = isCommute ? 0 : amount;
+
          // Note: Assuming conveyance_type exists in Database Types, if it fails, it's bypassed in TS anyway if cast implicitly
          const { error: convError } = await supabase.from("conveyance_records").insert({
              user_id: user!.id,
@@ -444,14 +481,14 @@ const Visits = () => {
              to_location_name: toLocationName,
              to_lat: gpsLat,
              to_lng: gpsLng,
-             distance_km: distance,
+             distance_km: finalDistance,
              vehicle_type: profile.conveyance_type,
              rate_per_km: profile.conveyance_rate || 0,
-             amount: amount
+             amount: finalAmount
          });
          
-         if (!convError && distance > 0) {
-             convResult = { distance, amount, vehicle: profile.conveyance_type, from: fromLocationName, to: toLocationName, fromLat, fromLng, toLat: gpsLat, toLng: gpsLng };
+         if (!convError && finalDistance > 0) {
+             convResult = { distance: finalDistance, amount: finalAmount, vehicle: profile.conveyance_type, from: fromLocationName, to: toLocationName, fromLat, fromLng, toLat: gpsLat, toLng: gpsLng };
          }
       }
       return convResult;
@@ -472,6 +509,13 @@ const Visits = () => {
 
   const cancelVisit = useMutation({
     mutationFn: async (id: string) => {
+      const { data: visit } = await supabase.from("visits").select("visit_date").eq("id", id).single();
+      if (!visit) throw new Error("Visit not found");
+      const isDayEnded = await checkIfDayEnded(visit.visit_date);
+      if (isDayEnded) {
+        throw new Error("This day has already been marked ended. Visits cannot be modified.");
+      }
+
       const { error } = await supabase.from("visits").update({ status: "cancelled" as VisitStatus }).eq("id", id);
       if (error) throw error;
     },
@@ -479,10 +523,18 @@ const Visits = () => {
       queryClient.invalidateQueries({ queryKey: ["visits"] });
       toast.success("Visit cancelled");
     },
+    onError: (e: Error) => toast.error(e.message),
   });
 
   const checkIn = useMutation({
     mutationFn: async (visitId: string) => {
+      const { data: visit } = await supabase.from("visits").select("visit_date").eq("id", visitId).single();
+      if (!visit) throw new Error("Visit not found");
+      const isDayEnded = await checkIfDayEnded(visit.visit_date);
+      if (isDayEnded) {
+        throw new Error("This day has already been marked ended. Visits cannot be checked in.");
+      }
+
       const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
         navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 15000, enableHighAccuracy: true })
       );
@@ -503,6 +555,17 @@ const Visits = () => {
 
   const updateVisitDate = useMutation({
     mutationFn: async ({ id, newDate }: { id: string; newDate: string }) => {
+      const { data: visit } = await supabase.from("visits").select("visit_date").eq("id", id).single();
+      if (!visit) throw new Error("Visit not found");
+      const isOldDayEnded = await checkIfDayEnded(visit.visit_date);
+      if (isOldDayEnded) {
+        throw new Error("This day has already been marked ended. Visits cannot be modified.");
+      }
+      const isNewDayEnded = await checkIfDayEnded(newDate);
+      if (isNewDayEnded) {
+        throw new Error("The target date has already been marked ended. Visits cannot be rescheduled to this date.");
+      }
+
       const { error } = await supabase.from("visits").update({ visit_date: newDate }).eq("id", id);
       if (error) throw error;
     },

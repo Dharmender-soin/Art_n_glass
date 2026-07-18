@@ -7,6 +7,7 @@ import BottomNav from "./BottomNav";
 import { useLocation } from "react-router-dom";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { cn } from "@/lib/utils";
+import NotificationBell from "./NotificationBell";
 
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
@@ -85,8 +86,9 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
               </div>
             )}
 
-            {/* Right side: mobile theme toggle */}
+            {/* Right side: notification bell + mobile theme toggle */}
             <div className="ml-auto flex items-center gap-2">
+              <NotificationBell />
               {isMobile && <ThemeSwitcher />}
             </div>
           </header>

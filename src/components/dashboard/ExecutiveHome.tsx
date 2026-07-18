@@ -15,6 +15,7 @@ import { motion, AnimatePresence, useAnimation, PanInfo } from "framer-motion";
 import { format, isToday, parseISO, addDays, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { Database } from "@/integrations/supabase/types";
+import NotificationBell from "@/components/layout/NotificationBell";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RaceCountdown } from "@/components/dashboard/ChampionBanner";
@@ -1097,117 +1098,9 @@ export const ExecutiveHome = () => {
                         </button>
                     </div>
                     {/* Bell */}
-                    <div className="relative">
-                        <button
-                            onClick={() => setNotifOpen(!notifOpen)}
-                            className="relative p-2 rounded-full bg-muted/60 border border-border cursor-pointer hover:bg-muted transition-colors"
-                        >
-                            <Bell className="h-4 w-4 text-muted-foreground dark:text-white/50" />
-                            {notifications.length > 0 && (
-                                <div className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 bg-red-500 rounded-full flex items-center justify-center px-1">
-                                    <span className="text-[9px] font-extrabold text-foreground">{notifications.length}</span>
-                                </div>
-                            )}
-                        </button>
-                    </div>
+                    <NotificationBell />
                 </div>
             </div>
-
-            {/* ── NOTIFICATION DRAWER ── */}
-            <AnimatePresence>
-                {notifOpen && (
-                    <>
-                        {/* Backdrop */}
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
-                            onClick={() => setNotifOpen(false)}
-                        />
-                        {/* Panel */}
-                        <motion.div
-                            initial={{ opacity: 0, y: -20, scale: 0.97 }}
-                            animate={{ opacity: 1, y: 0, scale: 1 }}
-                            exit={{ opacity: 0, y: -20, scale: 0.97 }}
-                            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                            className="fixed top-16 right-4 z-50 w-[calc(100vw-32px)] max-w-sm bg-[#12141A] border border-border rounded-2xl shadow-2xl shadow-black/60 overflow-hidden"
-                        >
-                            {/* Header */}
-                            <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-                                <div className="flex items-center gap-2">
-                                    <Bell className="h-4 w-4 text-muted-foreground dark:text-white/50" />
-                                    <h3 className="text-sm font-bold text-foreground">Notifications</h3>
-                                    {notifications.length > 0 && (
-                                        <span className="bg-red-500 text-foreground text-[9px] font-bold px-1.5 py-0.5 rounded-full">{notifications.length}</span>
-                                    )}
-                                </div>
-                                <button onClick={() => setNotifOpen(false)} className="p-1 rounded-lg hover:bg-muted transition-colors">
-                                    <X className="h-4 w-4 text-muted-foreground dark:text-white/50" />
-                                </button>
-                            </div>
-
-                            {/* Items */}
-                            <div className="max-h-[70vh] overflow-y-auto">
-                                {notifications.length === 0 ? (
-                                    <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                                        <div className="w-12 h-12 rounded-2xl bg-muted/60 border border-border flex items-center justify-center mb-3">
-                                            <Bell className="h-5 w-5 text-muted-foreground dark:text-white/20" />
-                                        </div>
-                                        <p className="text-sm font-semibold text-muted-foreground dark:text-white/50">All caught up!</p>
-                                        <p className="text-xs text-muted-foreground dark:text-white/25 mt-1">No pending alerts right now</p>
-                                    </div>
-                                ) : (
-                                    <div className="p-3 space-y-2">
-                                        {notifications.map((notif) => {
-                                            const cfg = {
-                                                danger: { bg: "bg-red-500/10", border: "border-red-500/25", dot: "bg-red-500", text: "text-red-400", icon: "🚨" },
-                                                warning: { bg: "bg-amber-500/10", border: "border-amber-500/25", dot: "bg-amber-500", text: "text-amber-400", icon: "⚠️" },
-                                                info: { bg: "bg-blue-500/10", border: "border-blue-500/25", dot: "bg-blue-500", text: "text-blue-400", icon: "ℹ️" },
-                                            }[notif.type];
-                                            const getAction = () => {
-                                                setNotifOpen(false);
-                                                if (notif.id.startsWith('overdue') || notif.id === 'today-pending' || notif.id === 'followup') {
-                                                    navigate('/visits');
-                                                }
-                                            };
-                                            return (
-                                                <div
-                                                    key={notif.id}
-                                                    className={`${cfg.bg} border ${cfg.border} rounded-xl p-3 flex gap-3 items-start cursor-pointer hover:opacity-80 active:scale-[0.98] transition-all`}
-                                                    onClick={getAction}
-                                                >
-                                                    <span className="text-base leading-none mt-0.5">{cfg.icon}</span>
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className={`text-xs font-bold ${cfg.text} mb-0.5`}>{notif.title}</p>
-                                                        <p className="text-[11px] text-muted-foreground dark:text-white/50 leading-snug">{notif.desc}</p>
-                                                    </div>
-                                                    <button
-                                                        onClick={(e) => { e.stopPropagation(); dismissNotif(notif.id); }}
-                                                        className="p-1 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 shrink-0 transition-colors"
-                                                    >
-                                                        <X className="h-3.5 w-3.5 text-muted-foreground dark:text-white/30" />
-                                                    </button>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Footer */}
-                            <div className="px-4 py-3 border-t border-border">
-                                <button
-                                    onClick={dismissAll}
-                                    className="w-full text-xs font-semibold text-muted-foreground dark:text-white/30 hover:text-foreground dark:hover:text-white/50 transition-colors text-center"
-                                >
-                                    Dismiss All
-                                </button>
-                            </div>
-                        </motion.div>
-                    </>
-                )}
-            </AnimatePresence>
 
             <div className="px-4 pt-5 pb-2 space-y-4 w-full max-w-full overflow-x-hidden">
 

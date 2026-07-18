@@ -91,7 +91,7 @@ const Badge = ({ rec, onClick }: { rec: WOSRecord; onClick: () => void }) => {
 
 // ─── Shared Table Component ───────────────────────────────────────────────────
 const PivotTable = ({
-  pivotData, colIds, workTypeGroups, isClosed, onStatusClick, onProjectStatusClick, isManager
+  pivotData, colIds, workTypeGroups, isClosed, onStatusClick, onProjectStatusClick, isManager, allWorkTypes
 }: {
   pivotData: PivotExecutive[];
   colIds: string[];
@@ -100,146 +100,284 @@ const PivotTable = ({
   onStatusClick: (rec: WOSRecord) => void;
   onProjectStatusClick: (clientId: string, clientName: string, currentStatus: string) => void;
   isManager: boolean;
+  allWorkTypes: any[];
 }) => {
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
-      <div className="overflow-auto" style={{ maxHeight: isClosed ? "360px" : "calc(100vh - 340px)" }}>
-        <table className="w-full text-xs border-collapse min-w-max">
-          {/* ── THEAD ── */}
-          <thead className="sticky top-0 z-10">
-            <tr>
-              <th rowSpan={2} className="bg-slate-900 dark:bg-slate-950 text-slate-300 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] min-w-[120px] sticky left-0 z-20 align-bottom">Executive</th>
-              <th rowSpan={2} className="bg-slate-800 dark:bg-slate-800/80 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] min-w-[90px] align-bottom">Partner</th>
-              <th rowSpan={2} className="bg-slate-800 dark:bg-slate-900 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] min-w-[130px] align-bottom">Client Name</th>
-              <th rowSpan={2} className="bg-slate-800 dark:bg-slate-900 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] min-w-[120px] align-bottom">Address</th>
-              <th rowSpan={2} className="bg-slate-800 dark:bg-slate-900 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-center font-bold uppercase tracking-wider text-[10px] min-w-[95px] align-bottom">Mobile</th>
-              {workTypeGroups.map(g => (
-                <th key={g.typeOfWork} colSpan={g.subTypes.length}
-                  className="bg-indigo-700 dark:bg-indigo-800 text-white border-b border-r border-indigo-500/40 px-2 py-2 text-center font-bold text-[10px] uppercase tracking-wider whitespace-nowrap">
-                  {g.typeOfWork}
-                </th>
+    <>
+      {/* ── DESKTOP LAYOUT (Hidden on mobile/tablet) ── */}
+      <div className="hidden lg:block rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+        <div className="overflow-auto" style={{ maxHeight: isClosed ? "360px" : "calc(100vh - 340px)" }}>
+          <table className="w-full text-xs border-collapse table-fixed">
+            <colgroup>
+              <col style={{ width: "9%" }} />  {/* Executive */}
+              <col style={{ width: "7%" }} />  {/* Partner */}
+              <col style={{ width: "10%" }} /> {/* Client Name */}
+              <col style={{ width: "12%" }} /> {/* Address */}
+              <col style={{ width: "8%" }} />  {/* Mobile */}
+              {colIds.map(wtId => (
+                <col key={wtId} style={{ width: "4%" }} /> /* Work Subtypes */
               ))}
-              <th rowSpan={2} className="bg-slate-700 dark:bg-slate-700 text-slate-300 border-b-2 border-r border-slate-600 px-3 py-2.5 text-center font-bold uppercase tracking-wider text-[10px] min-w-[110px] align-bottom">WOSs</th>
-              {/* ── NEW: Project Status column ── */}
-              <th rowSpan={2} className={`border-b-2 border-slate-600 px-3 py-2.5 text-center font-bold uppercase tracking-wider text-[10px] min-w-[110px] align-bottom ${isClosed ? "bg-slate-700 text-slate-300" : "bg-emerald-800 text-emerald-200"}`}>
-                Project Status
-              </th>
-            </tr>
-            <tr>
-              {workTypeGroups.flatMap(g => g.subTypes.map(st => (
-                <th key={st.id}
-                  className="bg-indigo-900/70 dark:bg-indigo-950 text-indigo-200 border-b-2 border-r border-indigo-500/30 px-2 py-1.5 text-center font-semibold text-[10px] min-w-[76px] whitespace-nowrap uppercase">
-                  {st.subWork}
+              <col style={{ width: "6%" }} />  {/* WOSs Summary */}
+              <col style={{ width: "8%" }} />  {/* Project Status */}
+            </colgroup>
+            {/* ── THEAD ── */}
+            <thead className="sticky top-0 z-10">
+              <tr>
+                <th rowSpan={2} className="bg-slate-900 dark:bg-slate-950 text-slate-300 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] sticky left-0 z-20 align-bottom">Executive</th>
+                <th rowSpan={2} className="bg-slate-800 dark:bg-slate-800/80 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] align-bottom">Partner</th>
+                <th rowSpan={2} className="bg-slate-800 dark:bg-slate-900 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] align-bottom">Client Name</th>
+                <th rowSpan={2} className="bg-slate-800 dark:bg-slate-900 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] align-bottom">Address</th>
+                <th rowSpan={2} className="bg-slate-800 dark:bg-slate-900 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-center font-bold uppercase tracking-wider text-[10px] align-bottom">Mobile</th>
+                {workTypeGroups.map(g => (
+                  <th key={g.typeOfWork} colSpan={g.subTypes.length}
+                    className="bg-indigo-700 dark:bg-indigo-800 text-white border-b border-r border-indigo-500/40 px-1.5 py-2 text-center font-bold text-[9px] uppercase tracking-wider truncate">
+                    {g.typeOfWork}
+                  </th>
+                ))}
+                <th rowSpan={2} className="bg-slate-700 dark:bg-slate-700 text-slate-300 border-b-2 border-r border-slate-600 px-3 py-2.5 text-center font-bold uppercase tracking-wider text-[10px] align-bottom">WOSs</th>
+                {/* ── NEW: Project Status column ── */}
+                <th rowSpan={2} className={`border-b-2 border-slate-600 px-3 py-2.5 text-center font-bold uppercase tracking-wider text-[10px] align-bottom ${isClosed ? "bg-slate-700 text-slate-300" : "bg-emerald-800 text-emerald-200"}`}>
+                  Project Status
                 </th>
-              )))}
-            </tr>
-          </thead>
+              </tr>
+              <tr>
+                {workTypeGroups.flatMap(g => g.subTypes.map(st => (
+                  <th key={st.id}
+                    className="bg-indigo-900/70 dark:bg-indigo-950 text-indigo-200 border-b-2 border-r border-indigo-500/30 px-1 py-1 text-center font-semibold text-[8.5px] uppercase truncate"
+                    title={st.subWork}>
+                    {st.subWork}
+                  </th>
+                )))}
+              </tr>
+            </thead>
 
-          {/* ── TBODY ── */}
-          <tbody>
-            {pivotData.map((exec, ei) =>
-              exec.clients.map((client, ci) => (
-                <tr key={`${exec.executive_id}-${client.client_id}`}
-                  className={`border-b border-slate-100 dark:border-slate-800 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors ${ci%2===1?"bg-slate-50/50":"bg-white dark:bg-transparent"}`}>
+            {/* ── TBODY ── */}
+            <tbody>
+              {pivotData.map((exec, ei) =>
+                exec.clients.map((client, ci) => (
+                  <tr key={`${exec.executive_id}-${client.client_id}`}
+                    className={`border-b border-slate-100 dark:border-slate-800 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors ${ci%2===1?"bg-slate-50/50":"bg-white dark:bg-transparent"}`}>
 
-                  {ci===0 && (
-                    <td rowSpan={exec.clients.length}
-                      className={`border-r border-slate-200 dark:border-slate-700 px-3 py-2.5 align-middle sticky left-0 z-10 ${ei%2===0?"bg-slate-50 dark:bg-slate-800/50":"bg-slate-100/50 dark:bg-slate-800/80"}`}>
-                      <div className="flex items-center gap-2">
-                        <div className={`h-8 w-8 rounded-lg bg-gradient-to-br ${avatarGrad(exec.executive_name)} flex items-center justify-center text-white text-[11px] font-extrabold shadow-sm shrink-0`}>
-                          {initials(exec.executive_name)}
+                    {ci===0 && (
+                      <td rowSpan={exec.clients.length}
+                        className={`border-r border-slate-200 dark:border-slate-700 px-3 py-2.5 align-middle sticky left-0 z-10 ${ei%2===0?"bg-slate-50 dark:bg-slate-800/50":"bg-slate-100/50 dark:bg-slate-800/80"}`}>
+                        <div className="flex items-center gap-2">
+                          <div className={`h-8 w-8 rounded-lg bg-gradient-to-br ${avatarGrad(exec.executive_name)} flex items-center justify-center text-white text-[11px] font-extrabold shadow-sm shrink-0`}>
+                            {initials(exec.executive_name)}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-800 dark:text-slate-100 text-[11px] truncate max-w-[80px]" title={exec.executive_name}>{exec.executive_name}</p>
+                            <p className="text-[9px] text-indigo-500 dark:text-indigo-400 font-semibold mt-px">
+                              {exec.clients.length} client{exec.clients.length!==1?"s":""}
+                            </p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="font-bold text-slate-800 dark:text-slate-100 text-[11px] truncate max-w-[80px]">{exec.executive_name}</p>
-                          <p className="text-[9px] text-indigo-500 dark:text-indigo-400 font-semibold mt-px">
-                            {exec.clients.length} client{exec.clients.length!==1?"s":""}
-                          </p>
-                        </div>
+                      </td>
+                    )}
+
+                    <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
+                      {client.partner_name
+                        ? <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-700/50 truncate block w-full" title={client.partner_name}>{client.partner_name}</span>
+                        : <span className="text-slate-300 dark:text-slate-700">—</span>
+                      }
+                    </td>
+                    <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
+                      <p className="font-semibold text-slate-800 dark:text-slate-200 truncate" title={client.client_name}>{client.client_name}</p>
+                    </td>
+                    <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
+                      <p className="text-slate-500 dark:text-slate-400 truncate" title={client.client_address}>{client.client_address}</p>
+                    </td>
+                    <td className="px-2 py-2 text-center border-r border-slate-100 dark:border-slate-800">
+                      <span className="font-mono text-slate-500 dark:text-slate-400 truncate text-[11px]" title={client.client_mobile}>{client.client_mobile}</span>
+                    </td>
+
+                    {colIds.map(wtId => {
+                      const rec = client.wos[wtId];
+                      return (
+                        <td key={wtId} className="px-0.5 py-1 border-r border-slate-100 dark:border-slate-800">
+                          {rec
+                            ? <Badge rec={rec} onClick={() => onStatusClick(rec)} />
+                            : <div className="flex items-center justify-center text-slate-200 dark:text-slate-800 text-base select-none">·</div>
+                          }
+                        </td>
+                      );
+                    })}
+
+                    {/* WOSs column */}
+                    <td className="px-1 py-2 border-r border-slate-100 dark:border-slate-800">
+                      <div className="flex flex-wrap gap-0.5 max-h-12 overflow-y-auto">
+                        {client.partners.length > 0
+                          ? client.partners.map(p => (
+                              <span key={p} className="inline-flex items-center px-1 py-0.2 text-[8px] font-bold rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700/50 whitespace-nowrap truncate max-w-[50px]" title={p}>{p}</span>
+                            ))
+                          : <span className="text-slate-300 dark:text-slate-700 text-xs">·</span>
+                        }
                       </div>
                     </td>
+
+                    {/* ── Project Status column ── */}
+                    <td className="px-2 py-2 text-center">
+                      {isClosed ? (
+                        // In closed table: show Closed badge + reopen option for manager
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                            <Archive className="h-3 w-3" /> Closed
+                          </span>
+                          {isManager && (
+                            <button
+                              onClick={() => onProjectStatusClick(client.client_id, client.client_name, "closed")}
+                              className="text-[9px] font-semibold text-indigo-500 hover:text-indigo-700 underline transition-colors"
+                            >
+                              Reopen
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        // In active table: show Active badge + Close Project button for manager
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/40">
+                            <CheckCircle2 className="h-3 w-3" /> Active
+                          </span>
+                          {isManager && (
+                            <button
+                              onClick={() => onProjectStatusClick(client.client_id, client.client_name, "active")}
+                              className="text-[9px] font-semibold text-rose-500 hover:text-rose-700 underline transition-colors"
+                            >
+                              Close Project
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── MOBILE / TABLET LAYOUT (Hidden on desktop) ── */}
+      <div className="block lg:hidden space-y-3">
+        {pivotData.map(exec =>
+          exec.clients.map(client => (
+            <div key={`${exec.executive_id}-${client.client_id}`}
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-4 shadow-sm space-y-3">
+              
+              {/* Executive & Status Header */}
+              <div className="flex items-start justify-between gap-2 border-b border-slate-100 dark:border-slate-800 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <div className={`h-7 w-7 rounded-lg bg-gradient-to-br ${avatarGrad(exec.executive_name)} flex items-center justify-center text-white text-[10px] font-extrabold shadow-sm shrink-0`}>
+                    {initials(exec.executive_name)}
+                  </div>
+                  <div>
+                    <p className="font-bold text-slate-800 dark:text-slate-100 text-xs">{exec.executive_name}</p>
+                    <p className="text-[10px] text-slate-400">Executive</p>
+                  </div>
+                </div>
+
+                <div className="text-right shrink-0">
+                  {isClosed ? (
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                        <Archive className="h-2.5 w-2.5"/> Closed
+                      </span>
+                      {isManager && (
+                        <button onClick={() => onProjectStatusClick(client.client_id, client.client_name, "closed")}
+                          className="text-[9px] font-semibold text-indigo-500 hover:text-indigo-700 underline transition-colors">
+                          Reopen
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-end gap-1">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold rounded bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/40">
+                        <CheckCircle2 className="h-2.5 w-2.5"/> Active
+                      </span>
+                      {isManager && (
+                        <button onClick={() => onProjectStatusClick(client.client_id, client.client_name, "active")}
+                          className="text-[9px] font-semibold text-rose-500 hover:text-rose-700 underline transition-colors">
+                          Close Project
+                        </button>
+                      )}
+                    </div>
                   )}
+                </div>
+              </div>
 
-                  <td className="px-3 py-2 border-r border-slate-100 dark:border-slate-800">
-                    {client.partner_name
-                      ? <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-bold rounded-md bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-700/50 whitespace-nowrap">{client.partner_name}</span>
-                      : <span className="text-slate-300 dark:text-slate-700">—</span>
-                    }
-                  </td>
-                  <td className="px-3 py-2 border-r border-slate-100 dark:border-slate-800">
-                    <p className="font-semibold text-slate-800 dark:text-slate-200 whitespace-nowrap">{client.client_name}</p>
-                  </td>
-                  <td className="px-3 py-2 border-r border-slate-100 dark:border-slate-800">
-                    <p className="text-slate-500 dark:text-slate-400 truncate max-w-[120px]">{client.client_address}</p>
-                  </td>
-                  <td className="px-3 py-2 text-center border-r border-slate-100 dark:border-slate-800">
-                    <span className="font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap text-[11px]">{client.client_mobile}</span>
-                  </td>
+              {/* Client & Partner Details */}
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Client Name</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{client.client_name}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Partner</p>
+                  <p className="mt-0.5">
+                    {client.partner_name ? (
+                      <span className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-200 whitespace-nowrap">
+                        {client.partner_name}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300 dark:text-slate-700">—</span>
+                    )}
+                  </p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Address</p>
+                  <p className="text-slate-600 dark:text-slate-400 mt-0.5">{client.client_address}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Mobile</p>
+                  <p className="font-mono text-slate-600 dark:text-slate-400 mt-0.5 text-[11px]">{client.client_mobile}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">WOS Summary</p>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {client.partners.length > 0 ? (
+                      client.partners.map(p => (
+                        <span key={p} className="inline-flex items-center px-1.5 py-0.2 text-[8px] font-bold rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 whitespace-nowrap">
+                          {p}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-slate-300 dark:text-slate-700 text-xs">·</span>
+                    )}
+                  </div>
+                </div>
+              </div>
 
+              {/* WOS Badges / Categories */}
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2">WOS Pipeline Items</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {colIds.map(wtId => {
                     const rec = client.wos[wtId];
+                    if (!rec) return null;
+                    const wt = allWorkTypes.find(t => t.id === wtId);
+                    const label = wt ? `${wt.type_of_work} (${wt.sub_work})` : "Work Item";
                     return (
-                      <td key={wtId} className="px-1.5 py-1.5 border-r border-slate-100 dark:border-slate-800">
-                        {rec
-                          ? <Badge rec={rec} onClick={() => onStatusClick(rec)} />
-                          : <div className="flex items-center justify-center text-slate-200 dark:text-slate-800 text-base select-none">·</div>
-                        }
-                      </td>
+                      <div key={wtId} className="bg-slate-50 dark:bg-slate-800/40 rounded-lg p-2 border border-slate-100 dark:border-slate-800 flex flex-col justify-between gap-1.5">
+                        <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 truncate" title={label}>
+                          {wt ? `${wt.type_of_work} - ${wt.sub_work}` : "Item"}
+                        </span>
+                        <div className="w-full">
+                          <Badge rec={rec} onClick={() => onStatusClick(rec)} />
+                        </div>
+                      </div>
                     );
                   })}
+                  {Object.keys(client.wos).length === 0 && (
+                    <p className="text-xs text-slate-400 col-span-full">No WOS items added.</p>
+                  )}
+                </div>
+              </div>
 
-                  {/* WOSs column */}
-                  <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
-                    <div className="flex flex-wrap gap-1">
-                      {client.partners.length > 0
-                        ? client.partners.map(p => (
-                            <span key={p} className="inline-flex items-center px-1.5 py-0.5 text-[9px] font-bold rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700/50 whitespace-nowrap">{p}</span>
-                          ))
-                        : <span className="text-slate-300 dark:text-slate-700 text-base">·</span>
-                      }
-                    </div>
-                  </td>
-
-                  {/* ── Project Status column ── */}
-                  <td className="px-2 py-2 text-center">
-                    {isClosed ? (
-                      // In closed table: show Closed badge + reopen option for manager
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                          <Archive className="h-3 w-3" /> Closed
-                        </span>
-                        {isManager && (
-                          <button
-                            onClick={() => onProjectStatusClick(client.client_id, client.client_name, "closed")}
-                            className="text-[9px] font-semibold text-indigo-500 hover:text-indigo-700 underline transition-colors"
-                          >
-                            Reopen
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      // In active table: show Active badge + Close Project button for manager
-                      <div className="flex flex-col items-center gap-1">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/40">
-                          <CheckCircle2 className="h-3 w-3" /> Active
-                        </span>
-                        {isManager && (
-                          <button
-                            onClick={() => onProjectStatusClick(client.client_id, client.client_name, "active")}
-                            className="text-[9px] font-semibold text-rose-500 hover:text-rose-700 underline transition-colors"
-                          >
-                            Close Project
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+            </div>
+          ))
+        )}
       </div>
-    </div>
+    </>
   );
 };
 
@@ -261,6 +399,18 @@ const Hierarchy = () => {
   const [confirmClose, setConfirmClose] = useState<{ clientId: string; clientName: string; currentStatus: string } | null>(null);
   const [blockClose, setBlockClose] = useState<{ clientName: string; blockers: string[] } | null>(null);
   const [showClosedTable, setShowClosedTable] = useState(false);
+
+  // Pre-filter table if clientId is passed in the URL parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const clientId = params.get("clientId");
+    if (clientId && rawWOS.length > 0) {
+      const match = rawWOS.find(item => item.client_id === clientId);
+      if (match && match.clients && (match.clients as any).name) {
+        setFSearch((match.clients as any).name);
+      }
+    }
+  }, [rawWOS]);
 
   const { data: showrooms=[] } = useQuery({ queryKey:["sr-h3"], enabled:isMdOrAdmin || (role === "manager" && showroomIds && showroomIds.length > 1),
     queryFn: async()=>{ const{data}=await supabase.from("showrooms").select("id,name").order("name"); return data||[]; } });
@@ -352,11 +502,42 @@ const Hierarchy = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const closedPivot = useMemo(()=>buildPivot("closed"),[rawWOS,profileMap,showroomMap,fExec,fStatus,fShowroom,fSearch,allWorkTypes]);
 
-  const stats = useMemo(()=>{
-    let total=0,won=0,sent=0,pending=0;
-    rawWOS.forEach(r=>{ total++; if(r.work_status==="won") won++; else if(r.work_status==="submitted") sent++; else if(r.work_status==="pending"||r.work_status==="draft") pending++; });
-    return {total,won,sent,pending,rate:total>0?Math.round((won/total)*100):0};
-  },[rawWOS]);
+  const stats = useMemo(() => {
+    let total = 0, won = 0, quotation = 0, lost = 0, pending = 0;
+    rawWOS.forEach(r => {
+      if (!r.clients) return;
+      
+      // Filter by showroom
+      const execShowroom = showroomMap[r.created_by] ?? null;
+      if (fShowroom !== "all" && execShowroom !== fShowroom) return;
+      
+      // Filter by executive
+      if (fExec !== "all" && r.created_by !== fExec) return;
+      
+      // Filter by search
+      if (fSearch.trim()) {
+        const q = fSearch.toLowerCase();
+        const clientName = r.clients.name.toLowerCase();
+        const clientAddress = (r.clients.address || "").toLowerCase();
+        const execName = (profileMap[r.created_by] || "").toLowerCase();
+        if (!clientName.includes(q) && !clientAddress.includes(q) && !execName.includes(q)) return;
+      }
+
+      total++;
+      if (r.work_status === "won") won++;
+      else if (r.work_status === "lost") lost++;
+      else if (r.work_status === "submitted") quotation++;
+      else if (r.work_status === "pending" || r.work_status === "draft") pending++;
+    });
+    return {
+      total,
+      won,
+      quotation,
+      lost,
+      pending,
+      rate: total > 0 ? Math.round((won / total) * 100) : 0
+    };
+  }, [rawWOS, fExec, fShowroom, fSearch, showroomMap, profileMap]);
 
   const execList = useMemo(()=>[...new Map(rawWOS.map(r=>[r.created_by,profileMap[r.created_by]||"Unknown"])).entries()].map(([id,name])=>({id,name})).sort((a,b)=>a.name.localeCompare(b.name)),[rawWOS,profileMap]);
   const hasFilters = fShowroom!=="all"||fExec!=="all"||fStatus!=="all"||fSearch!=="";
@@ -479,7 +660,7 @@ const Hierarchy = () => {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 text-sm">
 
       {/* ══ TOP HEADER ══════════════════════════════════════════════════════════ */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-5 py-3">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-5 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-sm shrink-0">
@@ -500,7 +681,7 @@ const Hierarchy = () => {
       </div>
 
       {/* ══ STICKY FILTER BAR ════════════════════════════════════════════════ */}
-      <div className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-5 py-2.5 shadow-sm">
+      <div className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-5 py-2.5 shadow-sm">
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative flex-1 min-w-[150px] max-w-xs">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400 pointer-events-none"/>
@@ -547,16 +728,16 @@ const Hierarchy = () => {
         </div>
       </div>
 
-      {/* ══ KPI CARDS ════════════════════════════════════════════════════════ */}
-      <div className="px-5 pt-3 pb-0">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 mb-3">
+      <div className="px-4 sm:px-5 pt-3 pb-0">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 mb-3">
           {[
-            { label:"Total WOS", value:stats.total, icon:<Target className="h-4 w-4"/>, grad:"from-slate-600 to-slate-700", extra:null },
-            { label:"Won",       value:stats.won,   icon:<Award className="h-4 w-4"/>,  grad:"from-emerald-500 to-teal-600", extra:`${stats.rate}%` },
-            { label:"Sent",      value:stats.sent,  icon:<Send className="h-4 w-4"/>,   grad:"from-amber-500 to-orange-500", extra:null },
-            { label:"Pending",   value:stats.pending,icon:<BarChart2 className="h-4 w-4"/>,grad:"from-sky-500 to-indigo-500",extra:null },
-          ].map((c,i)=>(
-            <motion.div key={c.label} initial={{opacity:0,y:8}} animate={{opacity:1,y:0}} transition={{delay:i*0.05}}
+            { label: "Total WOS", value: stats.total, icon: <Target className="h-4 w-4" />, grad: "from-slate-600 to-slate-700", extra: null },
+            { label: "Quotation", value: stats.quotation, icon: <Send className="h-4 w-4" />, grad: "from-amber-500 to-orange-500", extra: null },
+            { label: "Won", value: stats.won, icon: <Award className="h-4 w-4" />, grad: "from-emerald-500 to-teal-600", extra: `${stats.rate}%` },
+            { label: "Lost", value: stats.lost, icon: <XCircle className="h-4 w-4" />, grad: "from-rose-500 to-red-600", extra: null },
+            { label: "Pending", value: stats.pending, icon: <BarChart2 className="h-4 w-4" />, grad: "from-sky-500 to-indigo-500", extra: null },
+          ].map((c, i) => (
+            <motion.div key={c.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
               className="bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-all">
               <div className={`h-8 w-8 rounded-lg bg-gradient-to-br ${c.grad} flex items-center justify-center text-white shadow-sm shrink-0`}>
                 {c.icon}
@@ -585,7 +766,7 @@ const Hierarchy = () => {
       </div>
 
       {/* ══ ACTIVE HIERARCHY TABLE ══════════════════════════════════════════ */}
-      <div className="px-5 pb-4">
+      <div className="px-4 sm:px-5 pb-4">
         {/* Section Header */}
         <div className="flex items-center gap-2 mb-2">
           <FolderCheck className="h-4 w-4 text-emerald-500"/>
@@ -614,12 +795,13 @@ const Hierarchy = () => {
             onStatusClick={rec=>{ setSelectedCell(rec); setUpdateStatus(rec.work_status); }}
             onProjectStatusClick={handleProjectStatusClick}
             isManager={isManager}
+            allWorkTypes={allWorkTypes}
           />
         )}
       </div>
 
       {/* ══ CLOSED PROJECTS TABLE (below) ═══════════════════════════════════ */}
-      <div className="px-5 pb-8">
+      <div className="px-4 sm:px-5 pb-8">
         {/* Toggle Header */}
         <button
           onClick={()=>setShowClosedTable(v=>!v)}
@@ -660,6 +842,7 @@ const Hierarchy = () => {
                   onStatusClick={rec=>{ setSelectedCell(rec); setUpdateStatus(rec.work_status); }}
                   onProjectStatusClick={handleProjectStatusClick}
                   isManager={isManager}
+                  allWorkTypes={allWorkTypes}
                 />
               )}
             </motion.div>

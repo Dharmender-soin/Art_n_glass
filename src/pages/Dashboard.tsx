@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ExecutiveHome } from "@/components/dashboard/ExecutiveHome";
+import NotificationBell from "@/components/layout/NotificationBell";
 import { LiveTracking } from "@/components/dashboard/LiveTracking";
 import { ChampionBanner, HallOfFame } from "@/components/dashboard/ChampionBanner";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -834,9 +835,10 @@ const AnalyticsDashboard = () => {
             </p>
           </motion.div>
 
-          {/* Start Day shortcut for Executives */}
-          {isExec && (
-            <motion.div variants={itemVariants}>
+          {/* Start Day shortcut for Executives or Notification Bell for others */}
+          <motion.div variants={itemVariants} className="flex items-center gap-2">
+            {!isExec && <NotificationBell />}
+            {isExec && (
               <a
                 href="/visits"
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-white shadow-md transition-all hover:scale-105"
@@ -845,8 +847,8 @@ const AnalyticsDashboard = () => {
                 <Target className="h-4 w-4" />
                 Start Day / Visits
               </a>
-            </motion.div>
-          )}
+            )}
+          </motion.div>
         </div>
 
         {/* ── Filter Bar — single scrollable row ── */}

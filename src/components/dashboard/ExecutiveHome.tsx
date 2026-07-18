@@ -465,7 +465,7 @@ export const ExecutiveHome = () => {
         queryKey: ["exec-all-user-roles"],
         enabled: !!user && (role === "tl" || role === "manager" || role === "admin" || role === "md"),
         queryFn: async () => {
-            const { data, error } = await supabase.from("user_roles").select("*").eq("is_active" as any, true);
+            const { data, error } = await (supabase.from("user_roles").select("*") as any).eq("is_active", true);
             if (error) throw error;
             return data || [];
         }

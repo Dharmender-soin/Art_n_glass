@@ -38,7 +38,7 @@ type VisitRow = Database["public"]["Tables"]["visits"]["Row"] & {
 };
 type InsertVisitData = {
   visit_date: string;
-  visit_with_type: string;
+  visit_with_type: VisitWithType;
   address: string;
   purpose_id: string;
   purpose: string;
@@ -109,7 +109,7 @@ const Visits = () => {
 
   const [form, setForm] = useState({
     visit_date: format(new Date(), "yyyy-MM-dd"),
-    visit_with_type: "client" as string,
+    visit_with_type: "client" as VisitWithType,
     client_id: "",
     partner_id: "",
     showroom_id: "",
@@ -591,8 +591,8 @@ const Visits = () => {
   };
 
   const canMarkDone = (visit: VisitRow) => {
-    // Allow marking done if planned or in_progress
-    if (visit.status !== "planned" && visit.status !== "in_progress") return false;
+    // Allow marking done if planned
+    if (visit.status !== "planned") return false;
     // Only allow marking done if visit date is today
     if (!isToday(parseISO(visit.visit_date))) return false;
     return true;
@@ -664,7 +664,7 @@ const Visits = () => {
               <div className="space-y-1"><Label>Visit Date</Label><Input type="date" min={todayStr} value={form.visit_date} onChange={(e) => setForm({ ...form, visit_date: e.target.value })} required /></div>
               <div className="space-y-1">
                 <Label>Visit With</Label>
-                <Select value={form.visit_with_type} onValueChange={(v) => setForm({ ...form, visit_with_type: v, client_id: "", partner_id: "", showroom_id: "", address: "", purpose_id: "" })}>
+                <Select value={form.visit_with_type} onValueChange={(v) => setForm({ ...form, visit_with_type: v as VisitWithType, client_id: "", partner_id: "", showroom_id: "", address: "", purpose_id: "" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent className="bg-popover">
                     <SelectItem value="client">Client</SelectItem>

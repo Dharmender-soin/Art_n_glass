@@ -6,7 +6,7 @@ async function testSend() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'apikey': 'sb_publishable_Rs8MWYZC0DOgeqmcTc9pGg_VNCOqbCz',
+        'apikey': 'sb_secret_sli3qU6nC-9_JU1E_T84og_IY1W8em4',
         'Authorization': 'Bearer sb_secret_sli3qU6nC-9_JU1E_T84og_IY1W8em4'
       },
       body: JSON.stringify({

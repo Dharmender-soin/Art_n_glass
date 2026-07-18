@@ -400,17 +400,6 @@ const Hierarchy = () => {
   const [blockClose, setBlockClose] = useState<{ clientName: string; blockers: string[] } | null>(null);
   const [showClosedTable, setShowClosedTable] = useState(false);
 
-  // Pre-filter table if clientId is passed in the URL parameters
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const clientId = params.get("clientId");
-    if (clientId && rawWOS.length > 0) {
-      const match = rawWOS.find(item => item.client_id === clientId);
-      if (match && match.clients && (match.clients as any).name) {
-        setFSearch((match.clients as any).name);
-      }
-    }
-  }, [rawWOS]);
 
   const { data: showrooms=[] } = useQuery({ queryKey:["sr-h3"], enabled:isMdOrAdmin || (role === "manager" && showroomIds && showroomIds.length > 1),
     queryFn: async()=>{ const{data}=await supabase.from("showrooms").select("id,name").order("name"); return data||[]; } });
@@ -450,6 +439,18 @@ const Hierarchy = () => {
       return (data||[]) as unknown as RawWOS[];
     }
   });
+
+  // Pre-filter table if clientId is passed in the URL parameters
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const clientId = params.get("clientId");
+    if (clientId && rawWOS.length > 0) {
+      const match = rawWOS.find(item => item.client_id === clientId);
+      if (match && match.clients && (match.clients as any).name) {
+        setFSearch((match.clients as any).name);
+      }
+    }
+  }, [rawWOS]);
 
   const profileMap = useMemo(()=>{ const m:Record<string,string>={}; profiles.forEach(p=>{ m[p.user_id]=p.full_name||"Unknown"; }); return m; },[profiles]);
   const showroomMap = useMemo(()=>{ const m:Record<string,string|null>={}; userRoles.forEach(r=>{ m[r.user_id]=r.showroom_id; }); return m; },[userRoles]);

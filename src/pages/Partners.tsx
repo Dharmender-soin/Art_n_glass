@@ -422,6 +422,7 @@ const Partners = () => {
   const [search, setSearch] = useState("");
   const [filterCity, setFilterCity] = useState("");
   const [filterType, setFilterType] = useState<string>("");
+  const [filterExecutive, setFilterExecutive] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [editPartner, setEditPartner] = useState<Partner | null>(null);
   const [deletePartner, setDeletePartner] = useState<Partner | null>(null);
@@ -430,6 +431,15 @@ const Partners = () => {
   const [form, setForm] = useState({ ...emptyForm });
   const [editForm, setEditForm] = useState({ ...emptyForm });
   const [clientForm, setClientForm] = useState({ name: "", mobile: "", address: "", city: "", notes: "", status: "new" as const });
+
+  const { data: executivesList = [] } = useQuery({
+    queryKey: ["executives-list-partners"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("user_id, full_name").order("full_name");
+      if (error) throw error;
+      return (data || []) as { user_id: string; full_name: string }[];
+    },
+  });
 
   const { data: partners = [], isLoading } = useQuery({
     queryKey: ["partners", user?.id, role],
@@ -554,7 +564,8 @@ const Partners = () => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.mobile.includes(search);
     const matchCity = !filterCity || p.city?.toLowerCase().includes(filterCity.toLowerCase());
     const matchType = !filterType || filterType === "all" || p.type === filterType;
-    return matchSearch && matchCity && matchType;
+    const matchExec = !filterExecutive || filterExecutive === "all" || p.created_by === filterExecutive;
+    return matchSearch && matchCity && matchType && matchExec;
   });
 
   const partnerIds = useMemo(() => partners.map(p => p.id), [partners]);
@@ -618,7 +629,7 @@ const Partners = () => {
     },
   });
 
-  const isFiltered = !!(search || filterType);
+  const isFiltered = !!(search || (filterType && filterType !== "all") || (filterExecutive && filterExecutive !== "all"));
 
   return (
     <div className="space-y-4">
@@ -645,8 +656,8 @@ const Partners = () => {
       </div>
 
       {/* ── Search + Filter ── */}
-      <div className="flex gap-2">
-        <div className="relative flex-1">
+      <div className="flex flex-wrap gap-2">
+        <div className="relative flex-1 min-w-[200px]">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-white/25 pointer-events-none" />
           <input
             className="w-full h-10 pl-9 pr-4 rounded-xl border border-gray-200 dark:border-white/8 bg-white dark:bg-white/[0.03]
@@ -673,6 +684,19 @@ const Partners = () => {
             <SelectItem value="self">Direct</SelectItem>
           </SelectContent>
         </Select>
+        {role !== "executive" && (
+          <Select value={filterExecutive} onValueChange={setFilterExecutive}>
+            <SelectTrigger className="w-[160px] h-10 rounded-xl border-gray-200 dark:border-white/8 bg-white dark:bg-white/[0.03] text-sm text-foreground">
+              <SelectValue placeholder="All Executives" />
+            </SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="all">All Executives</SelectItem>
+              {executivesList.map((ex) => (
+                <SelectItem key={ex.user_id} value={ex.user_id}>{ex.full_name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* ── List ── */}

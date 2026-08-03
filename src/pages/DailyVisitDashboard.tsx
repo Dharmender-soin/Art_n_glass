@@ -72,34 +72,48 @@ const DailyVisitDashboard = () => {
                 showroom_id: sid,
                 profiles: { full_name: item.full_name }
               };
-            }).filter((item) => item.role === "executive");
+            }).filter((item) => item.role === "executive" || item.role === "tl" || item.role === "backhand_executive");
           })
         );
         return results.flat();
       }
 
-      // Admin / MD / TL: fallback to direct query
+      // Admin / MD / TL: fallback to query user_roles + profiles
       let query = supabase
         .from("user_roles")
         .select("user_id, role, showroom_id")
-        .eq("role", "executive");
+        .in("role", ["executive", "tl", "backhand_executive"]);
       if (filterShowroom && filterShowroom !== "all") {
         query = query.eq("showroom_id", filterShowroom);
       }
       const { data: roles, error: rolesError } = await query;
       if (rolesError) throw rolesError;
       const userIds = [...new Set((roles || []).map((r) => r.user_id))];
-      if (userIds.length === 0) return [];
+
+      // Also include any user who has visits logged for yesterday/today
+      const { data: visitUsers } = await supabase
+        .from("visits")
+        .select("created_by")
+        .in("visit_date", [yesterday, today]);
+      (visitUsers || []).forEach(v => { if (v.created_by) userIds.push(v.created_by); });
+
+      const uniqueUserIds = [...new Set(userIds)];
+      if (uniqueUserIds.length === 0) return [];
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("user_id, full_name")
-        .in("user_id", userIds);
+        .in("user_id", uniqueUserIds);
       if (profilesError) throw profilesError;
       const profileMap = Object.fromEntries((profiles || []).map((p) => [p.user_id, p]));
-      return (roles || []).map((r) => ({
-        ...r,
-        profiles: profileMap[r.user_id] || { full_name: "Unknown" },
-      }));
+      return uniqueUserIds.map((uid) => {
+        const r = (roles || []).find(roleItem => roleItem.user_id === uid);
+        return {
+          user_id: uid,
+          role: r?.role || "executive",
+          showroom_id: r?.showroom_id || null,
+          profiles: profileMap[uid] || { full_name: "Team Member" },
+        };
+      });
     },
   });
 

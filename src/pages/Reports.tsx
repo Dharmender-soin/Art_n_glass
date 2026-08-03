@@ -55,7 +55,8 @@ const Reports = () => {
         .select("*, clients(name), partners(name)")
         .gte("visit_date", dateFrom)
         .lte("visit_date", dateTo)
-        .order("visit_date", { ascending: false });
+        .order("visit_date", { ascending: false })
+        .limit(10000);
       if (error) throw error;
       return (data || []) as VisitWithRelations[];
     },
@@ -73,7 +74,8 @@ const Reports = () => {
         .select("*, master_work_types(type_of_work, sub_work), clients(name)")
         .gte("created_at", dateFrom)
         .lte("created_at", dateTo + "T23:59:59")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(10000);
       if (error) throw error;
       return (data || []) as WorkScopeItemWithJoins[];
     },
@@ -98,7 +100,8 @@ const Reports = () => {
         .gte("date", dateFrom)
         .lte("date", dateTo)
         .order("date", { ascending: false })
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .limit(10000);
       if (error) throw error;
       return data;
     },
@@ -153,7 +156,8 @@ const Reports = () => {
         .gte("visit_date", dsrFrom)
         .lte("visit_date", dsrTo)
         .order("visit_date", { ascending: true })
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: true })
+        .limit(10000);
       if (error) throw error;
       return (data || []) as VisitWithRelations[];
     },
@@ -191,18 +195,24 @@ const Reports = () => {
       const doneCount = dayVisits.filter((v: VisitWithRelations) => v.status === "done").length;
       const dateLabel = format(parseISO(date), "EEEE, dd MMM yyyy");
 
+      const dayKm = conveyanceRecords
+        .filter((r) => r.user_id === dsrEmployee && r.date === date)
+        .reduce((sum, r) => sum + (r.distance_km || 0), 0);
+
       const rowsHtml = dayVisits.map((v: VisitWithRelations, idx: number) => {
         const name = v.clients?.name || v.partners?.name || "\u2014";
         const addr = v.address || v.clients?.address || v.partners?.address || "\u2014";
         const purpose = v.purpose || "\u2014";
         const remarks = v.remarks || "\u2014";
         const type = v.visit_with_type || "solo";
+        const planningDate = v.created_at ? format(parseISO(v.created_at), "dd-MMM-yyyy") : format(parseISO(v.visit_date), "dd-MMM-yyyy");
         const statusColor = v.status === "done" ? "#16a34a" : v.status === "cancelled" ? "#dc2626" : "#d97706";
         const statusLabel = v.status === "done" ? "\u2713 Done" : v.status === "cancelled" ? "\u2717 Cancelled" : "\u23f3 Planned";
         const startTime = v.created_at ? format(parseISO(v.created_at), "hh:mm a") : "\u2014";
         const endTime = (v.done_at && v.status === "done") ? format(parseISO(v.done_at), "hh:mm a") : null;
         return `<tr style="border-bottom:1px solid #e5e7eb;">
           <td style="padding:5px 7px;border:1px solid #e5e7eb;color:#888;font-size:10px;">${idx + 1}</td>
+          <td style="padding:5px 7px;border:1px solid #e5e7eb;font-size:10px;color:#374151;white-space:nowrap;">${planningDate}</td>
           <td style="padding:5px 7px;border:1px solid #e5e7eb;"><strong style="font-size:11px;">${name}</strong><br/><span style="font-size:9px;color:#888;text-transform:capitalize;">${type}</span></td>
           <td style="padding:5px 7px;border:1px solid #e5e7eb;font-size:10px;color:#555;">${addr}</td>
           <td style="padding:5px 7px;border:1px solid #e5e7eb;font-size:10px;">${purpose}</td>
@@ -225,7 +235,10 @@ const Reports = () => {
         <div style="background:#f3f4f6;padding:7px 12px;border-bottom:1px solid #d1d5db;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <div><strong style="font-size:12px;">${dateLabel}</strong><span style="font-size:10px;color:#6b7280;margin-left:8px;">${plannedCount} planned \u2022 ${doneCount} done</span></div>
-            <span style="font-size:10px;font-weight:bold;color:#16a34a;">${doneCount}/${plannedCount} Done</span>
+            <div style="text-align:right;">
+              <span style="font-size:10px;font-weight:bold;color:#16a34a;margin-right:10px;">${doneCount}/${plannedCount} Done</span>
+              <span style="font-size:10px;font-weight:bold;color:#2563eb;background:#dbeafe;padding:2px 6px;border-radius:4px;">🚗 ${dayKm.toFixed(1)} KM</span>
+            </div>
           </div>
           <div style="margin-top:4px;font-size:10px;color:#374151;">
             <span style="margin-right:14px;">\uD83D\uDD35 <strong>Day Start:</strong> <span style="color:#166534;font-weight:600;">${dayStartTime}</span></span>
@@ -235,6 +248,7 @@ const Reports = () => {
         <table style="width:100%;border-collapse:collapse;font-size:11px;">
           <thead><tr style="background:#f9fafb;">
             <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;width:28px;">#</th>
+            <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Planning Date</th>
             <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Customer / Partner</th>
             <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Address</th>
             <th style="padding:5px 7px;border:1px solid #e5e7eb;text-align:left;font-size:10px;">Purpose</th>

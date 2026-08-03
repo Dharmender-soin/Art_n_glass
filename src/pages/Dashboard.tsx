@@ -320,7 +320,7 @@ const AnalyticsDashboard = () => {
 
   // ── Fetch Profiles (names) ───────────────────────
   const execUserIds = useMemo(
-    () => [...new Set(allUserRoles.filter(r => r.role === "executive").map(r => r.user_id))],
+    () => [...new Set(allUserRoles.map(r => r.user_id))],
     [allUserRoles]
   );
 

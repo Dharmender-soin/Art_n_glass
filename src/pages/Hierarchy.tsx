@@ -394,6 +394,7 @@ const Hierarchy = () => {
   const [fStatus, setFStatus]   = useState("all");
   const [fShowroom, setFShowroom] = useState("all");
   const [fSearch, setFSearch]   = useState("");
+  const [viewGrouping, setViewGrouping] = useState<"executive" | "architect">("executive");
   const [selectedCell, setSelectedCell] = useState<WOSRecord|null>(null);
   const [updateStatus, setUpdateStatus] = useState<WorkStatus>("won");
   const [confirmClose, setConfirmClose] = useState<{ clientId: string; clientName: string; currentStatus: string } | null>(null);
@@ -412,7 +413,7 @@ const Hierarchy = () => {
   const { data: rawWOS=[], isLoading } = useQuery({ queryKey:["wos-h3", user?.id, role, showroomIds], enabled:canAccess && !!user,
     queryFn: async()=>{
       let q = supabase.from("work_scope_items")
-        .select(`id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile,project_status,partners(name)),master_work_types(type_of_work,sub_work)`);
+        .select(`id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile,project_status,architect_name,partners(name)),master_work_types(type_of_work,sub_work)`);
 
       if (role === "tl" && user) {
         // TL: own WOS + all executives who report to this TL
@@ -475,9 +476,13 @@ const Hierarchy = () => {
       const clientProjStatus = (r.clients as any).project_status || "active";
       if (clientProjStatus !== statusFilter) return;
 
-      const eid=r.created_by;
-      if(!em.has(eid)) em.set(eid,{executive_id:eid,executive_name:profileMap[eid]||"Unknown",showroom_id:showroomMap[eid]??null,clients:[]});
-      const exec=em.get(eid)!;
+      const groupKey = viewGrouping === "architect"
+        ? (((r.clients as any).architect_name && (r.clients as any).architect_name.trim()) ? `Arch: ${(r.clients as any).architect_name.trim()}` : "Direct / No Architect")
+        : r.created_by;
+      const displayName = viewGrouping === "architect" ? groupKey : (profileMap[groupKey] || "Unknown");
+
+      if(!em.has(groupKey)) em.set(groupKey,{executive_id:groupKey,executive_name:displayName,showroom_id:viewGrouping === "architect" ? null : (showroomMap[groupKey]??null),clients:[]});
+      const exec=em.get(groupKey)!;
       let cl=exec.clients.find(c=>c.client_id===r.client_id);
       if(!cl){
         const builderName = (r.clients as any).partners?.name ?? null;
@@ -491,8 +496,8 @@ const Hierarchy = () => {
       if(pName && !cl.partners.includes(pName)) cl.partners.push(pName);
     });
     let res=Array.from(em.values()).sort((a,b)=>a.executive_name.localeCompare(b.executive_name));
-    if(fShowroom!=="all") res=res.filter(e=>e.showroom_id===fShowroom);
-    if(fExec!=="all") res=res.filter(e=>e.executive_id===fExec);
+    if(fShowroom!=="all" && viewGrouping === "executive") res=res.filter(e=>e.showroom_id===fShowroom);
+    if(fExec!=="all" && viewGrouping === "executive") res=res.filter(e=>e.executive_id===fExec);
     if(fStatus!=="all") res=res.map(e=>({...e,clients:e.clients.filter(c=>Object.values(c.wos).some(w=>w.work_status===fStatus))})).filter(e=>e.clients.length>0);
     if(fSearch.trim()){ const q=fSearch.toLowerCase(); res=res.map(e=>({...e,clients:e.clients.filter(c=>c.client_name.toLowerCase().includes(q)||c.client_address.toLowerCase().includes(q))})).filter(e=>e.clients.length>0||e.executive_name.toLowerCase().includes(q)); }
     return res;
@@ -709,6 +714,11 @@ const Hierarchy = () => {
               {execList.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           </div>
+          <select value={viewGrouping} onChange={e=>setViewGrouping(e.target.value as "executive" | "architect")}
+            className="bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700/50 text-indigo-700 dark:text-indigo-300 rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:border-indigo-400 appearance-none cursor-pointer">
+            <option value="executive">👤 Group: Executive Wise</option>
+            <option value="architect">📐 Group: Architect Wise</option>
+          </select>
           <select value={fStatus} onChange={e=>setFStatus(e.target.value)}
             className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-400 appearance-none cursor-pointer">
             <option value="all">All Stages</option>

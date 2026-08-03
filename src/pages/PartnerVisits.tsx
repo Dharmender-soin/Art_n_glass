@@ -184,7 +184,7 @@ const PartnerVisits = () => {
         .eq("status", "done")
         .in("created_by", targetUserIds)
         .order("visit_date", { ascending: false })
-        .limit(1000);
+        .limit(10000);
       return data || [];
     },
   });

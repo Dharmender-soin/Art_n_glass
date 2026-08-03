@@ -12,10 +12,11 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, CalendarCheck, MapPin, Camera, Loader2, ChevronDown, ChevronRight, Search } from "lucide-react";
+import { Plus, CalendarCheck, MapPin, Camera, Loader2, ChevronDown, ChevronRight, Search, UserCircle } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import type { Database } from "@/integrations/supabase/types";
+import { sendNotification } from "@/lib/notifications";
 import { calculateDistance, calculateRouteDistance } from "@/lib/utils";
 import { useJsApiLoader, Autocomplete } from "@react-google-maps/api";
 import { useSearchParams } from "react-router-dom";
@@ -143,7 +144,8 @@ const Visits = () => {
       let q = supabase
         .from("visits")
         .select("*, clients(name, address), partners(name, address)")
-        .order("visit_date", { ascending: false });
+        .order("visit_date", { ascending: false })
+        .limit(10000);
 
       if (role === "executive" && user) {
         // Exec sees own visits only
@@ -184,6 +186,16 @@ const Visits = () => {
         })
       );
       return visitsWithSignedUrls;
+    },
+  });
+
+  const creatorUserIds = useMemo(() => [...new Set(visits.map(v => v.created_by).filter(Boolean))], [visits]);
+  const { data: creatorProfilesMap = {} } = useQuery({
+    queryKey: ["visit-creator-profiles", creatorUserIds],
+    enabled: creatorUserIds.length > 0,
+    queryFn: async () => {
+      const { data } = await supabase.from("profiles").select("user_id, full_name").in("user_id", creatorUserIds);
+      return Object.fromEntries((data || []).map(p => [p.user_id, p.full_name]));
     },
   });
 
@@ -339,6 +351,14 @@ const Visits = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["visits"] });
       toast.success("Visit planned!");
+      if (reportsTo) {
+        sendNotification({
+          userId: reportsTo,
+          title: "New Visit Planned 📅",
+          message: `A visit for ${form.visit_date} has been planned.`,
+          targetUrl: "/visits",
+        });
+      }
       setForm({ visit_date: format(new Date(), "yyyy-MM-dd"), visit_with_type: "client", client_id: "", partner_id: "", showroom_id: "", address: "", purpose_id: "", travel_mode: "own", pooled_with_user_id: "" });
       setDialogOpen(false);
     },
@@ -495,6 +515,14 @@ const Visits = () => {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["visits"] });
+      if (reportsTo) {
+        sendNotification({
+          userId: reportsTo,
+          title: "Visit Marked Done ✅",
+          message: `A visit was marked Done on ${format(new Date(), "dd MMM yyyy")}`,
+          targetUrl: "/visits",
+        });
+      }
       setDoneDialogId(null);
       setRemarks("");
       setPhoto(null);
@@ -927,14 +955,25 @@ const Visits = () => {
                       <CardContent className="p-4">
                         <div className="flex items-start justify-between mb-2">
                           <div>
-                            <p className="font-semibold">{(v as VisitRow).clients?.name || (v as VisitRow).partners?.name || (v.address ? v.address.split(',')[0] : (v.visit_with_type === 'showroom' ? 'Showroom Visit' : v.visit_with_type === 'hotel' ? 'Hotel Visit' : v.visit_with_type === 'home' ? 'Home Visit' : '—'))}</p>
-                            <p className="text-xs text-muted-foreground capitalize">{v.visit_with_type}</p>
+                            <p className="font-semibold text-base font-bold text-foreground">{(v as VisitRow).clients?.name || (v as VisitRow).partners?.name || (v.address ? v.address.split(',')[0] : (v.visit_with_type === 'showroom' ? 'Showroom Visit' : v.visit_with_type === 'hotel' ? 'Hotel Visit' : v.visit_with_type === 'home' ? 'Home Visit' : '—'))}</p>
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                              <span className="text-xs text-muted-foreground font-medium capitalize">{v.visit_with_type}</span>
+                              <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-200 dark:border-blue-500/20">
+                                <UserCircle className="h-3 w-3" />
+                                KAM: {creatorProfilesMap[v.created_by] || "Executive"}
+                              </span>
+                            </div>
                           </div>
                           <Badge className={`${visitStatusColors[v.status]} capitalize text-xs border-0`}>{v.status}</Badge>
                         </div>
                         <div className="space-y-1 text-sm text-muted-foreground">
-                          {v.address && <div className="flex items-center gap-1"><MapPin className="h-3 w-3" />{v.address}</div>}
-                          <p className="text-xs">Purpose: {v.purpose}</p>
+                          {((v as VisitRow).address || (v as VisitRow).clients?.address || (v as VisitRow).partners?.address) && (
+                            <div className="flex items-start gap-1.5 text-xs text-foreground/80 font-medium bg-muted/30 p-1.5 rounded-lg border border-border/40">
+                              <MapPin className="h-3.5 w-3.5 text-primary shrink-0 mt-0.5" />
+                              <span>{v.address || (v as VisitRow).clients?.address || (v as VisitRow).partners?.address}</span>
+                            </div>
+                          )}
+                          <p className="text-xs font-medium">Purpose: {v.purpose}</p>
                           {(v as VisitRow).travel_mode === "pooled" && (
                             <p className="text-[10px] font-semibold text-amber-500 flex items-center gap-1">
                               🚗 Pooled — no conveyance claimed

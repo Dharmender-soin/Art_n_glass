@@ -161,7 +161,8 @@ const Conveyance = () => {
         .gte("date", fromDate)
         .lte("date", toDate)
         .order("date", { ascending: false })
-        .order("created_at", { ascending: true });
+        .order("created_at", { ascending: true })
+        .limit(10000);
       if (targetUserIds.length > 0) q = q.in("user_id", targetUserIds);
       const { data } = await q;
       return (data || []) as any[];

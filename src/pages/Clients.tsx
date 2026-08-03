@@ -20,6 +20,7 @@ import WorkScopeSection from "@/components/WorkScopeSection";
 import VisitHistoryList from "@/components/VisitHistoryList";
 import { format, parseISO } from "date-fns";
 import { useMemo } from "react";
+import { sendNotification } from "@/lib/notifications";
 
 type ClientStatus = Database["public"]["Enums"]["client_status"];
 type Client = Database["public"]["Tables"]["clients"]["Row"] & {
@@ -400,12 +401,23 @@ const Clients = () => {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
+  const [filterExecutive, setFilterExecutive] = useState<string>("all");
+  const [filterArchitect, setFilterArchitect] = useState<string>("all");
   const [createOpen, setCreateOpen] = useState(false);
   const [editClient, setEditClient] = useState<Client | null>(null);
   const [deleteClient, setDeleteClient] = useState<Client | null>(null);
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [editForm, setEditForm] = useState({ ...emptyForm });
+
+  const { data: executivesList = [] } = useQuery({
+    queryKey: ["executives-list-clients"],
+    queryFn: async () => {
+      const { data, error } = await supabase.from("profiles").select("user_id, full_name").order("full_name");
+      if (error) throw error;
+      return (data || []) as { user_id: string; full_name: string }[];
+    },
+  });
 
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ["clients", user?.id, role],
@@ -606,6 +618,56 @@ const Clients = () => {
       };
       const { error } = await supabase.from("clients").update(updateData).eq("id", editClient.id);
       if (error) throw error;
+
+      if (rawData.status === "converted" || rawData.status === "lost") {
+        try {
+          // 1. Fetch MDs & Admins
+          const { data: mdAdmins } = await supabase
+            .from("user_roles")
+            .select("user_id")
+            .in("role", ["md", "admin"]);
+          const targetIds = (mdAdmins || []).map((m) => m.user_id);
+
+          // 2. Fetch Creator's Showroom Manager & TL
+          if (editClient.created_by) {
+            const { data: creatorRole } = await supabase
+              .from("user_roles")
+              .select("showroom_id, reports_to")
+              .eq("user_id", editClient.created_by)
+              .maybeSingle();
+
+            if (creatorRole?.showroom_id) {
+              const { data: managers } = await supabase
+                .from("user_roles")
+                .select("user_id")
+                .eq("showroom_id", creatorRole.showroom_id)
+                .eq("role", "manager");
+              (managers || []).forEach((m) => targetIds.push(m.user_id));
+            }
+            if (creatorRole?.reports_to) {
+              targetIds.push(creatorRole.reports_to);
+            }
+          }
+
+          const uniqueTargetIds = [...new Set(targetIds)];
+          if (uniqueTargetIds.length > 0) {
+            const title = `Client Marked ${rawData.status === "converted" ? "WON ✅" : "LOST ❌"}`;
+            const message = `Client ${rawData.name} was marked as ${rawData.status.toUpperCase()}`;
+            await Promise.all(
+              uniqueTargetIds.map((uid) =>
+                sendNotification({
+                  userId: uid,
+                  title,
+                  message,
+                  targetUrl: "/clients",
+                })
+              )
+            );
+          }
+        } catch (e) {
+          console.error("Failed to notify MD/Admin/Manager:", e);
+        }
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
@@ -649,10 +711,22 @@ const Clients = () => {
     setDeleteClient(c);
   };
 
+  const architectsList = useMemo(() => {
+    const set = new Set<string>();
+    clients.forEach((c) => {
+      if (c.architect_name && c.architect_name.trim()) {
+        set.add(c.architect_name.trim());
+      }
+    });
+    return Array.from(set).sort();
+  }, [clients]);
+
   const filtered = clients.filter((c) => {
     const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.mobile.includes(search);
     const matchStatus = !filterStatus || filterStatus === "all" || c.status === filterStatus;
-    return matchSearch && matchStatus;
+    const matchExec = !filterExecutive || filterExecutive === "all" || c.created_by === filterExecutive;
+    const matchArchitect = !filterArchitect || filterArchitect === "all" || c.architect_name === filterArchitect;
+    return matchSearch && matchStatus && matchExec && matchArchitect;
   });
 
   return (
@@ -676,11 +750,31 @@ const Clients = () => {
           <Input className="pl-9" placeholder="Search name or mobile..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-[140px]"><SelectValue placeholder="All Status" /></SelectTrigger>
+          <SelectTrigger className="w-[130px]"><SelectValue placeholder="All Status" /></SelectTrigger>
           <SelectContent className="bg-popover">
             <SelectItem value="all">All Status</SelectItem>
             <SelectItem value="new">New</SelectItem><SelectItem value="hot">Hot</SelectItem>
-            <SelectItem value="converted">Converted</SelectItem><SelectItem value="lost">Lost</SelectItem>
+            <SelectItem value="converted">Won ✅</SelectItem><SelectItem value="lost">Lost ❌</SelectItem>
+          </SelectContent>
+        </Select>
+        {role !== "executive" && (
+          <Select value={filterExecutive} onValueChange={setFilterExecutive}>
+            <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Executives" /></SelectTrigger>
+            <SelectContent className="bg-popover">
+              <SelectItem value="all">All Executives</SelectItem>
+              {executivesList.map((ex) => (
+                <SelectItem key={ex.user_id} value={ex.user_id}>{ex.full_name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        <Select value={filterArchitect} onValueChange={setFilterArchitect}>
+          <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Architects" /></SelectTrigger>
+          <SelectContent className="bg-popover">
+            <SelectItem value="all">All Architects</SelectItem>
+            {architectsList.map((arch) => (
+              <SelectItem key={arch} value={arch}>{arch}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

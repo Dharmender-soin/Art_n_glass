@@ -13,6 +13,7 @@ import {
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
+import { sendNotification } from "@/lib/notifications";
 
 type WorkStatus = "pending" | "submitted" | "won" | "lost" | "draft" | "rejected" | "hold";
 
@@ -557,6 +558,65 @@ const Hierarchy = () => {
       else if(status==="submitted"){ upd.submitted_at=new Date().toISOString(); }
       const{error}=await supabase.from("work_scope_items").update(upd).eq("id",id);
       if(error) throw error;
+
+      if (status === "won" || status === "lost" || status === "submitted") {
+        try {
+          const { data: wosItem } = await supabase
+            .from("work_scope_items")
+            .select("created_by, client_id, master_work_types(sub_work), clients(name)")
+            .eq("id", id)
+            .single();
+
+          if (wosItem) {
+            const clientName = (wosItem as any).clients?.name || "Client";
+            const subWork = (wosItem as any).master_work_types?.sub_work || "WOS Item";
+            const title = `WOS ${status === "won" ? "Won ✅" : status === "lost" ? "Lost ❌" : "Quoted 🟡"}`;
+            const message = `WOS Item "${subWork}" for ${clientName} was updated to ${status.toUpperCase()}`;
+
+            // 1. Fetch MDs & Admins
+            const { data: mdAdmins } = await supabase
+              .from("user_roles")
+              .select("user_id")
+              .in("role", ["md", "admin"]);
+            const targetIds = (mdAdmins || []).map((m) => m.user_id);
+
+            // 2. Fetch Creator's Showroom Manager & TL
+            if (wosItem.created_by) {
+              const { data: creatorRole } = await supabase
+                .from("user_roles")
+                .select("showroom_id, reports_to")
+                .eq("user_id", wosItem.created_by)
+                .maybeSingle();
+
+              if (creatorRole?.showroom_id) {
+                const { data: managers } = await supabase
+                  .from("user_roles")
+                  .select("user_id")
+                  .eq("showroom_id", creatorRole.showroom_id)
+                  .eq("role", "manager");
+                (managers || []).forEach((m) => targetIds.push(m.user_id));
+              }
+              if (creatorRole?.reports_to) {
+                targetIds.push(creatorRole.reports_to);
+              }
+            }
+
+            const uniqueTargetIds = [...new Set(targetIds)];
+            await Promise.all(
+              uniqueTargetIds.map((uid) =>
+                sendNotification({
+                  userId: uid,
+                  title,
+                  message,
+                  targetUrl: "/hierarchy",
+                })
+              )
+            );
+          }
+        } catch (e) {
+          console.error("Failed to notify WOS update:", e);
+        }
+      }
     },
     onSuccess:()=>{ toast.success("Status updated!"); setSelectedCell(null); queryClient.invalidateQueries({queryKey:["wos-h3"]}); },
     onError:()=>toast.error("Update failed"),

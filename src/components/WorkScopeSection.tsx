@@ -288,8 +288,8 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                         <ShieldCheck className="h-4 w-4" />
                       </Button>
                     )}
-                    {/* Delete — only admins/managers can delete a SOW once added */}
-                    {isManager && (
+                    {/* Delete — only admins/md can delete a SOW once added */}
+                    {(role === "admin" || role === "md") && (
                       <Button
                         size="icon"
                         variant="ghost"

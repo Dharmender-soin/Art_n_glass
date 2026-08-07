@@ -14,6 +14,17 @@ import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 
+const formatPlannedTimestamp = (dateStr?: string | null) => {
+  if (!dateStr) return null;
+  try {
+    const d = parseISO(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return format(d, "dd MMM, hh:mm a");
+  } catch {
+    return null;
+  }
+};
+
 
 const DailyVisitDashboard = () => {
   const { role, showroomId, showroomIds } = useAuth();
@@ -191,25 +202,28 @@ const DailyVisitDashboard = () => {
         </xml>
         <![endif]-->
         <style>
-          table { border-collapse: collapse; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-          td { border: 1px solid #D1D5DB; padding: 8px 12px; font-size: 11px; color: #374151; vertical-align: top; }
-          th { border: 1px solid #D1D5DB; padding: 10px 12px; font-size: 11px; text-align: left; }
-          .title-row { font-size: 16px; font-weight: bold; color: #1E3A8A; height: 40px; }
-          .banner-row { background-color: #1E293B; color: #FFFFFF; font-weight: bold; font-size: 12px; height: 30px; }
-          .main-header-row th { background-color: #475569; color: #FFFFFF; font-weight: bold; text-align: center; height: 26px; }
-          .sub-header-row th { background-color: #F1F5F9; color: #475569; font-weight: bold; height: 24px; }
-          .status-done { color: #059669; font-weight: bold; background-color: #ECFDF5; text-align: center; }
-          .status-pending { color: #DC2626; font-weight: bold; background-color: #FEF2F2; text-align: center; }
-          .empty-row { height: 18px; }
+          table { border-collapse: collapse; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; width: 100%; }
+          td { border: 1px solid #D1D5DB; padding: 8px 12px; font-size: 11px; color: #1E293B; vertical-align: middle; }
+          th { border: 1px solid #94A3B8; padding: 10px 12px; font-size: 11px; text-align: left; }
+          .title-row { font-size: 16px; font-weight: bold; color: #0F172A; background-color: #F8FAFC; text-align: center; height: 42px; border-bottom: 2px solid #0284C7; }
+          .banner-row { background-color: #0F172A; color: #F8FAFC; font-weight: bold; font-size: 12px; height: 32px; letter-spacing: 0.5px; }
+          .main-header-yplan { background-color: #1E3A8A; color: #FFFFFF; font-weight: bold; text-align: center; height: 28px; }
+          .main-header-yact { background-color: #065F46; color: #FFFFFF; font-weight: bold; text-align: center; height: 28px; }
+          .main-header-tplan { background-color: #3730A3; color: #FFFFFF; font-weight: bold; text-align: center; height: 28px; }
+          .sub-header-row th { background-color: #F1F5F9; color: #334155; font-weight: bold; height: 24px; font-size: 10px; text-transform: uppercase; }
+          .status-done { color: #059669; font-weight: bold; background-color: #D1FAE5; text-align: center; }
+          .status-pending { color: #DC2626; font-weight: bold; background-color: #FEE2E2; text-align: center; }
+          .time-cell { font-family: monospace; color: #475569; text-align: center; white-space: nowrap; font-size: 10px; }
+          .empty-row { height: 20px; }
           .empty-cell { border: none; background: transparent; }
         </style>
       </head>
       <body>
         <table>
           <tr>
-            <td colspan="7" class="title-row" style="vertical-align: middle;">DAILY VISITS PERFORMANCE REPORT - ${format(parseISO(selectedDate), "dd MMM yyyy")}</td>
+            <td colspan="10" class="title-row">DAILY VISITS PERFORMANCE REPORT — ${format(parseISO(selectedDate), "dd MMM yyyy")}</td>
           </tr>
-          <tr class="empty-row"><td colspan="7" class="empty-cell"></td></tr>
+          <tr class="empty-row"><td colspan="10" class="empty-cell"></td></tr>
     `;
 
     execData.forEach((exec) => {
@@ -220,7 +234,7 @@ const DailyVisitDashboard = () => {
       // Executive Banner
       html += `
         <tr>
-          <td colspan="7" class="banner-row" style="vertical-align: middle;">
+          <td colspan="10" class="banner-row" style="vertical-align: middle; padding-left: 12px;">
             EXECUTIVE: ${exec.name.toUpperCase()} &nbsp;&nbsp;|&nbsp;&nbsp; SHOWROOM: ${showroomName.toUpperCase()} &nbsp;&nbsp;|&nbsp;&nbsp; YESTERDAY SUCCESS RATE: ${successRate}%
           </td>
         </tr>
@@ -228,23 +242,28 @@ const DailyVisitDashboard = () => {
 
       // Main Headers
       html += `
-        <tr class="main-header-row">
-          <th colspan="3">YESTERDAY PLANNING</th>
-          <th colspan="2">YESTERDAY ACTUAL (COMPLETED)</th>
-          <th colspan="2">TODAY PLANNING</th>
+        <tr>
+          <th colspan="4" class="main-header-yplan">YESTERDAY PLANNING</th>
+          <th colspan="3" class="main-header-yact">YESTERDAY ACTUAL (COMPLETED)</th>
+          <th colspan="3" class="main-header-tplan">TODAY PLANNING</th>
         </tr>
       `;
 
       // Sub Headers
       html += `
         <tr class="sub-header-row">
-          <th style="width: 320px;">Visit (Client/Partner & Purpose)</th>
-          <th style="width: 90px; text-align: center;">Status</th>
-          <th style="width: 220px;">Remarks</th>
-          <th style="width: 320px;">Visit (Client/Partner & Purpose)</th>
-          <th style="width: 220px;">Remarks</th>
-          <th style="width: 320px;">Visit (Client/Partner & Purpose)</th>
-          <th style="width: 220px;">Remarks</th>
+          <th style="width: 250px;">Visit (Client/Partner & Purpose)</th>
+          <th style="width: 130px; text-align: center;">Planned Timestamp</th>
+          <th style="width: 80px; text-align: center;">Status</th>
+          <th style="width: 180px;">Remarks</th>
+
+          <th style="width: 250px;">Visit (Client/Partner & Purpose)</th>
+          <th style="width: 130px; text-align: center;">Planned Timestamp</th>
+          <th style="width: 180px;">Remarks</th>
+
+          <th style="width: 250px;">Visit (Client/Partner & Purpose)</th>
+          <th style="width: 130px; text-align: center;">Planned Timestamp</th>
+          <th style="width: 180px;">Remarks</th>
         </tr>
       `;
 
@@ -262,21 +281,26 @@ const DailyVisitDashboard = () => {
 
         html += `
           <tr>
-            <td>${yPlan ? `${getEntityName(yPlan)} [${yPlan.purpose || 'Sales'}]` : ""}</td>
+            <td>${yPlan ? `${getEntityName(yPlan)} [${yPlan.purpose || 'General Meeting'}]` : ""}</td>
+            <td class="time-cell">${yPlan?.created_at ? (formatPlannedTimestamp(yPlan.created_at) || "—") : ""}</td>
             <td class="${yPlan ? (yPlan.status === 'done' ? 'status-done' : 'status-pending') : ''}">
               ${yPlan ? (yPlan.status === 'done' ? 'Done' : 'Pending') : ""}
             </td>
             <td>${yPlan ? (yPlan.remarks || "—") : ""}</td>
-            <td>${yAct ? `${getEntityName(yAct)} [${yAct.purpose || 'Sales'}]` : ""}</td>
+
+            <td>${yAct ? `${getEntityName(yAct)} [${yAct.purpose || 'General Meeting'}]` : ""}</td>
+            <td class="time-cell">${yAct?.created_at ? (formatPlannedTimestamp(yAct.created_at) || "—") : ""}</td>
             <td>${yAct ? (yAct.remarks || "—") : ""}</td>
-            <td>${tPlan ? `${getEntityName(tPlan)} [${tPlan.purpose || 'Sales'}]` : ""}</td>
+
+            <td>${tPlan ? `${getEntityName(tPlan)} [${tPlan.purpose || 'General Meeting'}]` : ""}</td>
+            <td class="time-cell">${tPlan?.created_at ? (formatPlannedTimestamp(tPlan.created_at) || "—") : ""}</td>
             <td>${tPlan ? (tPlan.remarks || "—") : ""}</td>
           </tr>
         `;
       }
 
       // Space row
-      html += `<tr class="empty-row"><td colspan="7" class="empty-cell"></td></tr>`;
+      html += `<tr class="empty-row"><td colspan="10" class="empty-cell"></td></tr>`;
     });
 
     html += `
@@ -480,17 +504,28 @@ const DailyVisitDashboard = () => {
                             {exec.ydayPlanned} visits
                           </span>
                         </div>
-                        <div className="max-w-[280px] max-h-[150px] overflow-y-auto space-y-1 mt-2 pr-1 scrollbar-thin">
+                        <div className="max-w-[280px] max-h-[150px] overflow-y-auto space-y-1.5 mt-2 pr-1 scrollbar-thin">
                           {exec.ydayVisits.map((v, idx) => (
-                            <div key={v.id} className="text-xs bg-[#1A1D24] p-1.5 rounded border border-[#F5F5F7]/5 flex justify-between gap-1.5 items-start">
-                              <span className="flex-1 text-[#F5F5F7] leading-tight">
-                                {idx + 1}. {getEntityName(v)}
-                              </span>
-                              <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded shrink-0 ${
-                                v.status === 'done' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'
-                              }`}>
-                                {v.status === 'done' ? 'Done' : 'Pending'}
-                              </span>
+                            <div key={v.id} className="text-xs bg-[#1A1D24] p-2 rounded-lg border border-[#F5F5F7]/5 flex flex-col gap-1">
+                              <div className="flex items-center justify-between gap-1.5">
+                                <span className="font-semibold text-[#F5F5F7] leading-tight flex-1 truncate">
+                                  {idx + 1}. {getEntityName(v)}
+                                </span>
+                                <span className={`text-[8px] font-extrabold uppercase px-1.5 py-0.5 rounded shrink-0 ${
+                                  v.status === 'done' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-red-500/15 text-red-400'
+                                }`}>
+                                  {v.status === 'done' ? 'Done' : 'Pending'}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-[10px] text-[#8E939D] flex-wrap gap-1">
+                                <span className="truncate max-w-[120px]">{v.purpose || "General Meeting"}</span>
+                                {v.created_at && formatPlannedTimestamp(v.created_at) && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20 shrink-0">
+                                    <Clock className="h-2.5 w-2.5" />
+                                    {formatPlannedTimestamp(v.created_at)}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           ))}
                           {exec.ydayVisits.length === 0 && <span className="text-xs text-[#8E939D] italic">No visits planned</span>}
@@ -506,9 +541,17 @@ const DailyVisitDashboard = () => {
                         </div>
                         <div className="max-w-[280px] max-h-[150px] overflow-y-auto space-y-1.5 mt-2 pr-1 scrollbar-thin">
                           {exec.ydayVisits.filter(v => v.status === "done").map((v, idx) => (
-                            <div key={v.id} className="text-xs bg-[#1A1D24] p-1.5 rounded border border-[#F5F5F7]/5 space-y-1">
-                              <div className="text-[#F5F5F7] font-medium leading-tight">
-                                {idx + 1}. {getEntityName(v)}
+                            <div key={v.id} className="text-xs bg-[#1A1D24] p-2 rounded-lg border border-[#F5F5F7]/5 space-y-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[#F5F5F7] font-medium leading-tight truncate">
+                                  {idx + 1}. {getEntityName(v)}
+                                </span>
+                                {v.created_at && formatPlannedTimestamp(v.created_at) && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded border border-emerald-500/20 shrink-0">
+                                    <Clock className="h-2.5 w-2.5" />
+                                    {formatPlannedTimestamp(v.created_at)}
+                                  </span>
+                                )}
                               </div>
                               {v.remarks && (
                                 <p className="text-[10px] text-emerald-300 bg-emerald-500/5 p-1 rounded border border-emerald-500/10 leading-snug">
@@ -551,10 +594,21 @@ const DailyVisitDashboard = () => {
                             {exec.todayPlanned} planned
                           </span>
                         </div>
-                        <div className="max-w-[280px] max-h-[150px] overflow-y-auto space-y-1 mt-2 pr-1 scrollbar-thin">
+                        <div className="max-w-[280px] max-h-[150px] overflow-y-auto space-y-1.5 mt-2 pr-1 scrollbar-thin">
                           {exec.todayVisits.map((v, idx) => (
-                            <div key={v.id} className="text-xs bg-[#1A1D24] p-1.5 rounded border border-[#F5F5F7]/5 text-[#F5F5F7] leading-tight">
-                              {idx + 1}. {getEntityName(v)}
+                            <div key={v.id} className="text-xs bg-[#1A1D24] p-2 rounded-lg border border-[#F5F5F7]/5 flex flex-col gap-1">
+                              <div className="flex items-center justify-between gap-1.5">
+                                <span className="font-semibold text-[#F5F5F7] leading-tight flex-1 truncate">
+                                  {idx + 1}. {getEntityName(v)}
+                                </span>
+                                {v.created_at && formatPlannedTimestamp(v.created_at) && (
+                                  <span className="inline-flex items-center gap-1 text-[9px] text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20 shrink-0">
+                                    <Clock className="h-2.5 w-2.5" />
+                                    {formatPlannedTimestamp(v.created_at)}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-[#8E939D] truncate">{v.purpose || "General Meeting"}</span>
                             </div>
                           ))}
                           {exec.todayVisits.length === 0 && <span className="text-xs text-[#8E939D] italic">No visits planned</span>}
@@ -666,6 +720,7 @@ interface VisitRecord {
   purpose: string | null;
   remarks: string | null;
   visit_with_type: string | null;
+  created_at?: string | null;
   clients?: { name: string } | null;
   partners?: { name: string } | null;
 }
@@ -797,14 +852,14 @@ const VisitColumn = ({ title, subtitle, visits, type, getEntityName, showRemarks
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: i * 0.05 }}
-                className="group relative bg-[#1A1D24] rounded-lg p-3 shadow-sm border border-[#F5F5F7]/5 hover:border-primary/30 hover:shadow-md transition-all duration-200 cursor-default"
+                className="group relative bg-[#1A1D24] rounded-xl p-3 shadow-xs border border-[#F5F5F7]/10 hover:border-primary/40 hover:shadow-md transition-all duration-200 cursor-default"
               >
-                <div className="absolute left-0 top-3 bottom-3 w-0.5 bg-[#F5F5F7]/10 group-hover:bg-primary transition-colors rounded-r-full" />
+                <div className="absolute left-0 top-3 bottom-3 w-1 bg-[#F5F5F7]/10 group-hover:bg-primary transition-colors rounded-r-full" />
 
                 <div className="flex justify-between items-start gap-2 pl-2">
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center justify-between gap-1.5 flex-wrap w-full">
-                      <p className="font-semibold text-sm text-[#F5F5F7] truncate leading-tight group-hover:text-primary transition-colors flex-1">
+                      <p className="font-bold text-xs text-[#F5F5F7] truncate leading-tight group-hover:text-primary transition-colors flex-1">
                         {getEntityName(v)}
                       </p>
                       {showStatus && v.status && (
@@ -817,20 +872,29 @@ const VisitColumn = ({ title, subtitle, visits, type, getEntityName, showRemarks
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-[#8E939D] mt-0.5 line-clamp-1">{v.purpose}</p>
+
+                    <p className="text-[11px] text-[#8E939D] line-clamp-1">{v.purpose || "General Meeting"}</p>
+
+                    {/* Planned Timestamp Pill */}
+                    {v.created_at && formatPlannedTimestamp(v.created_at) && (
+                      <div className="mt-1 flex items-center gap-1 text-[10px] text-blue-300/90 bg-blue-500/10 px-2 py-0.5 rounded-md border border-blue-500/20 w-fit">
+                        <Clock className="h-3 w-3 text-blue-400 shrink-0" />
+                        <span>Planned: <strong className="font-semibold text-blue-200">{formatPlannedTimestamp(v.created_at)}</strong></span>
+                      </div>
+                    )}
 
                     {showRemarks && v.remarks && (
-                      <div className="mt-2 flex items-start gap-1.5 p-1.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-                        <CheckCircle2 className="h-3 w-3 text-emerald-400 shrink-0 mt-0.5" />
+                      <div className="mt-2 flex items-start gap-1.5 p-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
                         <p className="text-[10px] text-emerald-300 leading-snug">{v.remarks}</p>
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="mt-2 flex items-center justify-between border-t pt-2 border-dashed border-[#F5F5F7]/5">
+                <div className="mt-2 flex items-center justify-between border-t pt-2 border-dashed border-[#F5F5F7]/10 pl-2">
                   <div className="flex items-center gap-1">
-                    <Badge variant="outline" className="text-[10px] px-1.5 h-5 font-normal bg-[#12141A] border-[#F5F5F7]/10 text-[#A1A5AE] capitalize">
+                    <Badge variant="outline" className="text-[10px] px-1.5 h-4.5 font-medium bg-[#12141A] border-[#F5F5F7]/10 text-[#A1A5AE] capitalize">
                       {v.visit_with_type || 'Solo'}
                     </Badge>
                   </div>

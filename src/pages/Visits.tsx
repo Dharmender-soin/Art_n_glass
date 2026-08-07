@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, CalendarCheck, MapPin, Camera, Loader2, ChevronDown, ChevronRight, Search, UserCircle } from "lucide-react";
+import { Plus, CalendarCheck, MapPin, Camera, Loader2, ChevronDown, ChevronRight, Search, UserCircle, Clock } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import type { Database } from "@/integrations/supabase/types";
@@ -60,6 +60,17 @@ const visitStatusColors: Record<string, string> = {
   // aliases / fallbacks
   submitted: "bg-purple-500 text-white",
   draft: "bg-gray-500 text-white",
+};
+
+const formatPlannedTime = (dateStr?: string | null) => {
+  if (!dateStr) return null;
+  try {
+    const d = parseISO(dateStr);
+    if (isNaN(d.getTime())) return null;
+    return format(d, "dd MMM yyyy, hh:mm a");
+  } catch {
+    return null;
+  }
 };
 
 const Visits = () => {
@@ -953,8 +964,8 @@ const Visits = () => {
                   {groupedByDate[dateKey].map((v) => (
                     <Card key={v.id}>
                       <CardContent className="p-4">
-                        <div className="flex items-start justify-between mb-2">
-                          <div>
+                        <div className="flex items-start justify-between mb-2 gap-2">
+                          <div className="min-w-0 flex-1">
                             <p className="font-semibold text-base font-bold text-foreground">{(v as VisitRow).clients?.name || (v as VisitRow).partners?.name || (v.address ? v.address.split(',')[0] : (v.visit_with_type === 'showroom' ? 'Showroom Visit' : v.visit_with_type === 'hotel' ? 'Hotel Visit' : v.visit_with_type === 'home' ? 'Home Visit' : '—'))}</p>
                             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               <span className="text-xs text-muted-foreground font-medium capitalize">{v.visit_with_type}</span>
@@ -964,7 +975,15 @@ const Visits = () => {
                               </span>
                             </div>
                           </div>
-                          <Badge className={`${visitStatusColors[v.status]} capitalize text-xs border-0`}>{v.status}</Badge>
+                          <div className="flex flex-col items-end gap-1.5 shrink-0">
+                            <Badge className={`${visitStatusColors[v.status]} capitalize text-xs border-0`}>{v.status}</Badge>
+                            {v.created_at && formatPlannedTime(v.created_at) && (
+                              <div className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground bg-muted/60 dark:bg-muted/30 px-2 py-0.5 rounded-md border border-border/50 whitespace-nowrap" title={`Planned on ${formatPlannedTime(v.created_at)}`}>
+                                <Clock className="h-3 w-3 text-muted-foreground shrink-0" />
+                                <span>Planned: {formatPlannedTime(v.created_at)}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                         <div className="space-y-1 text-sm text-muted-foreground">
                           {((v as VisitRow).address || (v as VisitRow).clients?.address || (v as VisitRow).partners?.address) && (

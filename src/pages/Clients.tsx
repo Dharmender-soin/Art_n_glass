@@ -121,18 +121,26 @@ const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partne
       </div>
     </div>
 
-    {/* ── Lead Source ── */}
-    <div className="space-y-1.5">
-      <Label className="text-xs font-semibold text-foreground">Lead Source / Partner <span className="text-[10px] text-muted-foreground font-normal">(optional)</span></Label>
+    {/* ── Lead Source / Partner ── */}
+    <div className="space-y-1.5 p-3 rounded-xl border border-indigo-500/30 bg-indigo-50/60 dark:bg-indigo-950/30">
+      <div className="flex items-center justify-between">
+        <Label className="text-xs font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-1">
+          <span>⭐ Lead Source / Partner (Architect / Builder)</span>
+        </Label>
+        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/50 px-2 py-0.5 rounded-full">Recommended</span>
+      </div>
       <Select value={values.partner_id} onValueChange={(v) => onChange({ ...values, partner_id: v })}>
-        <SelectTrigger className="h-9 text-sm text-foreground">
-          <SelectValue placeholder="Select partner..." />
+        <SelectTrigger className="h-9 text-sm border-indigo-300 dark:border-indigo-700 bg-background font-semibold text-foreground">
+          <SelectValue placeholder="Select partner or architect..." />
         </SelectTrigger>
         <SelectContent className="bg-popover">
-          <SelectItem value="none">— None —</SelectItem>
+          <SelectItem value="none">— Direct Client (No Partner) —</SelectItem>
           {partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} ({p.type})</SelectItem>)}
         </SelectContent>
       </Select>
+      <p className="text-[10px] text-indigo-700/80 dark:text-indigo-300/80 font-medium">
+        💡 Selecting a Partner connects this client to the Partner's pipeline in Hierarchy.
+      </p>
     </div>
 
     {/* ── Notes ── */}

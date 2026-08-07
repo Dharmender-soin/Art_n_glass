@@ -8,6 +8,8 @@ import { useLocation } from "react-router-dom";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
 import { cn } from "@/lib/utils";
 import NotificationBell from "./NotificationBell";
+import { GlobalSearch } from "./GlobalSearch";
+import { QuickAddModal } from "./QuickAddModal";
 
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
@@ -29,7 +31,7 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
   const { pathname } = useLocation();
   const [isHovered, setIsHovered] = useState(false);
 
-  const pageTitle = pageTitles[pathname] || "Art-N-Glass";
+  const pageTitle = pageTitles[pathname] || "Property OS";
 
   // Smart Sidebar Logic
   const handleMouseEnter = () => {
@@ -48,11 +50,6 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
 
   return (
     <>
-      {/* 
-        Sidebar Wrapper with Hover Logic 
-        Rule: If hovered (isHovered=true), we FORCE the spacer to stay collapsed 
-        so the main content doesn't jump. The sidebar itself (fixed) will expand naturally.
-      */}
       <div
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -65,34 +62,38 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
       </div>
 
       <SidebarInset>
-        {/* — Top Bar — hidden on home page as ExecutiveHome has its own sticky header */}
-        {pathname !== "/" && (
-          <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/80 backdrop-blur-md px-4 md:px-6">
-            {/* Mobile trigger */}
-            {isMobile && <SidebarTrigger className="-ml-1" />}
+        {/* — Top Bar — */}
+        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/80 backdrop-blur-md px-4 md:px-6">
+          {/* Mobile trigger */}
+          {isMobile && <SidebarTrigger className="-ml-1" />}
 
-            {/* Breadcrumb / Page Title - Hidden on pages with rich headers */}
-            {!["/verification", "/hierarchy", "/my-pipeline", "/md-dashboard"].includes(pathname) && (
-              <div className="flex items-center gap-2">
-                {!isMobile && (
-                  <span className="text-xs text-muted-foreground hidden md:inline">
-                    Art-N-Glass
-                  </span>
-                )}
-                {!isMobile && (
-                  <span className="text-muted-foreground/40 hidden md:inline">/</span>
-                )}
-                <h1 className="text-sm font-semibold tracking-tight">{pageTitle}</h1>
-              </div>
+          {/* Breadcrumb / Page Title */}
+          <div className="flex items-center gap-2 shrink-0">
+            {!isMobile && (
+              <span className="text-xs text-muted-foreground font-medium hidden md:inline">
+                Property OS
+              </span>
             )}
+            {!isMobile && (
+              <span className="text-muted-foreground/40 hidden md:inline">/</span>
+            )}
+            <h1 className="text-sm font-bold tracking-tight">{pageTitle}</h1>
+          </div>
 
-            {/* Right side: notification bell + mobile theme toggle */}
-            <div className="ml-auto flex items-center gap-2">
-              <NotificationBell />
-              {isMobile && <ThemeSwitcher />}
+          {/* Global Search Bar */}
+          {!isMobile && (
+            <div className="mx-2 flex-1 max-w-md">
+              <GlobalSearch />
             </div>
-          </header>
-        )}
+          )}
+
+          {/* Right side: Quick Add + Notification Bell + Theme Switcher */}
+          <div className="ml-auto flex items-center gap-2">
+            <QuickAddModal />
+            <NotificationBell />
+            {isMobile && <ThemeSwitcher />}
+          </div>
+        </header>
 
         {/* — Main Content — */}
         <div className={cn(

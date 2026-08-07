@@ -50,7 +50,7 @@ const PartnerVisits = () => {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
-  const [collapsedExecs, setCollapsedExecs] = useState<Set<string>>(new Set());
+  const [expandedExecs, setExpandedExecs] = useState<Set<string>>(new Set());
   const [sortDir, setSortDir] = useState<SortDir>(null);
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
@@ -328,14 +328,22 @@ const PartnerVisits = () => {
     };
   }, [viewMode, matrixFiltered, matrixRows, execPartnersList, filtered, unvisitedCount]);
 
-  // ── Toggle exec group collapse ─────────────────────────────────────────────
+  // ── Toggle exec group expand/collapse ─────────────────────────────────────
   const toggleExec = (execId: string) => {
-    setCollapsedExecs((prev) => {
+    setExpandedExecs((prev) => {
       const next = new Set(prev);
       if (next.has(execId)) next.delete(execId);
       else next.add(execId);
       return next;
     });
+  };
+
+  const expandAll = () => {
+    setExpandedExecs(new Set(sortedGroups.map((g) => g.execId)));
+  };
+
+  const collapseAll = () => {
+    setExpandedExecs(new Set());
   };
 
   // ── Sort matrixRows within each group ─────────────────────────────────────
@@ -539,7 +547,21 @@ const PartnerVisits = () => {
             <p className="text-muted-foreground font-semibold">No data for selected filters</p>
           </CardContent></Card>
         ) : (
-          <Card className="overflow-hidden">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <p className="text-xs font-semibold text-muted-foreground">
+                Click any executive row to expand or collapse partner details
+              </p>
+              <div className="flex items-center gap-1.5">
+                <Button size="sm" variant="outline" className="h-7 text-xs font-bold gap-1" onClick={expandAll}>
+                  📂 Expand All
+                </Button>
+                <Button size="sm" variant="outline" className="h-7 text-xs font-bold gap-1" onClick={collapseAll}>
+                  📁 Collapse All
+                </Button>
+              </div>
+            </div>
+            <Card className="overflow-hidden">
             <div className="overflow-x-auto">
               <table className="text-xs border-collapse" style={{ minWidth: "100%" }}>
                 {/* ── Header ── */}
@@ -601,7 +623,8 @@ const PartnerVisits = () => {
 
                 <tbody>
                   {sortedGroups.map(({ execId, rows, visitedCount, coveragePct, groupTotal }) => {
-                    const isCollapsed = collapsedExecs.has(execId);
+                    const isExpanded = search.trim().length >= 2 || expandedExecs.has(execId);
+                    const isCollapsed = !isExpanded;
                     const execName = profileMap[execId] || "Unknown";
                     const srId = execShowroomMap[execId];
                     const coverageColor = coveragePct >= 80 ? "text-green-500" : coveragePct >= 50 ? "text-amber-500" : "text-red-500";
@@ -793,6 +816,7 @@ const PartnerVisits = () => {
               <span className="text-[10px] font-semibold text-muted-foreground">Click executive row to expand/collapse · Click Total header to sort</span>
             </div>
           </Card>
+          </div>
         )
       )}
 

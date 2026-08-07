@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -7,8 +8,8 @@ import { toast } from "sonner";
 import {
   GitBranch, Filter, CheckCircle2, XCircle, Clock, Send,
   Loader2, TrendingUp, Building2, Search, RotateCcw,
-  Award, BarChart2, Target, Zap, ChevronRight, Download,
-  FolderCheck, Archive, AlertTriangle, PauseCircle
+  Award, BarChart2, Target, Zap, ChevronRight, ChevronDown, Download,
+  FolderCheck, Archive, AlertTriangle, PauseCircle, ArrowLeft, Handshake
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
@@ -33,14 +34,20 @@ interface RawWOS {
 }
 interface PivotClient {
   client_id: string; client_name: string; client_address: string;
-  client_mobile: string; partner_name: string | null;
+  client_mobile: string; partner_name: string | null; partner_id?: string | null;
   project_status: string;
+  created_by?: string;
   wos: Record<string, WOSRecord>;
   partners: string[];
 }
 interface PivotExecutive {
   executive_id: string; executive_name: string;
   showroom_id: string | null; clients: PivotClient[];
+  wonCount?: number;
+  quotationCount?: number;
+  pendingCount?: number;
+  partnerCount?: number;
+  directCount?: number;
 }
 interface WorkTypeGroup {
   typeOfWork: string; subTypes: { id: string; subWork: string }[];
@@ -58,11 +65,22 @@ const STATUS_CFG = {
   draft:     { label:"WOS",        icon:<Clock       className="h-2.5 w-2.5"/>, cls:"text-slate-500 bg-slate-50 border-slate-200 dark:text-slate-400 dark:bg-slate-800 dark:border-slate-700",        dot:"bg-slate-400",   dateLabel:"Added"   },
 } as const;
 
+function safeFormatDate(dateStr: string | null | undefined, pattern: string = "d MMM yyyy"): string {
+  if (!dateStr) return "—";
+  try {
+    const d = parseISO(dateStr);
+    if (isNaN(d.getTime())) return "—";
+    return format(d, pattern);
+  } catch {
+    return "—";
+  }
+}
+
 function displayDate(r: WOSRecord): string {
   const d = (r.work_status==="won"||r.work_status==="lost"||r.work_status==="rejected") ? r.verified_at
     : r.work_status==="submitted" ? r.submitted_at : r.created_at;
   if (!d) return "";
-  try { return format(parseISO(d),"d MMM"); } catch { return ""; }
+  return safeFormatDate(d, "d MMM");
 }
 
 const GRADIENTS = ["from-violet-500 to-indigo-600","from-rose-500 to-pink-600","from-amber-500 to-orange-500","from-emerald-500 to-teal-600","from-sky-500 to-blue-600","from-fuchsia-500 to-purple-600"];
@@ -74,12 +92,13 @@ const Badge = ({ rec, onClick }: { rec: WOSRecord; onClick: () => void }) => {
   const s = STATUS_CFG[rec.work_status] ?? STATUS_CFG.pending;
   const d = displayDate(rec);
   const tooltipMap: Record<string, string> = {
-    pending:   `WOS added on ${rec.created_at ? format(parseISO(rec.created_at),"d MMM yyyy") : "—"}`,
-    draft:     `WOS added on ${rec.created_at ? format(parseISO(rec.created_at),"d MMM yyyy") : "—"}`,
-    submitted: `Quotation on ${rec.submitted_at ? format(parseISO(rec.submitted_at),"d MMM yyyy") : "—"}`,
-    won:       `Won on ${rec.verified_at ? format(parseISO(rec.verified_at),"d MMM yyyy") : "—"}`,
-    lost:      `Lost on ${rec.verified_at ? format(parseISO(rec.verified_at),"d MMM yyyy") : "—"}`,
-    rejected:  `Rejected on ${rec.verified_at ? format(parseISO(rec.verified_at),"d MMM yyyy") : "—"}`,
+    pending:   `WOS added on ${safeFormatDate(rec.created_at)}`,
+    draft:     `WOS added on ${safeFormatDate(rec.created_at)}`,
+    submitted: `Quotation on ${safeFormatDate(rec.submitted_at)}`,
+    won:       `Won on ${safeFormatDate(rec.verified_at)}`,
+    lost:      `Lost on ${safeFormatDate(rec.verified_at)}`,
+    rejected:  `Rejected on ${safeFormatDate(rec.verified_at)}`,
+    hold:      `Hold status`,
   };
   return (
     <button onClick={onClick} title={tooltipMap[rec.work_status] ?? ""}
@@ -90,9 +109,38 @@ const Badge = ({ rec, onClick }: { rec: WOSRecord; onClick: () => void }) => {
   );
 };
 
+import React from "react";
+
+class HierarchyErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: "" };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error: error?.message || "Render Error" };
+  }
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error("Hierarchy Table Error:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 text-center bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl my-4">
+          <p className="text-sm font-bold text-rose-600 dark:text-rose-400">Something went wrong rendering table data.</p>
+          <p className="text-xs text-rose-500 mt-1">{this.state.error}</p>
+          <button onClick={() => this.setState({ hasError: false })} className="mt-3 px-3 py-1 bg-rose-600 text-white rounded text-xs font-bold">
+            Retry Rendering
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 // ─── Shared Table Component ───────────────────────────────────────────────────
 const PivotTable = ({
-  pivotData, colIds, workTypeGroups, isClosed, onStatusClick, onProjectStatusClick, isManager, allWorkTypes
+  pivotData, colIds, workTypeGroups, isClosed, onStatusClick, onProjectStatusClick, isManager, allWorkTypes, expandedExecs, toggleExec, isSearchActive, viewGrouping, profileMap, onPartnerClick
 }: {
   pivotData: PivotExecutive[];
   colIds: string[];
@@ -102,6 +150,12 @@ const PivotTable = ({
   onProjectStatusClick: (clientId: string, clientName: string, currentStatus: string) => void;
   isManager: boolean;
   allWorkTypes: any[];
+  expandedExecs: Record<string, boolean>;
+  toggleExec: (id: string) => void;
+  isSearchActive: boolean;
+  viewGrouping: "executive" | "architect" | "partner";
+  profileMap: Record<string, string>;
+  onPartnerClick?: (clientId: string, clientName: string, partnerName: string | null, partnerId?: string | null, createdBy?: string) => void;
 }) => {
   return (
     <>
@@ -110,7 +164,7 @@ const PivotTable = ({
         <div className="overflow-auto" style={{ maxHeight: isClosed ? "360px" : "calc(100vh - 340px)" }}>
           <table className="w-full text-xs border-collapse table-fixed">
             <colgroup>
-              <col style={{ width: "9%" }} />  {/* Executive */}
+              <col style={{ width: "9%" }} />  {/* Executive / SR NO */}
               <col style={{ width: "7%" }} />  {/* Partner */}
               <col style={{ width: "10%" }} /> {/* Client Name */}
               <col style={{ width: "12%" }} /> {/* Address */}
@@ -124,7 +178,9 @@ const PivotTable = ({
             {/* ── THEAD ── */}
             <thead className="sticky top-0 z-10">
               <tr>
-                <th rowSpan={2} className="bg-slate-900 dark:bg-slate-950 text-slate-300 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] sticky left-0 z-20 align-bottom">Executive</th>
+                <th rowSpan={2} className="bg-slate-900 dark:bg-slate-950 text-slate-300 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] sticky left-0 z-20 align-bottom">
+                  {viewGrouping === "executive" ? "SR NO" : "EXECUTIVE"}
+                </th>
                 <th rowSpan={2} className="bg-slate-800 dark:bg-slate-800/80 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] align-bottom">Partner</th>
                 <th rowSpan={2} className="bg-slate-800 dark:bg-slate-900 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] align-bottom">Client Name</th>
                 <th rowSpan={2} className="bg-slate-800 dark:bg-slate-900 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] align-bottom">Address</th>
@@ -136,7 +192,6 @@ const PivotTable = ({
                   </th>
                 ))}
                 <th rowSpan={2} className="bg-slate-700 dark:bg-slate-700 text-slate-300 border-b-2 border-r border-slate-600 px-3 py-2.5 text-center font-bold uppercase tracking-wider text-[10px] align-bottom">WOSs</th>
-                {/* ── NEW: Project Status column ── */}
                 <th rowSpan={2} className={`border-b-2 border-slate-600 px-3 py-2.5 text-center font-bold uppercase tracking-wider text-[10px] align-bottom ${isClosed ? "bg-slate-700 text-slate-300" : "bg-emerald-800 text-emerald-200"}`}>
                   Project Status
                 </th>
@@ -154,105 +209,174 @@ const PivotTable = ({
 
             {/* ── TBODY ── */}
             <tbody>
-              {pivotData.map((exec, ei) =>
-                exec.clients.map((client, ci) => (
-                  <tr key={`${exec.executive_id}-${client.client_id}`}
-                    className={`border-b border-slate-100 dark:border-slate-800 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors ${ci%2===1?"bg-slate-50/50":"bg-white dark:bg-transparent"}`}>
-
-                    {ci===0 && (
-                      <td rowSpan={exec.clients.length}
-                        className={`border-r border-slate-200 dark:border-slate-700 px-3 py-2.5 align-middle sticky left-0 z-10 ${ei%2===0?"bg-slate-50 dark:bg-slate-800/50":"bg-slate-100/50 dark:bg-slate-800/80"}`}>
-                        <div className="flex items-center gap-2">
-                          <div className={`h-8 w-8 rounded-lg bg-gradient-to-br ${avatarGrad(exec.executive_name)} flex items-center justify-center text-white text-[11px] font-extrabold shadow-sm shrink-0`}>
-                            {initials(exec.executive_name)}
+              {pivotData.map((exec, ei) => {
+                const isExpanded = isSearchActive || !!expandedExecs[exec.executive_id];
+                return (
+                  <Fragment key={`group-wrapper-${exec.executive_id}`}>
+                    {/* ── Group Banner Row ── */}
+                    <tr
+                      onClick={() => toggleExec(exec.executive_id)}
+                      className="bg-slate-100/90 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700 cursor-pointer hover:bg-slate-200/90 dark:hover:bg-slate-700/90 transition-colors"
+                    >
+                      <td colSpan={colIds.length + 7} className="px-3 py-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 font-bold text-xs text-slate-800 dark:text-slate-100 flex-wrap">
+                            <div className="p-1 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+                              {isExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                            </div>
+                            <div className={`h-6 w-6 rounded-md bg-gradient-to-br ${avatarGrad(exec.executive_name)} flex items-center justify-center text-white text-[10px] font-extrabold shadow-sm shrink-0`}>
+                              {initials(exec.executive_name)}
+                            </div>
+                            <span className="text-xs font-bold">{exec.executive_name}</span>
+                            <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800">
+                              {exec.clients.length} {exec.clients.length === 1 ? "Client" : "Clients"}
+                            </span>
+                            {(exec.wonCount ?? 0) > 0 && (
+                              <span className="text-[9.5px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100/70 dark:bg-emerald-950/80 px-2 py-0.5 rounded-md border border-emerald-200 dark:border-emerald-800/60">
+                                🟢 {exec.wonCount} Won
+                              </span>
+                            )}
+                            {(exec.quotationCount ?? 0) > 0 && (
+                              <span className="text-[9.5px] font-bold text-amber-700 dark:text-amber-300 bg-amber-100/70 dark:bg-amber-950/80 px-2 py-0.5 rounded-md border border-amber-200 dark:border-amber-800/60">
+                                🟡 {exec.quotationCount} Quotation
+                              </span>
+                            )}
+                            {(exec.pendingCount ?? 0) > 0 && (
+                              <span className="text-[9.5px] font-bold text-sky-700 dark:text-sky-300 bg-sky-100/70 dark:bg-sky-950/80 px-2 py-0.5 rounded-md border border-sky-200 dark:border-sky-800/60">
+                                🔵 {exec.pendingCount} Pending
+                              </span>
+                            )}
+                            {(exec.partnerCount ?? 0) > 0 && (
+                              <span className="text-[9.5px] font-bold text-violet-700 dark:text-violet-300 bg-violet-100/70 dark:bg-violet-950/80 px-2 py-0.5 rounded-md border border-violet-200 dark:border-violet-800/60">
+                                🤝 {exec.partnerCount} Partner
+                              </span>
+                            )}
                           </div>
-                          <div className="min-w-0">
-                            <p className="font-bold text-slate-800 dark:text-slate-100 text-[11px] truncate max-w-[80px]" title={exec.executive_name}>{exec.executive_name}</p>
-                            <p className="text-[9px] text-indigo-500 dark:text-indigo-400 font-semibold mt-px">
-                              {exec.clients.length} client{exec.clients.length!==1?"s":""}
-                            </p>
-                          </div>
+                          <span className="text-[10px] text-muted-foreground font-semibold">
+                            {isExpanded ? "Click to collapse 🔼" : "Click to expand 🔽"}
+                          </span>
                         </div>
                       </td>
-                    )}
+                    </tr>
 
-                    <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
-                      {client.partner_name
-                        ? <span className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-700/50 truncate block w-full" title={client.partner_name}>{client.partner_name}</span>
-                        : <span className="text-slate-300 dark:text-slate-700">—</span>
-                      }
-                    </td>
-                    <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
-                      <p className="font-semibold text-slate-800 dark:text-slate-200 truncate" title={client.client_name}>{client.client_name}</p>
-                    </td>
-                    <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
-                      <p className="text-slate-500 dark:text-slate-400 truncate" title={client.client_address}>{client.client_address}</p>
-                    </td>
-                    <td className="px-2 py-2 text-center border-r border-slate-100 dark:border-slate-800">
-                      <span className="font-mono text-slate-500 dark:text-slate-400 truncate text-[11px]" title={client.client_mobile}>{client.client_mobile}</span>
-                    </td>
+                    {/* ── Client Rows (Only rendered when expanded) ── */}
+                    {isExpanded && exec.clients.map((client, ci) => (
+                      <tr key={`${exec.executive_id}-${client.client_id}`}
+                        className={`border-b border-slate-100 dark:border-slate-800 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/10 transition-colors ${ci%2===1?"bg-slate-50/50":"bg-white dark:bg-transparent"}`}>
 
-                    {colIds.map(wtId => {
-                      const rec = client.wos[wtId];
-                      return (
-                        <td key={wtId} className="px-0.5 py-1 border-r border-slate-100 dark:border-slate-800">
-                          {rec
-                            ? <Badge rec={rec} onClick={() => onStatusClick(rec)} />
-                            : <div className="flex items-center justify-center text-slate-200 dark:text-slate-800 text-base select-none">·</div>
-                          }
+                        <td className={`border-r border-slate-200 dark:border-slate-700 px-2.5 py-2 align-middle sticky left-0 z-10 ${ei%2===0?"bg-slate-50 dark:bg-slate-800/50":"bg-slate-100/50 dark:bg-slate-800/80"}`}>
+                          {viewGrouping === "executive" ? (
+                            <span className="text-[10px] font-bold text-slate-400 font-mono pl-2">#{ci + 1}</span>
+                          ) : (
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-[10px] font-bold text-indigo-500">👤</span>
+                              <span className="text-[10px] font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[75px]" title={profileMap[client.created_by || ""] || exec.executive_name}>
+                                {profileMap[client.created_by || ""] || exec.executive_name}
+                              </span>
+                            </div>
+                          )}
                         </td>
-                      );
-                    })}
 
-                    {/* WOSs column */}
-                    <td className="px-1 py-2 border-r border-slate-100 dark:border-slate-800">
-                      <div className="flex flex-wrap gap-0.5 max-h-12 overflow-y-auto">
-                        {client.partners.length > 0
-                          ? client.partners.map(p => (
-                              <span key={p} className="inline-flex items-center px-1 py-0.2 text-[8px] font-bold rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700/50 whitespace-nowrap truncate max-w-[50px]" title={p}>{p}</span>
-                            ))
-                          : <span className="text-slate-300 dark:text-slate-700 text-xs">·</span>
-                        }
-                      </div>
-                    </td>
+                        <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onPartnerClick?.(
+                                client.client_id,
+                                client.client_name,
+                                client.partner_name,
+                                client.partner_id,
+                                client.created_by || exec.executive_id
+                              );
+                            }}
+                            className="w-full text-left group/p focus:outline-none cursor-pointer"
+                            title="Click to change or assign partner"
+                          >
+                            {client.partner_name && client.partner_name.trim() ? (
+                              <span className="inline-flex items-center justify-between px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-700/50 group-hover/p:border-violet-400 group-hover/p:shadow-sm transition-all w-full">
+                                <span className="truncate">{client.partner_name}</span>
+                                <span className="opacity-0 group-hover/p:opacity-100 text-[8px] ml-1">✏️</span>
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center justify-between px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/50 group-hover/p:border-indigo-400 group-hover/p:text-indigo-600 transition-all w-full">
+                                <span>Direct</span>
+                                <span className="opacity-0 group-hover/p:opacity-100 text-[8px] ml-1">➕</span>
+                              </span>
+                            )}
+                          </button>
+                        </td>
+                        <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
+                          <p className="font-semibold text-slate-800 dark:text-slate-200 truncate" title={client.client_name}>{client.client_name}</p>
+                        </td>
+                        <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
+                          <p className="text-slate-500 dark:text-slate-400 truncate" title={client.client_address}>{client.client_address}</p>
+                        </td>
+                        <td className="px-2 py-2 text-center border-r border-slate-100 dark:border-slate-800">
+                          <span className="font-mono text-slate-500 dark:text-slate-400 truncate text-[11px]" title={client.client_mobile}>{client.client_mobile}</span>
+                        </td>
 
-                    {/* ── Project Status column ── */}
-                    <td className="px-2 py-2 text-center">
-                      {isClosed ? (
-                        // In closed table: show Closed badge + reopen option for manager
-                        <div className="flex flex-col items-center gap-1">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
-                            <Archive className="h-3 w-3" /> Closed
-                          </span>
-                          {isManager && (
-                            <button
-                              onClick={() => onProjectStatusClick(client.client_id, client.client_name, "closed")}
-                              className="text-[9px] font-semibold text-indigo-500 hover:text-indigo-700 underline transition-colors"
-                            >
-                              Reopen
-                            </button>
+                        {colIds.map(wtId => {
+                          const rec = client.wos[wtId];
+                          return (
+                            <td key={wtId} className="px-0.5 py-1 border-r border-slate-100 dark:border-slate-800">
+                              {rec
+                                ? <Badge rec={rec} onClick={() => onStatusClick(rec)} />
+                                : <div className="flex items-center justify-center text-slate-200 dark:text-slate-800 text-base select-none">·</div>
+                              }
+                            </td>
+                          );
+                        })}
+
+                        {/* WOSs column */}
+                        <td className="px-1 py-2 border-r border-slate-100 dark:border-slate-800">
+                          <div className="flex flex-wrap gap-0.5 max-h-12 overflow-y-auto">
+                            {client.partners.length > 0
+                              ? client.partners.map(p => (
+                                  <span key={p} className="inline-flex items-center px-1 py-0.2 text-[8px] font-bold rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700/50 whitespace-nowrap truncate max-w-[50px]" title={p}>{p}</span>
+                                ))
+                              : <span className="text-slate-300 dark:text-slate-700 text-xs">·</span>
+                            }
+                          </div>
+                        </td>
+
+                        {/* ── Project Status column ── */}
+                        <td className="px-2 py-2 text-center">
+                          {isClosed ? (
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                                <Archive className="h-3 w-3" /> Closed
+                              </span>
+                              {isManager && (
+                                <button
+                                  onClick={() => onProjectStatusClick(client.client_id, client.client_name, "closed")}
+                                  className="text-[9px] font-semibold text-indigo-500 hover:text-indigo-700 underline transition-colors"
+                                >
+                                  Reopen
+                                </button>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/40">
+                                <CheckCircle2 className="h-3 w-3" /> Active
+                              </span>
+                              {isManager && (
+                                <button
+                                  onClick={() => onProjectStatusClick(client.client_id, client.client_name, "active")}
+                                  className="text-[9px] font-semibold text-rose-500 hover:text-rose-700 underline transition-colors"
+                                >
+                                  Close Project
+                                </button>
+                              )}
+                            </div>
                           )}
-                        </div>
-                      ) : (
-                        // In active table: show Active badge + Close Project button for manager
-                        <div className="flex flex-col items-center gap-1">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-700/40">
-                            <CheckCircle2 className="h-3 w-3" /> Active
-                          </span>
-                          {isManager && (
-                            <button
-                              onClick={() => onProjectStatusClick(client.client_id, client.client_name, "active")}
-                              className="text-[9px] font-semibold text-rose-500 hover:text-rose-700 underline transition-colors"
-                            >
-                              Close Project
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -384,6 +508,7 @@ const PivotTable = ({
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 const Hierarchy = () => {
+  const navigate = useNavigate();
   const { role, user, showroomIds } = useAuth();
   const queryClient = useQueryClient();
   const canAccess = role==="admin"||role==="manager"||role==="md"||role==="tl";
@@ -395,13 +520,39 @@ const Hierarchy = () => {
   const [fStatus, setFStatus]   = useState("all");
   const [fShowroom, setFShowroom] = useState("all");
   const [fSearch, setFSearch]   = useState("");
-  const [viewGrouping, setViewGrouping] = useState<"executive" | "architect">("executive");
+  const [viewGrouping, setViewGrouping] = useState<"executive" | "architect" | "partner">("executive");
+  const [expandedExecs, setExpandedExecs] = useState<Record<string, boolean>>({});
   const [selectedCell, setSelectedCell] = useState<WOSRecord|null>(null);
   const [updateStatus, setUpdateStatus] = useState<WorkStatus>("won");
   const [confirmClose, setConfirmClose] = useState<{ clientId: string; clientName: string; currentStatus: string } | null>(null);
   const [blockClose, setBlockClose] = useState<{ clientName: string; blockers: string[] } | null>(null);
   const [showClosedTable, setShowClosedTable] = useState(false);
 
+  // Partner Change Modal State
+  const [changePartnerModal, setChangePartnerModal] = useState<{
+    clientId: string;
+    clientName: string;
+    currentPartnerName: string | null;
+    currentPartnerId: string | null;
+    createdBy: string;
+  } | null>(null);
+  const [selectedNewPartnerId, setSelectedNewPartnerId] = useState<string>("none");
+  const [partnerSearchQuery, setPartnerSearchQuery] = useState<string>("");
+
+  const toggleExec = (id: string) => {
+    setExpandedExecs((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const expandAll = () => {
+    const m: Record<string, boolean> = {};
+    activePivot.forEach((e) => { m[e.executive_id] = true; });
+    closedPivot.forEach((e) => { m[e.executive_id] = true; });
+    setExpandedExecs(m);
+  };
+
+  const collapseAll = () => {
+    setExpandedExecs({});
+  };
 
   const { data: showrooms=[] } = useQuery({ queryKey:["sr-h3"], enabled:isMdOrAdmin || (role === "manager" && showroomIds && showroomIds.length > 1),
     queryFn: async()=>{ const{data}=await supabase.from("showrooms").select("id,name").order("name"); return data||[]; } });
@@ -411,10 +562,31 @@ const Hierarchy = () => {
     queryFn: async()=>{ const{data}=await supabase.from("profiles").select("user_id,full_name"); return data||[]; } });
   const { data: allWorkTypes=[] } = useQuery({ queryKey:["wt-h3"], enabled:canAccess,
     queryFn: async()=>{ const{data}=await supabase.from("master_work_types").select("id,type_of_work,sub_work").order("type_of_work"); return data||[]; } });
+  const { data: allPartners=[] } = useQuery({ queryKey:["partners-h3"], enabled:canAccess,
+    queryFn: async()=>{ const{data}=await supabase.from("partners").select("id,name,type,city,created_by").order("name"); return data||[]; } });
+
+  const updatePartnerMutation = useMutation({
+    mutationFn: async ({ clientId, partnerId }: { clientId: string; partnerId: string | null }) => {
+      const { error } = await supabase
+        .from("clients")
+        .update({ partner_id: partnerId })
+        .eq("id", clientId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success("Partner updated successfully ✓");
+      queryClient.invalidateQueries({ queryKey: ["clients-h3"] });
+      queryClient.invalidateQueries({ queryKey: ["wos-h3"] });
+      setChangePartnerModal(null);
+    },
+    onError: (err: any) => {
+      toast.error(`Failed to update partner: ${err.message}`);
+    },
+  });
   const { data: rawWOS=[], isLoading } = useQuery({ queryKey:["wos-h3", user?.id, role, showroomIds], enabled:canAccess && !!user,
     queryFn: async()=>{
       let q = supabase.from("work_scope_items")
-        .select(`id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile,project_status,architect_name,partners(name)),master_work_types(type_of_work,sub_work)`);
+        .select(`id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile,project_status,architect_name,partner_id,partners(id,name)),master_work_types(type_of_work,sub_work)`);
 
       if (role === "tl" && user) {
         // TL: own WOS + all executives who report to this TL
@@ -439,6 +611,35 @@ const Hierarchy = () => {
       const {data,error} = await q.order("created_at",{ascending:false});
       if(error) throw error;
       return (data||[]) as unknown as RawWOS[];
+    }
+  });
+
+  const { data: allClients=[] } = useQuery({ queryKey:["clients-h3", user?.id, role, showroomIds], enabled:canAccess && !!user,
+    queryFn: async()=>{
+      let q = supabase.from("clients")
+        .select(`id, name, address, mobile, project_status, architect_name, created_by, partner_id, partners(id,name)`);
+
+      if (role === "tl" && user) {
+        const { data: myExecs } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .eq("reports_to", user.id)
+          .eq("role", "executive");
+        const execIds = (myExecs || []).map((r: any) => r.user_id);
+        const ids = [user.id, ...execIds];
+        q = q.in("created_by", ids);
+      } else if (role === "manager" && showroomIds.length > 0) {
+        const { data: teamRoles } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .in("showroom_id", showroomIds);
+        const teamIds = (teamRoles || []).map((r: any) => r.user_id);
+        if (teamIds.length > 0) q = q.in("created_by", teamIds);
+      }
+
+      const { data, error } = await q.order("created_at", { ascending: false });
+      if (error) throw error;
+      return data || [];
     }
   });
 
@@ -468,46 +669,196 @@ const Hierarchy = () => {
 
   // Build pivot for given project_status filter
   const buildPivot = (statusFilter: "active" | "closed"): PivotExecutive[] => {
-    const em=new Map<string,PivotExecutive>();
-    const wtPartnerMap: Record<string,string> = {};
-    allWorkTypes.forEach(wt=>{ wtPartnerMap[wt.id]=wt.sub_work; });
+    const em = new Map<string, { exec: PivotExecutive; clientMap: Map<string, PivotClient> }>();
+    const wtPartnerMap: Record<string, string> = {};
+    allWorkTypes.forEach(wt => { if (wt && wt.id) wtPartnerMap[wt.id] = wt.sub_work || ""; });
 
-    rawWOS.forEach(r=>{
-      if(!r.clients) return;
-      const clientProjStatus = (r.clients as any).project_status || "active";
+    // Helper to extract partner name safely
+    const getPartnerName = (partners: any): string | null => {
+      if (!partners) return null;
+      if (Array.isArray(partners)) {
+        const valid = partners.find((p: any) => p && typeof p.name === "string" && p.name.trim());
+        return valid ? valid.name.trim() : null;
+      }
+      if (typeof partners === "object" && typeof partners.name === "string" && partners.name.trim()) {
+        return partners.name.trim();
+      }
+      return null;
+    };
+
+    // 1. Populate all clients first
+    allClients.forEach(c => {
+      if (!c) return;
+      const clientProjStatus = c.project_status || "active";
       if (clientProjStatus !== statusFilter) return;
 
-      const groupKey = viewGrouping === "architect"
-        ? (((r.clients as any).architect_name && (r.clients as any).architect_name.trim()) ? `Arch: ${(r.clients as any).architect_name.trim()}` : "Direct / No Architect")
-        : r.created_by;
-      const displayName = viewGrouping === "architect" ? groupKey : (profileMap[groupKey] || "Unknown");
+      const creatorId = c.created_by || "unknown";
+      const builderName = getPartnerName((c as any).partners);
+      const archName = (c.architect_name && typeof c.architect_name === "string") ? c.architect_name.trim() : "";
+      const groupKey = viewGrouping === "partner"
+        ? (builderName && builderName.trim() ? `Partner: ${builderName.trim()}` : "Direct / No Partner")
+        : viewGrouping === "architect"
+        ? (archName ? `Arch: ${archName}` : "Direct / No Architect")
+        : creatorId;
+      const displayName = (viewGrouping === "architect" || viewGrouping === "partner") ? groupKey : (profileMap[groupKey] || "Unknown");
 
-      if(!em.has(groupKey)) em.set(groupKey,{executive_id:groupKey,executive_name:displayName,showroom_id:viewGrouping === "architect" ? null : (showroomMap[groupKey]??null),clients:[]});
-      const exec=em.get(groupKey)!;
-      let cl=exec.clients.find(c=>c.client_id===r.client_id);
-      if(!cl){
-        const builderName = (r.clients as any).partners?.name ?? null;
-        cl={client_id:r.client_id,client_name:r.clients.name,client_address:r.clients.address||"—",client_mobile:r.clients.mobile,partner_name:builderName,project_status:clientProjStatus,wos:{},partners:[]};
+      if (!em.has(groupKey)) {
+        em.set(groupKey, {
+          exec: {
+            executive_id: groupKey,
+            executive_name: displayName,
+            showroom_id: (viewGrouping === "architect" || viewGrouping === "partner") ? null : (showroomMap[groupKey] ?? null),
+            clients: []
+          },
+          clientMap: new Map()
+        });
+      }
+      const { exec, clientMap } = em.get(groupKey)!;
+      if (!clientMap.has(c.id)) {
+        const pId = c.partner_id || (Array.isArray((c as any).partners) ? (c as any).partners[0]?.id : (c as any).partners?.id) || null;
+        const cl: PivotClient = {
+          client_id: c.id,
+          client_name: c.name || "Unnamed Client",
+          client_address: c.address || "—",
+          client_mobile: c.mobile || "—",
+          partner_name: builderName,
+          partner_id: pId,
+          project_status: clientProjStatus,
+          created_by: c.created_by,
+          wos: {},
+          partners: []
+        };
+        clientMap.set(c.id, cl);
         exec.clients.push(cl);
       }
-      const ex=cl.wos[r.work_type_id];
-      if(!ex||(STATUS_PRIORITY[r.work_status]??0)>(STATUS_PRIORITY[ex.work_status]??0))
-        cl.wos[r.work_type_id]={id:r.id,client_id:r.client_id,work_type_id:r.work_type_id,work_status:r.work_status as WorkStatus,created_at:r.created_at,submitted_at:r.submitted_at,verified_at:r.verified_at,quantity:r.quantity,description:r.description,created_by:r.created_by};
-      const pName=wtPartnerMap[r.work_type_id];
-      if(pName && !cl.partners.includes(pName)) cl.partners.push(pName);
     });
-    let res=Array.from(em.values()).sort((a,b)=>a.executive_name.localeCompare(b.executive_name));
-    if(fShowroom!=="all" && viewGrouping === "executive") res=res.filter(e=>e.showroom_id===fShowroom);
-    if(fExec!=="all" && viewGrouping === "executive") res=res.filter(e=>e.executive_id===fExec);
-    if(fStatus!=="all") res=res.map(e=>({...e,clients:e.clients.filter(c=>Object.values(c.wos).some(w=>w.work_status===fStatus))})).filter(e=>e.clients.length>0);
-    if(fSearch.trim()){ const q=fSearch.toLowerCase(); res=res.map(e=>({...e,clients:e.clients.filter(c=>c.client_name.toLowerCase().includes(q)||c.client_address.toLowerCase().includes(q))})).filter(e=>e.clients.length>0||e.executive_name.toLowerCase().includes(q)); }
+
+    // 2. Overlay WOS items
+    rawWOS.forEach(r => {
+      if (!r || !r.clients) return;
+      const clientObj = r.clients as any;
+      const clientProjStatus = clientObj.project_status || "active";
+      if (clientProjStatus !== statusFilter) return;
+
+      const builderName = getPartnerName(clientObj.partners);
+      const archName = (clientObj.architect_name && typeof clientObj.architect_name === "string") ? clientObj.architect_name.trim() : "";
+      const groupKey = viewGrouping === "partner"
+        ? (builderName && builderName.trim() ? `Partner: ${builderName.trim()}` : "Direct / No Partner")
+        : viewGrouping === "architect"
+        ? (archName ? `Arch: ${archName}` : "Direct / No Architect")
+        : (r.created_by || "unknown");
+      const displayName = (viewGrouping === "architect" || viewGrouping === "partner") ? groupKey : (profileMap[groupKey] || "Unknown");
+
+      if (!em.has(groupKey)) {
+        em.set(groupKey, {
+          exec: {
+            executive_id: groupKey,
+            executive_name: displayName,
+            showroom_id: (viewGrouping === "architect" || viewGrouping === "partner") ? null : (showroomMap[groupKey] ?? null),
+            clients: []
+          },
+          clientMap: new Map()
+        });
+      }
+      const { exec, clientMap } = em.get(groupKey)!;
+      let cl = clientMap.get(r.client_id);
+      if (!cl) {
+        const builderName = getPartnerName(clientObj.partners);
+        const pId = clientObj.partner_id || (Array.isArray(clientObj.partners) ? clientObj.partners[0]?.id : clientObj.partners?.id) || null;
+        cl = {
+          client_id: r.client_id,
+          client_name: clientObj.name || "Unnamed Client",
+          client_address: clientObj.address || "—",
+          client_mobile: clientObj.mobile || "—",
+          partner_name: builderName,
+          partner_id: pId,
+          project_status: clientProjStatus,
+          created_by: r.created_by || clientObj.created_by,
+          wos: {},
+          partners: []
+        };
+        clientMap.set(r.client_id, cl);
+        exec.clients.push(cl);
+      }
+      const ex = cl.wos[r.work_type_id];
+      const newStatus = (r.work_status || "pending") as WorkStatus;
+      const exStatus = ex ? ex.work_status : "";
+      if (!ex || (STATUS_PRIORITY[newStatus] ?? 0) > (STATUS_PRIORITY[exStatus] ?? 0)) {
+        cl.wos[r.work_type_id] = {
+          id: r.id,
+          client_id: r.client_id,
+          work_type_id: r.work_type_id,
+          work_status: newStatus,
+          created_at: r.created_at,
+          submitted_at: r.submitted_at,
+          verified_at: r.verified_at,
+          quantity: r.quantity,
+          description: r.description,
+          created_by: r.created_by || ""
+        };
+      }
+      const pName = wtPartnerMap[r.work_type_id];
+      if (pName && !cl.partners.includes(pName)) cl.partners.push(pName);
+    });
+    let res = Array.from(em.values()).map(item => item.exec).sort((a, b) => a.executive_name.localeCompare(b.executive_name));
+    if (fShowroom !== "all" && viewGrouping === "executive") res = res.filter(e => e.showroom_id === fShowroom);
+    if (fExec !== "all" && viewGrouping === "executive") res = res.filter(e => e.executive_id === fExec);
+    if (fStatus !== "all") res = res.map(e => ({ ...e, clients: e.clients.filter(c => Object.values(c.wos || {}).some(w => w && w.work_status === fStatus)) })).filter(e => e.clients.length > 0);
+    if (fSearch.trim()) {
+      const q = fSearch.toLowerCase();
+      res = res.map(e => ({
+        ...e,
+        clients: e.clients.filter(c =>
+          (c.client_name || "").toLowerCase().includes(q) ||
+          (c.client_address || "").toLowerCase().includes(q) ||
+          (c.client_mobile || "").toLowerCase().includes(q) ||
+          (c.partner_name || "").toLowerCase().includes(q)
+        )
+      })).filter(e => e.clients.length > 0 || (e.executive_name || "").toLowerCase().includes(q));
+    }
+
+    // Calculate metrics for each group banner
+    res = res.map(e => {
+      let wonCount = 0;
+      let quotationCount = 0;
+      let pendingCount = 0;
+      let partnerCount = 0;
+      let directCount = 0;
+
+      e.clients.forEach(c => {
+        if (c.partner_name && c.partner_name.trim()) {
+          partnerCount++;
+        } else {
+          directCount++;
+        }
+
+        const statuses = Object.values(c.wos || {}).map(w => w?.work_status);
+        if (c.project_status === "closed" || statuses.includes("won")) {
+          wonCount++;
+        } else if (statuses.includes("submitted")) {
+          quotationCount++;
+        } else {
+          pendingCount++;
+        }
+      });
+
+      return {
+        ...e,
+        wonCount,
+        quotationCount,
+        pendingCount,
+        partnerCount,
+        directCount
+      };
+    });
+
     return res;
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const activePivot = useMemo(()=>buildPivot("active"),[rawWOS,profileMap,showroomMap,fExec,fStatus,fShowroom,fSearch,allWorkTypes]);
+  const activePivot = useMemo(()=>buildPivot("active"),[rawWOS,allClients,profileMap,showroomMap,fExec,fStatus,fShowroom,fSearch,allWorkTypes]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const closedPivot = useMemo(()=>buildPivot("closed"),[rawWOS,profileMap,showroomMap,fExec,fStatus,fShowroom,fSearch,allWorkTypes]);
+  const closedPivot = useMemo(()=>buildPivot("closed"),[rawWOS,allClients,profileMap,showroomMap,fExec,fStatus,fShowroom,fSearch,allWorkTypes]);
 
   const stats = useMemo(() => {
     let total = 0, won = 0, quotation = 0, lost = 0, pending = 0;
@@ -729,6 +1080,13 @@ const Hierarchy = () => {
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-5 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5 min-w-0">
+            <button
+              onClick={() => navigate("/")}
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 transition-all cursor-pointer shrink-0"
+              title="Go back to Dashboard"
+            >
+              <ArrowLeft className="h-3.5 w-3.5" /> Back
+            </button>
             <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center shadow-sm shrink-0">
               <GitBranch className="h-4 w-4 text-white"/>
             </div>
@@ -740,7 +1098,7 @@ const Hierarchy = () => {
             </div>
             {isLoading && <Loader2 className="h-3.5 w-3.5 text-slate-400 animate-spin ml-1"/>}
           </div>
-          <button onClick={exportToExcel} className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-all">
+          <button onClick={exportToExcel} className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-all cursor-pointer">
             <Download className="h-3.5 w-3.5"/>Export Excel
           </button>
         </div>
@@ -774,10 +1132,11 @@ const Hierarchy = () => {
               {execList.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
             </select>
           </div>
-          <select value={viewGrouping} onChange={e=>setViewGrouping(e.target.value as "executive" | "architect")}
+          <select value={viewGrouping} onChange={e=>setViewGrouping(e.target.value as "executive" | "architect" | "partner")}
             className="bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-700/50 text-indigo-700 dark:text-indigo-300 rounded-lg px-3 py-1.5 text-xs font-bold outline-none focus:border-indigo-400 appearance-none cursor-pointer">
             <option value="executive">👤 Group: Executive Wise</option>
             <option value="architect">📐 Group: Architect Wise</option>
+            <option value="partner">🤝 Group: Partner Wise</option>
           </select>
           <select value={fStatus} onChange={e=>setFStatus(e.target.value)}
             className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-400 appearance-none cursor-pointer">
@@ -791,7 +1150,7 @@ const Hierarchy = () => {
             {hasFilters && (
               <motion.button initial={{opacity:0,scale:.9}} animate={{opacity:1,scale:1}} exit={{opacity:0,scale:.9}}
                 onClick={()=>{setFShowroom("all");setFExec("all");setFStatus("all");setFSearch("");}}
-                className="flex items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-700/50 hover:bg-rose-100 rounded-lg px-2.5 py-1.5 transition-all">
+                className="flex items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-700/50 hover:bg-rose-100 rounded-lg px-2.5 py-1.5 transition-all cursor-pointer">
                 <RotateCcw className="h-3 w-3"/>Reset
               </motion.button>
             )}
@@ -802,26 +1161,44 @@ const Hierarchy = () => {
       <div className="px-4 sm:px-5 pt-3 pb-0">
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 mb-3">
           {[
-            { label: "Total WOS", value: stats.total, icon: <Target className="h-4 w-4" />, grad: "from-slate-600 to-slate-700", extra: null },
-            { label: "Quotation", value: stats.quotation, icon: <Send className="h-4 w-4" />, grad: "from-amber-500 to-orange-500", extra: null },
-            { label: "Won", value: stats.won, icon: <Award className="h-4 w-4" />, grad: "from-emerald-500 to-teal-600", extra: `${stats.rate}%` },
-            { label: "Lost", value: stats.lost, icon: <XCircle className="h-4 w-4" />, grad: "from-rose-500 to-red-600", extra: null },
-            { label: "Pending", value: stats.pending, icon: <BarChart2 className="h-4 w-4" />, grad: "from-sky-500 to-indigo-500", extra: null },
-          ].map((c, i) => (
-            <motion.div key={c.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-              className="bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl px-4 py-3 flex items-center gap-3 shadow-sm hover:shadow-md transition-all">
-              <div className={`h-8 w-8 rounded-lg bg-gradient-to-br ${c.grad} flex items-center justify-center text-white shadow-sm shrink-0`}>
-                {c.icon}
-              </div>
-              <div>
-                <div className="flex items-baseline gap-1.5">
-                  <span className="text-xl font-extrabold text-slate-900 dark:text-white">{c.value}</span>
-                  {c.extra && <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/40 px-1.5 py-0.5 rounded-full">{c.extra}</span>}
+            { id: "all", label: "Total WOS", value: stats.total, icon: <Target className="h-4 w-4" />, grad: "from-slate-600 to-slate-700", extra: null },
+            { id: "submitted", label: "Quotation", value: stats.quotation, icon: <Send className="h-4 w-4" />, grad: "from-amber-500 to-orange-500", extra: null },
+            { id: "won", label: "Won", value: stats.won, icon: <Award className="h-4 w-4" />, grad: "from-emerald-500 to-teal-600", extra: `${stats.rate}%` },
+            { id: "lost", label: "Lost", value: stats.lost, icon: <XCircle className="h-4 w-4" />, grad: "from-rose-500 to-red-600", extra: null },
+            { id: "pending", label: "Pending", value: stats.pending, icon: <BarChart2 className="h-4 w-4" />, grad: "from-sky-500 to-indigo-500", extra: null },
+          ].map((c, i) => {
+            const isActive = fStatus === c.id;
+            return (
+              <motion.button
+                key={c.label}
+                type="button"
+                onClick={() => setFStatus(c.id)}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className={`relative text-left border rounded-xl px-3.5 py-2.5 flex items-center gap-3 shadow-sm hover:shadow-md transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-indigo-50/90 dark:bg-indigo-950/60 border-indigo-500 ring-2 ring-indigo-500/30"
+                    : "bg-white dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/50 hover:border-slate-300"
+                }`}
+                title={`Click to filter by ${c.label}`}
+              >
+                <div className={`h-8 w-8 rounded-lg bg-gradient-to-br ${c.grad} flex items-center justify-center text-white shadow-sm shrink-0`}>
+                  {c.icon}
                 </div>
-                <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 leading-none mt-0.5">{c.label}</p>
-              </div>
-            </motion.div>
-          ))}
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-1">
+                    <span className="text-xl font-extrabold text-slate-900 dark:text-white">{c.value}</span>
+                    {c.extra && <span className="text-[10px] font-bold text-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/40 px-1.5 py-0.5 rounded-full">{c.extra}</span>}
+                  </div>
+                  <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 leading-none mt-0.5 truncate">{c.label}</p>
+                </div>
+                {isActive && (
+                  <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-indigo-500" />
+                )}
+              </motion.button>
+            );
+          })}
         </div>
         {stats.total > 0 && (
           <div className="flex items-center gap-3 mb-3 bg-white dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/50 rounded-xl px-4 py-2.5">
@@ -839,12 +1216,28 @@ const Hierarchy = () => {
       {/* ══ ACTIVE HIERARCHY TABLE ══════════════════════════════════════════ */}
       <div className="px-4 sm:px-5 pb-4">
         {/* Section Header */}
-        <div className="flex items-center gap-2 mb-2">
-          <FolderCheck className="h-4 w-4 text-emerald-500"/>
-          <h2 className="text-sm font-extrabold text-slate-800 dark:text-slate-100">Active Projects</h2>
-          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/40 px-2 py-0.5 rounded-full">
-            {activeRows} records
-          </span>
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <FolderCheck className="h-4 w-4 text-emerald-500"/>
+            <h2 className="text-sm font-extrabold text-slate-800 dark:text-slate-100">Active Projects</h2>
+            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-700/40 px-2 py-0.5 rounded-full">
+              {activeRows} records
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={expandAll}
+              className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-100 px-2.5 py-1 rounded-lg transition-all"
+            >
+              📂 Expand All
+            </button>
+            <button
+              onClick={collapseAll}
+              className="text-[11px] font-bold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 px-2.5 py-1 rounded-lg transition-all"
+            >
+              📁 Collapse All
+            </button>
+          </div>
         </div>
 
         {isLoading ? (
@@ -858,16 +1251,35 @@ const Hierarchy = () => {
             {hasFilters && <button onClick={()=>{setFShowroom("all");setFExec("all");setFStatus("all");setFSearch("");}} className="text-xs text-indigo-500 underline">Clear filters</button>}
           </div>
         ) : (
-          <PivotTable
-            pivotData={activePivot}
-            colIds={colIds}
-            workTypeGroups={workTypeGroups}
-            isClosed={false}
-            onStatusClick={rec=>{ setSelectedCell(rec); setUpdateStatus(rec.work_status); }}
-            onProjectStatusClick={handleProjectStatusClick}
-            isManager={isManager}
-            allWorkTypes={allWorkTypes}
-          />
+          <HierarchyErrorBoundary>
+            <PivotTable
+              pivotData={activePivot}
+              colIds={colIds}
+              workTypeGroups={workTypeGroups}
+              isClosed={false}
+              onStatusClick={rec=>{ setSelectedCell(rec); setUpdateStatus(rec.work_status); }}
+              onProjectStatusClick={handleProjectStatusClick}
+              isManager={isManager}
+              allWorkTypes={allWorkTypes}
+              expandedExecs={expandedExecs}
+              toggleExec={toggleExec}
+              isSearchActive={!!fSearch.trim()}
+              viewGrouping={viewGrouping}
+              profileMap={profileMap}
+              onPartnerClick={(clientId, clientName, currentPartnerName, partnerId, createdBy) => {
+                const pId = partnerId || allPartners.find((p: any) => p.name === currentPartnerName)?.id || "none";
+                setChangePartnerModal({
+                  clientId,
+                  clientName,
+                  currentPartnerName,
+                  currentPartnerId: partnerId || null,
+                  createdBy: createdBy || "unknown"
+                });
+                setSelectedNewPartnerId(pId);
+                setPartnerSearchQuery("");
+              }}
+            />
+          </HierarchyErrorBoundary>
         )}
       </div>
 
@@ -905,16 +1317,35 @@ const Hierarchy = () => {
                   <p className="text-xs text-slate-400">Closed clients will appear here</p>
                 </div>
               ) : (
-                <PivotTable
-                  pivotData={closedPivot}
-                  colIds={colIds}
-                  workTypeGroups={workTypeGroups}
-                  isClosed={true}
-                  onStatusClick={rec=>{ setSelectedCell(rec); setUpdateStatus(rec.work_status); }}
-                  onProjectStatusClick={handleProjectStatusClick}
-                  isManager={isManager}
-                  allWorkTypes={allWorkTypes}
-                />
+                <HierarchyErrorBoundary>
+                  <PivotTable
+                    pivotData={closedPivot}
+                    colIds={colIds}
+                    workTypeGroups={workTypeGroups}
+                    isClosed={true}
+                    onStatusClick={rec=>{ setSelectedCell(rec); setUpdateStatus(rec.work_status); }}
+                    onProjectStatusClick={handleProjectStatusClick}
+                    isManager={isManager}
+                    allWorkTypes={allWorkTypes}
+                    expandedExecs={expandedExecs}
+                    toggleExec={toggleExec}
+                    isSearchActive={!!fSearch.trim()}
+                    viewGrouping={viewGrouping}
+                    profileMap={profileMap}
+                    onPartnerClick={(clientId, clientName, currentPartnerName, partnerId, createdBy) => {
+                      const pId = partnerId || allPartners.find((p: any) => p.name === currentPartnerName)?.id || "none";
+                      setChangePartnerModal({
+                        clientId,
+                        clientName,
+                        currentPartnerName,
+                        currentPartnerId: partnerId || null,
+                        createdBy: createdBy || "unknown"
+                      });
+                      setSelectedNewPartnerId(pId);
+                      setPartnerSearchQuery("");
+                    }}
+                  />
+                </HierarchyErrorBoundary>
               )}
             </motion.div>
           )}
@@ -1087,12 +1518,219 @@ const Hierarchy = () => {
               {/* Close button */}
               <button
                 onClick={() => setBlockClose(null)}
-                className="w-full bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 text-white font-bold py-2.5 rounded-xl text-sm transition-all"
+                className="w-full bg-slate-800 dark:bg-slate-700 hover:bg-slate-700 dark:hover:bg-slate-600 text-white font-bold py-2.5 rounded-xl text-sm transition-all cursor-pointer"
               >
                 OK, Got It
               </button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* ══ CHANGE / ASSIGN PARTNER DIALOG ═════════════════════════════════ */}
+      <Dialog open={!!changePartnerModal} onOpenChange={(open) => !open && setChangePartnerModal(null)}>
+        <DialogContent className="sm:max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-base font-extrabold text-slate-900 dark:text-white">
+              <Handshake className="h-5 w-5 text-indigo-500" />
+              Change / Assign Partner
+            </DialogTitle>
+          </DialogHeader>
+
+          {changePartnerModal && (() => {
+            const execName = profileMap[changePartnerModal.createdBy] || "Executive";
+            const execPartners = allPartners.filter((p: any) => p.created_by === changePartnerModal.createdBy);
+            const otherPartners = allPartners.filter((p: any) => p.created_by !== changePartnerModal.createdBy);
+
+            const filterFn = (p: any) => {
+              if (!partnerSearchQuery.trim()) return true;
+              const q = partnerSearchQuery.toLowerCase().trim();
+              return (
+                (p.name || "").toLowerCase().includes(q) ||
+                (p.type || "").toLowerCase().includes(q) ||
+                (p.city || "").toLowerCase().includes(q)
+              );
+            };
+
+            const filteredExecPartners = execPartners.filter(filterFn);
+            const filteredOtherPartners = otherPartners.filter(filterFn);
+
+            return (
+              <div className="space-y-3 pt-1">
+                {/* Client Summary Header */}
+                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 font-semibold">Client Name</p>
+                    <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-full border border-indigo-200 dark:border-indigo-800 truncate">
+                      Executive: {execName}
+                    </span>
+                  </div>
+                  <p className="text-sm font-extrabold text-slate-800 dark:text-slate-100">{changePartnerModal.clientName}</p>
+                  <div className="mt-2 flex items-center gap-2 text-xs">
+                    <span className="text-slate-500">Current Partner:</span>
+                    <span className="font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
+                      {changePartnerModal.currentPartnerName || "Direct (No Partner)"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Search Input Box */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="🔍 Search partner by name, type, city..."
+                    value={partnerSearchQuery}
+                    onChange={(e) => setPartnerSearchQuery(e.target.value)}
+                    className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-8 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30 transition-all"
+                  />
+                  {partnerSearchQuery && (
+                    <button
+                      onClick={() => setPartnerSearchQuery("")}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Custom Scrollable Partner List */}
+                <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800 shadow-inner">
+                  {/* Option 1: Direct */}
+                  <div
+                    onClick={() => setSelectedNewPartnerId("none")}
+                    className={`p-2.5 flex items-center justify-between cursor-pointer transition-colors ${
+                      selectedNewPartnerId === "none"
+                        ? "bg-indigo-50 dark:bg-indigo-950/60 font-bold"
+                        : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs">🚫</span>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Direct (No Partner / Blank)</p>
+                        <p className="text-[10px] text-slate-400">Client came directly without any partner</p>
+                      </div>
+                    </div>
+                    {selectedNewPartnerId === "none" && (
+                      <CheckCircle2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                    )}
+                  </div>
+
+                  {/* Executive Partners Section */}
+                  {filteredExecPartners.length > 0 && (
+                    <div className="bg-slate-50/50 dark:bg-slate-950/50">
+                      <div className="px-3 py-1.5 bg-indigo-50/60 dark:bg-indigo-950/40 border-y border-indigo-100 dark:border-indigo-900/30">
+                        <span className="text-[10px] font-extrabold text-indigo-700 dark:text-indigo-300 tracking-wider uppercase">
+                          ⭐ {execName}'s Partners ({filteredExecPartners.length})
+                        </span>
+                      </div>
+                      {filteredExecPartners.map((p: any) => {
+                        const isSel = selectedNewPartnerId === p.id;
+                        return (
+                          <div
+                            key={p.id}
+                            onClick={() => setSelectedNewPartnerId(p.id)}
+                            className={`px-3 py-2 flex items-center justify-between cursor-pointer transition-colors ${
+                              isSel
+                                ? "bg-indigo-50 dark:bg-indigo-950/80 font-bold"
+                                : "hover:bg-slate-100/60 dark:hover:bg-slate-800/60"
+                            }`}
+                          >
+                            <div className="min-w-0 pr-2">
+                              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate">
+                                🤝 {p.name}
+                              </p>
+                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                {p.type && (
+                                  <span className="capitalize font-semibold bg-violet-50 dark:bg-violet-950/60 text-violet-700 dark:text-violet-300 px-1.5 py-0.2 rounded border border-violet-200 dark:border-violet-800">
+                                    {p.type}
+                                  </span>
+                                )}
+                                {p.city && <span>📍 {p.city}</span>}
+                              </div>
+                            </div>
+                            {isSel && <CheckCircle2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* All Other Partners Section */}
+                  {filteredOtherPartners.length > 0 && (
+                    <div>
+                      <div className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800/80 border-y border-slate-200 dark:border-slate-700">
+                        <span className="text-[10px] font-extrabold text-slate-600 dark:text-slate-400 tracking-wider uppercase">
+                          🌐 All Other Partners ({filteredOtherPartners.length})
+                        </span>
+                      </div>
+                      {filteredOtherPartners.map((p: any) => {
+                        const isSel = selectedNewPartnerId === p.id;
+                        return (
+                          <div
+                            key={p.id}
+                            onClick={() => setSelectedNewPartnerId(p.id)}
+                            className={`px-3 py-2 flex items-center justify-between cursor-pointer transition-colors ${
+                              isSel
+                                ? "bg-indigo-50 dark:bg-indigo-950/80 font-bold"
+                                : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                            }`}
+                          >
+                            <div className="min-w-0 pr-2">
+                              <p className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
+                                🤝 {p.name}
+                              </p>
+                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                {p.type && (
+                                  <span className="capitalize bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-1.5 py-0.2 rounded border border-slate-200 dark:border-slate-700">
+                                    {p.type}
+                                  </span>
+                                )}
+                                {p.city && <span>📍 {p.city}</span>}
+                              </div>
+                            </div>
+                            {isSel && <CheckCircle2 className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {filteredExecPartners.length === 0 && filteredOtherPartners.length === 0 && (
+                    <div className="p-6 text-center text-xs font-semibold text-slate-400">
+                      No partner found matching "{partnerSearchQuery}"
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setChangePartnerModal(null)}
+                    className="px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={updatePartnerMutation.isPending}
+                    onClick={() => {
+                      const partnerId = selectedNewPartnerId === "none" ? null : selectedNewPartnerId;
+                      updatePartnerMutation.mutate({
+                        clientId: changePartnerModal.clientId,
+                        partnerId,
+                      });
+                    }}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md hover:shadow-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {updatePartnerMutation.isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    Save Partner Changes
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>

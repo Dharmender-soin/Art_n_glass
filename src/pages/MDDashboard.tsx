@@ -9,7 +9,7 @@ import {
   Search, BarChart2, Activity, Target, Shield, UserCheck, UserX,
   Trophy, Zap, RefreshCw, ChevronDown, ChevronUp, ArrowUpDown,
   Award, Handshake, EyeOff, Eye, Star, TrendingDown, Flame, Download,
-  Send, Phone, Calendar, Mail
+  Send, Phone, Calendar, Mail, Loader2
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SendNotificationForm } from "@/components/dashboard/SendNotificationForm";
@@ -1734,6 +1734,7 @@ const MDDashboard = () => {
   const [showComp, setShowComp] = useState(false);
   const [visibleEmpCount, setVisibleEmpCount] = useState(20);
   const [visiblePartnerCount, setVisiblePartnerCount] = useState(12);
+  const [isSendingTest, setIsSendingTest] = useState(false);
 
   const dateFrom = getDateFrom(dateRange);
   const DR_LABELS: Record<DateRange, string> = { today: "Today", "7d": "Last 7 Days", month: "This Month" };
@@ -2699,71 +2700,79 @@ const MDDashboard = () => {
               </button>
               {/* ── Test Notification Suite Button for MD ── */}
               <button
+                disabled={isSendingTest}
                 onClick={async () => {
-                  if (!user) return;
+                  setIsSendingTest(true);
+                  toast.info("Sending 5 Test Notifications to your phone & MD accounts... 📱");
                   try {
-                    // 1. Critical Alert
-                    await sendNotification({
-                      userId: user.id,
-                      title: "🔴 CRITICAL: High-Value Deal Lost (₹12.5L)",
-                      message: "Client 'Supertech Towers' lost by Rahul. Reason: Competitor Pricing.",
-                      category: "critical",
-                      priority: "high",
-                      notificationType: "deal_lost",
-                      metadata: { dealId: "test-deal-1" },
-                    });
+                    const targetUid = user?.id;
 
-                    // 2. Important Alert
-                    await sendNotification({
-                      userId: user.id,
-                      title: "🟢 Deal WON: ₹18.5L Project Won 🎉",
-                      message: "Client 'M/s Luxury Glass Projects' converted to WON by Executive Rohit!",
-                      category: "important",
-                      priority: "high",
-                      notificationType: "deal_won",
-                      metadata: { dealId: "test-deal-2" },
-                    });
+                    if (targetUid) {
+                      // 1. Critical Alert
+                      await sendNotification({
+                        userId: targetUid,
+                        title: "🔴 CRITICAL: High-Value Deal Lost (₹12.5L)",
+                        message: "Client 'Supertech Towers' lost by Rahul. Reason: Competitor Pricing.",
+                        category: "critical",
+                        priority: "high",
+                        notificationType: "deal_lost",
+                        metadata: { dealId: "test-deal-1" },
+                      });
 
-                    // 3. Report Notification
-                    await sendNotification({
-                      userId: user.id,
-                      title: "🔵 Daily Business Summary Ready 📊",
-                      message: "Today: 72 Visits Planned, 58 Completed (81%), 14 Pending, 6 New Clients.",
-                      category: "report",
-                      priority: "normal",
-                      notificationType: "daily_summary",
-                    });
+                      // 2. Important Alert
+                      await sendNotification({
+                        userId: targetUid,
+                        title: "🟢 Deal WON: ₹18.5L Project Won 🎉",
+                        message: "Client 'M/s Luxury Glass Projects' converted to WON by Executive Rohit!",
+                        category: "important",
+                        priority: "high",
+                        notificationType: "deal_won",
+                        metadata: { dealId: "test-deal-2" },
+                      });
 
-                    // 4. Reminder Notification
-                    await sendNotification({
-                      userId: user.id,
-                      title: "🟡 18 Follow-ups Overdue & 3 Missed Visits",
-                      message: "5 priority clients have follow-ups overdue by more than 3 days.",
-                      category: "reminder",
-                      priority: "medium",
-                      notificationType: "overdue_followup",
-                    });
+                      // 3. Report Notification
+                      await sendNotification({
+                        userId: targetUid,
+                        title: "🔵 Daily Business Summary Ready 📊",
+                        message: "Today: 72 Visits Planned, 58 Completed (81%), 14 Pending, 6 New Clients.",
+                        category: "report",
+                        priority: "normal",
+                        notificationType: "daily_summary",
+                      });
 
-                    // 5. Informational Notification
-                    await sendNotification({
-                      userId: user.id,
-                      title: "⚪ Team Activity: 18 Active Executives",
-                      message: "18 active executives, 2 absent, 3 yet to start visits today.",
-                      category: "informational",
-                      priority: "normal",
-                      notificationType: "team_activity",
-                    });
+                      // 4. Reminder Notification
+                      await sendNotification({
+                        userId: targetUid,
+                        title: "🟡 18 Follow-ups Overdue & 3 Missed Visits",
+                        message: "5 priority clients have follow-ups overdue by more than 3 days.",
+                        category: "reminder",
+                        priority: "medium",
+                        notificationType: "overdue_followup",
+                      });
+
+                      // 5. Informational Notification
+                      await sendNotification({
+                        userId: targetUid,
+                        title: "⚪ Team Activity: 18 Active Executives",
+                        message: "18 active executives, 2 absent, 3 yet to start visits today.",
+                        category: "informational",
+                        priority: "normal",
+                        notificationType: "team_activity",
+                      });
+                    }
 
                     toast.success("🚀 5 Suite Test Push Notifications sent to your phone & Notification Center! 🔔");
                   } catch (err: any) {
                     toast.error(err.message || "Failed to send notification");
+                  } finally {
+                    setIsSendingTest(false);
                   }
                 }}
                 title="Send 5 Category Test Push Notifications to MD"
-                className="h-8 flex items-center gap-1 px-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white transition-colors text-[10px] font-bold shadow-sm shrink-0 cursor-pointer"
+                className="h-8 flex items-center gap-1.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white transition-colors text-[10px] font-bold shadow-md shrink-0 cursor-pointer disabled:opacity-50"
               >
-                <Send className="h-3 w-3" />
-                <span>Test 5 Alerts 🔔</span>
+                {isSendingTest ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                <span>{isSendingTest ? "Sending 5 Alerts..." : "Test 5 Alerts 🔔"}</span>
               </button>
             </div>
           </div>

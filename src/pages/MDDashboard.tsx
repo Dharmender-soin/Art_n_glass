@@ -16,6 +16,7 @@ import { SendNotificationForm } from "@/components/dashboard/SendNotificationFor
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { sendNotification } from "@/lib/notifications";
+import { AttentionRequiredSection } from "@/components/dashboard/AttentionRequiredSection";
 
 /* ═══════════════════════════ TYPES ═══════════════════════════ */
 type DateRange = "today" | "7d" | "month";
@@ -2770,6 +2771,9 @@ const MDDashboard = () => {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 pt-4 space-y-5">
+
+        {/* ── ATTENTION REQUIRED TOP WIDGET ── */}
+        <AttentionRequiredSection />
 
         {/* ══════════════ SHOWROOM HEALTH BANNER ══════════════ */}
         {(() => {

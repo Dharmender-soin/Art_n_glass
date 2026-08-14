@@ -214,6 +214,16 @@ export default function NotificationBell() {
                   })
                 )}
               </div>
+
+              {/* Footer View All Link */}
+              <div className="p-2 border-t border-slate-800 bg-slate-950/90 text-center">
+                <button
+                  onClick={() => { setIsOpen(false); navigate("/notifications"); }}
+                  className="text-xs font-bold text-amber-400 hover:text-amber-300 w-full py-1 rounded-lg transition-colors cursor-pointer"
+                >
+                  View All Notifications →
+                </button>
+              </div>
             </motion.div>
           </>
         )}

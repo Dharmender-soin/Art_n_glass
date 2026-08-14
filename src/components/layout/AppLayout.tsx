@@ -98,13 +98,15 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
         {/* — Main Content — */}
         <div className={cn(
           "flex flex-1 flex-col overflow-y-auto h-full",
-          pathname === "/" || pathname === "/my-pipeline" || pathname === "/md-dashboard" ? "p-0 pb-20 md:pb-0 gap-0" : "gap-6 p-4 md:p-6 lg:p-8 pb-20 md:pb-8"
+          pathname === "/" || pathname === "/my-pipeline" || pathname === "/md-dashboard" ? "p-0 pb-28 md:pb-0 gap-0" : "gap-6 p-4 md:p-6 lg:p-8 pb-28 md:pb-8"
         )}>
           {children}
         </div>
       </SidebarInset>
 
-      {isMobile && <BottomNav />}
+      <div className="block md:hidden">
+        <BottomNav />
+      </div>
     </>
   );
 };

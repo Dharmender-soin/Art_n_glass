@@ -2696,6 +2696,27 @@ const MDDashboard = () => {
               </button>
             </div>
           </div>
+          {/* Quick Page Links Bar for Mobile */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 pt-1 scrollbar-none">
+            <Link to="/" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-[11px] font-semibold shrink-0 hover:bg-slate-700">
+              🏠 Home
+            </Link>
+            <Link to="/reports" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-900/40 border border-indigo-700/50 text-indigo-300 text-[11px] font-semibold shrink-0 hover:bg-indigo-800/40">
+              📊 Reports
+            </Link>
+            <Link to="/visits" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-900/40 border border-emerald-700/50 text-emerald-300 text-[11px] font-semibold shrink-0 hover:bg-emerald-800/40">
+              📅 Visits
+            </Link>
+            <Link to="/clients" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-900/40 border border-blue-700/50 text-blue-300 text-[11px] font-semibold shrink-0 hover:bg-blue-800/40">
+              👥 Clients
+            </Link>
+            <Link to="/hierarchy" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-900/40 border border-purple-700/50 text-purple-300 text-[11px] font-semibold shrink-0 hover:bg-purple-800/40">
+              🌳 Hierarchy
+            </Link>
+            <Link to="/admin" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-900/40 border border-rose-700/50 text-rose-300 text-[11px] font-semibold shrink-0 hover:bg-rose-800/40">
+              ⚙️ Admin
+            </Link>
+          </div>
           <div className="flex gap-2 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
             {(["today", "7d", "month"] as DateRange[]).map(r => (
               <Chip key={r} label={DR_LABELS[r]} active={dateRange === r} onClick={() => setDateRange(r)} />

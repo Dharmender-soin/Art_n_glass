@@ -15,6 +15,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { SendNotificationForm } from "@/components/dashboard/SendNotificationForm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { sendNotification } from "@/lib/notifications";
 
 /* ═══════════════════════════ TYPES ═══════════════════════════ */
 type DateRange = "today" | "7d" | "month";
@@ -2691,8 +2692,43 @@ const MDDashboard = () => {
                 <span className="hidden sm:inline">Export</span>
               </button>
               <button onClick={() => refetch()}
-                className="h-8 w-8 flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                className="h-8 w-8 flex items-center justify-center rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                title="Refresh Data">
                 <RefreshCw className="h-3.5 w-3.5 text-slate-500" />
+              </button>
+              {/* ── Test Notification Button for MD ── */}
+              <button
+                onClick={async () => {
+                  if (!user) return;
+                  try {
+                    await sendNotification({
+                      userId: user.id,
+                      title: "🎉 Deal WON Alert ✅",
+                      message: "Client 'M/s Luxury Glass Projects' was converted to WON by Executive Rohit! Amount: ₹18.5 Lakhs.",
+                      targetUrl: "/reports",
+                    });
+                    await sendNotification({
+                      userId: user.id,
+                      title: "🚨 Urgent MD Alert: Inactive Executive",
+                      message: "Executive Anish has recorded 0 visits in 5 days at Zirakpur Showroom.",
+                      targetUrl: "/md-dashboard",
+                    });
+                    await sendNotification({
+                      userId: user.id,
+                      title: "🆕 New Lead Onboarded",
+                      message: "Architect Sunita Verma registered new client 'Siri Fort Villa'.",
+                      targetUrl: "/clients",
+                    });
+                    toast.success("3 Test Push Notifications sent to your MD account! 🔔");
+                  } catch (err: any) {
+                    toast.error(err.message || "Failed to send notification");
+                  }
+                }}
+                title="Send Test Push Notifications to MD"
+                className="h-8 flex items-center gap-1 px-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white transition-colors text-[10px] font-bold shadow-sm shrink-0 cursor-pointer"
+              >
+                <Send className="h-3 w-3" />
+                <span>Test Alert 🔔</span>
               </button>
             </div>
           </div>

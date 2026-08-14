@@ -8,7 +8,7 @@ interface SendNotificationParams {
 }
 
 /**
- * Sends both In-App Notification (Bell 🔔 icon) and Mobile Push Notification (Phone Status Bar 📱)
+ * Sends both In-App Notification (Bell 🔔 icon) and Mobile Push Notification (Phone Status Bar 📱) to a specific user
  */
 export const sendNotification = async ({
   userId,
@@ -25,7 +25,7 @@ export const sendNotification = async ({
       target_url: targetUrl || null,
     });
 
-    // 2. Invoke Supabase Edge Function to send Mobile FCM Push Notification
+    // 2. Invoke Supabase Edge Function to send Mobile FCM Push Notification to Phone Status Bar
     await supabase.functions.invoke("send-push-notification", {
       body: {
         userId,
@@ -36,5 +36,48 @@ export const sendNotification = async ({
     });
   } catch (err) {
     console.error("Error sending notification:", err);
+  }
+};
+
+/**
+ * Automatically sends Native Phone Push Notification (FCM Status Bar) + In-App Bell Alert to ALL MD & Admin users
+ */
+export const notifyAllMDs = async ({
+  title,
+  message,
+  targetUrl,
+}: {
+  title: string;
+  message: string;
+  targetUrl?: string;
+}) => {
+  try {
+    const { data: roles } = await supabase
+      .from("user_roles" as any)
+      .select("user_id")
+      .in("role", ["md", "admin"]);
+
+    const mdUserIds = [...new Set((roles || []).map((r: any) => r.user_id))];
+
+    if (mdUserIds.length === 0) {
+      // Fallback: If roles table is empty, query profiles
+      const { data: profiles } = await supabase.from("profiles" as any).select("user_id");
+      const pUserIds = (profiles || []).map((p: any) => p.user_id);
+      for (const uid of pUserIds) {
+        await sendNotification({ userId: uid, title, message, targetUrl });
+      }
+      return;
+    }
+
+    for (const uid of mdUserIds) {
+      await sendNotification({
+        userId: uid,
+        title,
+        message,
+        targetUrl,
+      });
+    }
+  } catch (err) {
+    console.error("Error notifying MDs:", err);
   }
 };

@@ -141,8 +141,17 @@ export function ScheduledNotificationsPanel() {
     scheduleNotification.mutate();
   };
 
-  const pendingQueue = scheduledList.filter((n) => n.status === "pending" || n.status === "sending");
-  const completedLogs = scheduledList.filter((n) => n.status === "sent" || n.status === "failed");
+  const pendingQueue = scheduledList.filter((n) => {
+    const st = (n.status || "pending").toLowerCase();
+    const isFuture = n.scheduled_for ? new Date(n.scheduled_for) > new Date() : true;
+    return (st === "pending" || st === "sending") && isFuture;
+  });
+
+  const completedLogs = scheduledList.filter((n) => {
+    const st = (n.status || "").toLowerCase();
+    const isPast = n.scheduled_for ? new Date(n.scheduled_for) <= new Date() : false;
+    return st === "sent" || st === "failed" || isPast;
+  });
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

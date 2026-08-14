@@ -181,9 +181,19 @@ const Profile = () => {
 
   return (
     <div className="max-w-md mx-auto space-y-4">
-      <h1 className="text-2xl font-bold flex items-center gap-2">
-        <User className="h-6 w-6" /> Profile
-      </h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <User className="h-6 w-6 text-primary" /> Profile
+        </h1>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={signOut}
+          className="gap-1.5 font-bold shadow-md bg-red-600 hover:bg-red-700 text-white shrink-0"
+        >
+          <LogOut className="h-4 w-4" /> Logout 🚪
+        </Button>
+      </div>
 
       <Card>
         <CardHeader><CardTitle className="text-lg">Your Information</CardTitle></CardHeader>

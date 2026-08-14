@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import NotificationBell from "./NotificationBell";
 import { GlobalSearch } from "./GlobalSearch";
 import { QuickAddModal } from "./QuickAddModal";
+import { LogOut } from "lucide-react";
 
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
@@ -27,6 +28,7 @@ const pageTitles: Record<string, string> = {
 };
 
 const AppLayoutContent = ({ children }: { children: ReactNode }) => {
+  const { signOut } = useAuth();
   const { isMobile, state, setOpen } = useSidebar();
   const { pathname } = useLocation();
   const [isHovered, setIsHovered] = useState(false);
@@ -87,11 +89,21 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
             </div>
           )}
 
-          {/* Right side: Quick Add + Notification Bell + Theme Switcher */}
+          {/* Right side: Quick Add + Notification Bell + Theme Switcher + Logout */}
           <div className="ml-auto flex items-center gap-2">
             <QuickAddModal />
             <NotificationBell />
             {isMobile && <ThemeSwitcher />}
+            {isMobile && (
+              <button
+                onClick={signOut}
+                title="Sign Out"
+                className="h-9 px-2.5 flex items-center gap-1 rounded-xl bg-red-500/10 text-red-500 hover:bg-red-500/20 border border-red-500/25 transition-all text-xs font-bold shrink-0"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                <span>Logout</span>
+              </button>
+            )}
           </div>
         </header>
 

@@ -13,11 +13,24 @@ import { toast } from "sonner";
 import { Navigate } from "react-router-dom";
 
 export default function NotificationSettings() {
-  const { user, role } = useAuth();
+  const { user, role, loading } = useAuth();
   const queryClient = useQueryClient();
 
+  useEffect(() => {
+    if (!loading && role !== "admin") {
+      toast.error("Only System Admin can access notification settings.");
+    }
+  }, [loading, role]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   if (role !== "admin") {
-    toast.error("Only System Admin can access notification settings.");
     return <Navigate to="/" replace />;
   }
 

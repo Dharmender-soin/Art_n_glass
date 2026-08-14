@@ -10,9 +10,16 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 
+import { Navigate } from "react-router-dom";
+
 export default function NotificationSettings() {
-  const { user } = useAuth();
+  const { user, role } = useAuth();
   const queryClient = useQueryClient();
+
+  if (role !== "admin" && role !== "md") {
+    toast.error("Only Admin and MD can manage notification settings.");
+    return <Navigate to="/" replace />;
+  }
 
   const [toggles, setToggles] = useState<Record<string, boolean>>({
     daily_summary: true,

@@ -16,8 +16,8 @@ export default function NotificationSettings() {
   const { user, role } = useAuth();
   const queryClient = useQueryClient();
 
-  if (role !== "admin" && role !== "md") {
-    toast.error("Only Admin and MD can manage notification settings.");
+  if (role !== "admin") {
+    toast.error("Only System Admin can access notification settings.");
     return <Navigate to="/" replace />;
   }
 

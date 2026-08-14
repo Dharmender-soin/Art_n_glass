@@ -44,7 +44,7 @@ const AppSidebar = () => {
   const isTL = role === "tl";
   const isAccountant = role === "accountant";
   const isBackhand = role === "backhand_executive";
-  const isAdminOrMD = role === "admin" || role === "md";
+  const isAdminOnly = role === "admin";
 
   const links = isSupportRole
     ? [
@@ -60,7 +60,7 @@ const AppSidebar = () => {
         { to: "/partners",      label: "Partners",       icon: Building2 },
         { to: "/clients",       label: "Clients",        icon: Users },
         { to: "/visits",        label: "Visits",         icon: CalendarCheck },
-        ...(isAdminOrMD ? [{ to: "/notification-settings", label: "Notification Settings", icon: Settings }] : []),
+        ...(isAdminOnly ? [{ to: "/notification-settings", label: "Notification Settings", icon: Settings }] : []),
         ...(isManagerOrAdmin ? [
           { to: "/reports",               label: "Reports",               icon: BarChart3 },
           { to: "/daily-visits",          label: "Daily Visits",          icon: ClipboardList },

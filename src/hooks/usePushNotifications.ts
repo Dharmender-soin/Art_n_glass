@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { PushNotifications, Token, ActionPerformed } from "@capacitor/push-notifications";
+import { LocalNotifications } from "@capacitor/local-notifications";
 import { Capacitor } from "@capacitor/core";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
@@ -30,13 +31,15 @@ export const usePushNotifications = (userId: string | undefined) => {
           // Show Toast inside App UI
           toast(title, {
             description: message,
-            action: notif.target_url ? {
-              label: "View",
-              onClick: () => navigate(notif.target_url)
-            } : undefined
+            action: notif.target_url
+              ? {
+                  label: "View",
+                  onClick: () => navigate(notif.target_url),
+                }
+              : undefined,
           });
 
-          // Show HTML5 Notification if browser supports it
+          // Show HTML5 Web Notification if browser supports it
           if (!Capacitor.isNativePlatform() && "Notification" in window && Notification.permission === "granted") {
             try {
               const webNotif = new Notification(title, {
@@ -64,56 +67,38 @@ export const usePushNotifications = (userId: string | undefined) => {
       );
     }
 
-    // --- 2. NATIVE PLATFORMS (Android / iOS via Capacitor Push Notifications) ---
+    // --- 2. NATIVE PLATFORMS (Android / iOS via Capacitor) ---
     if (Capacitor.isNativePlatform()) {
-      const registerPush = async () => {
-        try {
-          const permStatus = await PushNotifications.requestPermissions();
-          if (permStatus.receive === "granted") {
-            // Create MAX Importance Android Channel for Status Bar Popups & Sound
-            if (Capacitor.getPlatform() === "android") {
-              await PushNotifications.createChannel({
-                id: "default",
-                name: "High Priority Notifications",
-                description: "Critical status alerts and MD updates",
-                importance: 5, // MAX importance (Heads-Up status bar banner)
-                visibility: 1, // Visible on Lock Screen
-                vibration: true,
-                lights: true,
-                lightColor: "#DC2626",
-              });
-            }
-            await PushNotifications.register();
-          } else {
-            console.warn("Push notification permission was denied");
-          }
-        } catch (err) {
-          console.error("Error requesting push notification permissions:", err);
-        }
-      };
+      let isSubscribed = true;
 
-      registerPush();
-
+      // STEP A: Setup listeners BEFORE calling register() to prevent race conditions
       const registrationListener = PushNotifications.addListener(
         "registration",
         async (token: Token) => {
+          if (!isSubscribed) return;
           console.log("FCM registration success, token:", token.value);
-          const { error } = await supabase
-            .from("user_fcm_tokens" as any)
-            .upsert(
-              {
-                user_id: userId,
-                token: token.value,
-                device_platform: Capacitor.getPlatform(),
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "token" }
-            );
+          toast.info("Phone push registered with server 📱");
 
-          if (error) {
-            console.error("Failed to save FCM token to Supabase:", error.message);
-          } else {
-            console.log("FCM token saved to Supabase successfully.");
+          try {
+            const { error } = await supabase
+              .from("user_fcm_tokens" as any)
+              .upsert(
+                {
+                  user_id: userId,
+                  token: token.value,
+                  device_platform: Capacitor.getPlatform(),
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "token" }
+              );
+
+            if (error) {
+              console.error("Failed to save FCM token to Supabase:", error.message);
+            } else {
+              console.log("FCM token saved to Supabase successfully!");
+            }
+          } catch (tokErr) {
+            console.error("Token save exception:", tokErr);
           }
         }
       );
@@ -131,10 +116,12 @@ export const usePushNotifications = (userId: string | undefined) => {
           console.log("Push notification received in foreground:", notification);
           toast(notification.title || "Notification Received", {
             description: notification.body || "",
-            action: notification.data?.targetUrl ? {
-              label: "Open",
-              onClick: () => navigate(notification.data.targetUrl)
-            } : undefined
+            action: notification.data?.targetUrl
+              ? {
+                  label: "Open",
+                  onClick: () => navigate(notification.data.targetUrl),
+                }
+              : undefined,
           });
         }
       );
@@ -150,7 +137,44 @@ export const usePushNotifications = (userId: string | undefined) => {
         }
       );
 
+      // STEP B: Request permissions, create channels, and call register()
+      const initPushPermissions = async () => {
+        try {
+          // Request Local Notifications permission for instant phone status bar popups
+          await LocalNotifications.requestPermissions();
+
+          // Check & Request Push Notifications permission
+          let checkStatus = await PushNotifications.checkPermissions();
+          if (checkStatus.receive !== "granted") {
+            checkStatus = await PushNotifications.requestPermissions();
+          }
+
+          if (checkStatus.receive === "granted") {
+            if (Capacitor.getPlatform() === "android") {
+              await PushNotifications.createChannel({
+                id: "default",
+                name: "High Priority Notifications",
+                description: "Critical status alerts and MD updates",
+                importance: 5, // MAX importance (Heads-Up status bar banner)
+                visibility: 1, // Visible on Lock Screen
+                vibration: true,
+                lights: true,
+                lightColor: "#DC2626",
+              });
+            }
+            await PushNotifications.register();
+          } else {
+            console.warn("Push notification permission was denied on native platform");
+          }
+        } catch (err) {
+          console.error("Error initializing push notifications:", err);
+        }
+      };
+
+      initPushPermissions();
+
       return () => {
+        isSubscribed = false;
         supabase.removeChannel(channel);
         registrationListener.then((h) => h.remove());
         registrationErrorListener.then((h) => h.remove());

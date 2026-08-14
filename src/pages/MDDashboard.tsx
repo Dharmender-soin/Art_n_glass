@@ -2698,22 +2698,25 @@ const MDDashboard = () => {
           </div>
           {/* Quick Page Links Bar for Mobile */}
           <div className="flex items-center gap-1.5 overflow-x-auto pb-2 pt-1 scrollbar-none">
-            <Link to="/" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 text-[11px] font-semibold shrink-0 hover:bg-slate-700">
+            <Link to="/" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-slate-800 text-white text-[11px] font-bold shrink-0 shadow-sm hover:opacity-90 transition-all">
               🏠 Home
             </Link>
-            <Link to="/reports" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-900/40 border border-indigo-700/50 text-indigo-300 text-[11px] font-semibold shrink-0 hover:bg-indigo-800/40">
-              📊 Reports
+            <Link to="/partners" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 text-white text-[11px] font-bold shrink-0 shadow-sm hover:opacity-90 transition-all">
+              🤝 Partners
             </Link>
-            <Link to="/visits" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-900/40 border border-emerald-700/50 text-emerald-300 text-[11px] font-semibold shrink-0 hover:bg-emerald-800/40">
-              📅 Visits
-            </Link>
-            <Link to="/clients" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-900/40 border border-blue-700/50 text-blue-300 text-[11px] font-semibold shrink-0 hover:bg-blue-800/40">
+            <Link to="/clients" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-600 text-white text-[11px] font-bold shrink-0 shadow-sm hover:opacity-90 transition-all">
               👥 Clients
             </Link>
-            <Link to="/hierarchy" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-900/40 border border-purple-700/50 text-purple-300 text-[11px] font-semibold shrink-0 hover:bg-purple-800/40">
+            <Link to="/visits" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-[11px] font-bold shrink-0 shadow-sm hover:opacity-90 transition-all">
+              📅 Visits
+            </Link>
+            <Link to="/reports" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-[11px] font-bold shrink-0 shadow-sm hover:opacity-90 transition-all">
+              📊 Reports
+            </Link>
+            <Link to="/hierarchy" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 text-white text-[11px] font-bold shrink-0 shadow-sm hover:opacity-90 transition-all">
               🌳 Hierarchy
             </Link>
-            <Link to="/admin" className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-900/40 border border-rose-700/50 text-rose-300 text-[11px] font-semibold shrink-0 hover:bg-rose-800/40">
+            <Link to="/admin" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-[11px] font-bold shrink-0 shadow-sm hover:opacity-90 transition-all">
               ⚙️ Admin
             </Link>
           </div>

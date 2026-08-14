@@ -380,22 +380,22 @@ const ClientCard = ({
         </div>
 
         {/* ── Section 7: Action buttons ── */}
-        <div className="flex items-center gap-2 pt-1 mt-auto border-t border-gray-100 dark:border-white/5">
+        <div className="grid grid-cols-2 gap-2 pt-2 mt-auto border-t border-gray-100 dark:border-white/5">
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); setSelectedClient(c.id); }}
-            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl border border-dashed border-primary/30 dark:border-primary/20 text-xs font-semibold text-primary hover:bg-primary/5 transition-all"
+            className="flex items-center justify-center gap-1.5 h-9 px-2 rounded-xl border border-dashed border-primary/30 dark:border-primary/20 text-[11px] sm:text-xs font-semibold text-primary hover:bg-primary/5 transition-all truncate"
           >
-            <ClipboardList className="h-3.5 w-3.5" />
-            Add Visit Note
+            <ClipboardList className="h-3.5 w-3.5 shrink-0" />
+            <span className="truncate">Add Note</span>
           </button>
           <button
             type="button"
             onClick={() => setSelectedClient(c.id)}
-            className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl bg-primary text-white text-xs font-bold hover:bg-primary/90 active:scale-[0.98] transition-all shadow-sm"
+            className="flex items-center justify-center gap-1.5 h-9 px-2 rounded-xl bg-primary text-white text-[11px] sm:text-xs font-bold hover:bg-primary/90 active:scale-[0.98] transition-all shadow-sm truncate"
           >
-            <ChevronDown className="h-3.5 w-3.5 -rotate-90" />
-            View Details
+            <ChevronDown className="h-3.5 w-3.5 -rotate-90 shrink-0" />
+            <span className="truncate">View Details</span>
           </button>
         </div>
 

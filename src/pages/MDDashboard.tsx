@@ -15,7 +15,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { SendNotificationForm } from "@/components/dashboard/SendNotificationForm";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { sendNotification } from "@/lib/notifications";
+import { sendNotification, notifyAllMDs } from "@/lib/notifications";
 import { AttentionRequiredSection } from "@/components/dashboard/AttentionRequiredSection";
 
 /* ═══════════════════════════ TYPES ═══════════════════════════ */
@@ -1713,7 +1713,7 @@ const EmployeeDetailModal = ({
 
 /* ═══════════════════════════════ MAIN ═══════════════════════════════ */
 const MDDashboard = () => {
-  const { role, showroomId, showroomIds } = useAuth();
+  const { user, role, showroomId, showroomIds } = useAuth();
   const isMdOrAdmin = role === "md" || role === "admin";
 
   /* ── UI State ── */
@@ -2705,7 +2705,7 @@ const MDDashboard = () => {
                   setIsSendingTest(true);
                   toast.info("Sending 5 Test Notifications to your phone & MD accounts... 📱");
                   try {
-                    const targetUid = user?.id;
+                    const targetUid = user?.id || (await supabase.auth.getUser()).data.user?.id;
 
                     if (targetUid) {
                       // 1. Critical Alert
@@ -2758,6 +2758,15 @@ const MDDashboard = () => {
                         category: "informational",
                         priority: "normal",
                         notificationType: "team_activity",
+                      });
+                    } else {
+                      // Fallback notify all MDs
+                      await notifyAllMDs({
+                        title: "🔴 CRITICAL: High-Value Deal Lost (₹12.5L)",
+                        message: "Client 'Supertech Towers' lost by Rahul. Reason: Competitor Pricing.",
+                        category: "critical",
+                        priority: "high",
+                        notificationType: "deal_lost",
                       });
                     }
 

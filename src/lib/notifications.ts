@@ -1,5 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { buildNotificationDeepLink } from "./notificationDeepLinks";
+import { Capacitor } from "@capacitor/core";
+import { LocalNotifications } from "@capacitor/local-notifications";
 
 export type NotificationCategory = "critical" | "important" | "report" | "reminder" | "informational";
 export type NotificationPriority = "high" | "medium" | "normal" | "low";
@@ -76,8 +78,9 @@ export interface SendNotificationParams {
 }
 
 /**
- * Sends both Database Persistence (Bell 🔔 icon & Notification Center)
- * and invokes backend Edge Function to dispatch Mobile FCM Push Banner
+ * Sends Database Persistence (Bell 🔔 icon & Notification Center),
+ * triggers Native Mobile Status Bar Popup (via Capacitor LocalNotifications on phone),
+ * and invokes backend Edge Function to dispatch FCM Push.
  */
 export const sendNotification = async ({
   userId,
@@ -91,10 +94,10 @@ export const sendNotification = async ({
   entityId,
   metadata = {},
 }: SendNotificationParams) => {
-  try {
-    const deepLink = targetUrl || buildNotificationDeepLink(notificationType, metadata);
+  const deepLink = targetUrl || buildNotificationDeepLink(notificationType, metadata);
 
-    // 1. Database Persistence
+  // 1. Database Persistence (Safe Insert)
+  try {
     const { error: insErr } = await supabase.from("notifications" as any).insert({
       user_id: userId,
       title,
@@ -113,10 +116,50 @@ export const sendNotification = async ({
     });
 
     if (insErr) {
-      console.warn("DB insert notification warning:", insErr.message);
+      console.warn("DB insert primary error, trying fallback insert:", insErr.message);
+      // Fallback insert with core columns
+      await supabase.from("notifications" as any).insert({
+        user_id: userId,
+        title,
+        message,
+        body: message,
+        is_read: false,
+        target_url: deepLink,
+        created_at: new Date().toISOString(),
+      });
     }
+  } catch (dbErr) {
+    console.error("DB Notification insert catch error:", dbErr);
+  }
 
-    // 2. Invoke Supabase Edge Function to send Mobile FCM Push Banner
+  // 2. Native Mobile Status Bar Alert Popup (Capacitor Phone Platform)
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const perm = await LocalNotifications.requestPermissions();
+      if (perm.display === "granted") {
+        const notifId = Math.floor(Math.random() * 1000000);
+        await LocalNotifications.schedule({
+          notifications: [
+            {
+              id: notifId,
+              title: title,
+              body: message,
+              schedule: { at: new Date(Date.now() + 200) },
+              sound: undefined,
+              attachments: undefined,
+              actionTypeId: "",
+              extra: { targetUrl: deepLink, category, priority },
+            },
+          ],
+        });
+      }
+    } catch (locErr) {
+      console.error("Local notification schedule error:", locErr);
+    }
+  }
+
+  // 3. Supabase Edge Function FCM Push dispatch
+  try {
     await supabase.functions.invoke("send-push-notification", {
       body: {
         userId,
@@ -127,8 +170,8 @@ export const sendNotification = async ({
         data: { targetUrl: deepLink, notificationType, category },
       },
     });
-  } catch (err) {
-    console.error("Error sending notification:", err);
+  } catch (fcmErr) {
+    console.warn("Edge function push invoke error:", fcmErr);
   }
 };
 

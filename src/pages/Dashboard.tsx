@@ -817,7 +817,7 @@ const AnalyticsDashboard = () => {
   // ─── RENDER ─────────────────────────────────────
   // ═══════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-[#0A0B0E] text-[#F5F5F7] font-sans pb-28 selection:bg-[#A6192E]/30 relative overflow-x-hidden">
+    <div className="w-full bg-[#0A0B0E] text-[#F5F5F7] font-sans pb-24 selection:bg-[#A6192E]/30 relative overflow-x-hidden">
       <motion.div
         variants={containerVariants}
         initial="hidden"

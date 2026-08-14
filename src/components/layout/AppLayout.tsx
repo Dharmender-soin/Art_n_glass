@@ -49,7 +49,7 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <>
+    <div className="flex h-screen w-screen overflow-hidden bg-background relative">
       <div
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
@@ -61,9 +61,9 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
         <AppSidebar />
       </div>
 
-      <SidebarInset>
+      <SidebarInset className="flex flex-1 flex-col h-full min-w-0 overflow-hidden relative">
         {/* — Top Bar — */}
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b bg-background/80 backdrop-blur-md px-4 md:px-6">
+        <header className="flex h-14 items-center gap-3 border-b bg-background/95 backdrop-blur-md px-4 md:px-6 shrink-0 z-30">
           {/* Mobile trigger */}
           {isMobile && <SidebarTrigger className="-ml-1" />}
 
@@ -95,19 +95,20 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
           </div>
         </header>
 
-        {/* — Main Content — */}
-        <div className={cn(
-          "flex flex-1 flex-col overflow-y-auto h-full",
+        {/* — Main Content (Only this area scrolls!) — */}
+        <main className={cn(
+          "flex-1 overflow-y-auto h-full w-full",
           pathname === "/" || pathname === "/my-pipeline" || pathname === "/md-dashboard" ? "p-0 pb-28 md:pb-0 gap-0" : "gap-6 p-4 md:p-6 lg:p-8 pb-28 md:pb-8"
         )}>
           {children}
-        </div>
+        </main>
       </SidebarInset>
 
-      <div className="block md:hidden">
+      {/* Fixed Bottom Navigation Bar for Mobile */}
+      <div className="block md:hidden fixed bottom-0 left-0 right-0 z-[100]">
         <BottomNav />
       </div>
-    </>
+    </div>
   );
 };
 

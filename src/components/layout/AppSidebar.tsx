@@ -43,7 +43,7 @@ const AppSidebar = () => {
   const isManagerOrAdmin = role === "admin" || role === "manager" || role === "md";
   const isTL = role === "tl";
   const isAccountant = role === "accountant";
-  const isBackhand = role === "backhand_executive";
+  const isSupportRole = isAccountant || isBackhand;
   const isAdminOnly = role === "admin";
 
   const links = isSupportRole

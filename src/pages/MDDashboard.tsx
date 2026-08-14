@@ -2738,6 +2738,9 @@ const MDDashboard = () => {
             <Link to="/" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-slate-800 text-white text-[11px] font-bold shrink-0 shadow-sm hover:opacity-90 transition-all">
               🏠 Home
             </Link>
+            <Link to="/notifications" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-[11px] font-bold shrink-0 shadow-sm hover:opacity-90 transition-all">
+              🔔 Notifications
+            </Link>
             <Link to="/partners" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-600 text-white text-[11px] font-bold shrink-0 shadow-sm hover:opacity-90 transition-all">
               🤝 Partners
             </Link>

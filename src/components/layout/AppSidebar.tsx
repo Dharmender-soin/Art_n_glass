@@ -9,7 +9,7 @@ import {
   Building2, Users, CalendarCheck, BarChart3, LayoutDashboard,
   LogOut, UserCircle, Shield, ClipboardList, ShieldCheck,
   GitBranch, PanelLeftClose, PanelLeftOpen, Map, Receipt,
-  Handshake, Eye,
+  Handshake, Eye, Bell, Settings,
 } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
@@ -56,17 +56,19 @@ const AppSidebar = () => {
     : [
         { to: "/",              label: "Dashboard",      icon: LayoutDashboard },
         ...(isManagerOrAdmin ? [{ to: "/md-dashboard", label: "Command Center", icon: Eye }] : []),
+        { to: "/notifications", label: "Notification Center", icon: Bell },
         { to: "/partners",      label: "Partners",       icon: Building2 },
         { to: "/clients",       label: "Clients",        icon: Users },
         { to: "/visits",        label: "Visits",         icon: CalendarCheck },
         ...(isManagerOrAdmin ? [
-          { to: "/reports",        label: "Reports",        icon: BarChart3 },
-          { to: "/daily-visits",   label: "Daily Visits",   icon: ClipboardList },
-          { to: "/verification",   label: "Verification",   icon: ShieldCheck },
-          { to: "/hierarchy",      label: "Hierarchy",      icon: GitBranch },
-          { to: "/live-map",       label: "Live Map",       icon: Map },
-          { to: "/conveyance",     label: "Conveyance",     icon: Receipt },
-          { to: "/partner-visits", label: "Partner Visits", icon: Handshake },
+          { to: "/reports",               label: "Reports",               icon: BarChart3 },
+          { to: "/notification-settings", label: "Notification Settings", icon: Settings },
+          { to: "/daily-visits",          label: "Daily Visits",          icon: ClipboardList },
+          { to: "/verification",          label: "Verification font-bold",icon: ShieldCheck },
+          { to: "/hierarchy",             label: "Hierarchy",             icon: GitBranch },
+          { to: "/live-map",              label: "Live Map",              icon: Map },
+          { to: "/conveyance",            label: "Conveyance",            icon: Receipt },
+          { to: "/partner-visits",        label: "Partner Visits",        icon: Handshake },
         ] : []),
         ...(isTL ? [
           { to: "/reports",      label: "Reports",      icon: BarChart3 },

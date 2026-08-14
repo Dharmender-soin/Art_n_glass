@@ -77,7 +77,6 @@ export const usePushNotifications = (userId: string | undefined) => {
         async (token: Token) => {
           if (!isSubscribed) return;
           console.log("FCM registration success, token:", token.value);
-          toast.info("Phone push registered with server 📱");
 
           try {
             const { error } = await supabase

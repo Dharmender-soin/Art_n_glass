@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -30,6 +30,52 @@ const MONTHS = [
   "January","February","March","April","May","June",
   "July","August","September","October","November","December"
 ];
+const safeFormatTime = (str: string | null | undefined, fmtStr: string = "hh:mm a"): string => {
+  if (!str) return "—";
+  try {
+    const d = parseISO(str);
+    return isNaN(d.getTime()) ? "—" : format(d, fmtStr);
+  } catch {
+    return "—";
+  }
+};
+
+const safeFormatDate = (str: string | null | undefined, fmtStr: string = "dd MMM yyyy"): string => {
+  if (!str) return "—";
+  try {
+    const d = parseISO(str);
+    return isNaN(d.getTime()) ? "—" : format(d, fmtStr);
+  } catch {
+    return "—";
+  }
+};
+
+class ReportsErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: string }> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: "" };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error: error?.message || "Render Error" };
+  }
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error("Reports Error:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-6 text-center bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 rounded-xl my-4">
+          <p className="text-sm font-bold text-rose-600 dark:text-rose-400">Something went wrong loading DSR Reports.</p>
+          <p className="text-xs text-rose-500 mt-1">{this.state.error}</p>
+          <button onClick={() => this.setState({ hasError: false })} className="mt-3 px-3 py-1 bg-rose-600 text-white rounded text-xs font-bold">
+            Retry Loading
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const Reports = () => {
   const { role } = useAuth();
@@ -601,7 +647,7 @@ const Reports = () => {
                                 <span className="text-xs font-bold text-primary">{format(parseISO(date), "dd")}</span>
                               </div>
                               <div>
-                                <p className="font-bold text-sm">{format(parseISO(date), "EEEE, dd MMM yyyy")}</p>
+                                <p className="font-bold text-sm">{safeFormatDate(date, "EEEE, dd MMM yyyy")}</p>
                                 <p className="text-[11px] text-muted-foreground">{planned.length} planned &bull; {done.length} done</p>
                               </div>
                             </div>
@@ -616,8 +662,8 @@ const Reports = () => {
                           {(() => {
                             const validCreated = dayVisits.filter(v => v.created_at).map(v => v.created_at as string);
                             const validDone = dayVisits.filter(v => v.done_at && v.status === "done").map(v => v.done_at as string);
-                            const dayStart = validCreated.length > 0 ? format(parseISO([...validCreated].sort()[0]), "hh:mm a") : "—";
-                            const dayEnd = validDone.length > 0 ? format(parseISO([...validDone].sort().reverse()[0]), "hh:mm a") : "—";
+                            const dayStart = validCreated.length > 0 ? safeFormatTime([...validCreated].sort()[0], "hh:mm a") : "—";
+                            const dayEnd = validDone.length > 0 ? safeFormatTime([...validDone].sort().reverse()[0], "hh:mm a") : "—";
                             return (
                               <div className="flex items-center gap-4 text-[11px] pl-10 print:pl-0">
                                 <span className="flex items-center gap-1">
@@ -653,8 +699,8 @@ const Reports = () => {
                                 const addr = v.address || v.clients?.address || v.partners?.address || "—";
                                 const statusClass = v.status === "done" ? "dsr-status-done" : v.status === "cancelled" ? "dsr-status-cancelled" : "dsr-status-planned";
                                 const statusLabel = v.status === "done" ? "✓ Done" : v.status === "cancelled" ? "✗ Cancelled" : "⏳ Planned";
-                                const startTime = v.created_at ? format(parseISO(v.created_at), "hh:mm a") : "—";
-                                const endTime = (v.done_at && v.status === "done") ? format(parseISO(v.done_at), "hh:mm a") : null;
+                                const startTime = safeFormatTime(v.created_at, "hh:mm a");
+                                const endTime = (v.done_at && v.status === "done") ? safeFormatTime(v.done_at, "hh:mm a") : null;
                                 return (
                                   <tr key={v.id} className="border-b hover:bg-muted/10">
                                     <td className="text-[11px] py-2 px-3 text-muted-foreground font-mono">{idx + 1}</td>
@@ -1198,4 +1244,10 @@ const BarChart3Icon = ({ className }: { className?: string }) => (
   </svg>
 );
 
-export default Reports;
+export default function WrappedReports() {
+  return (
+    <ReportsErrorBoundary>
+      <Reports />
+    </ReportsErrorBoundary>
+  );
+}

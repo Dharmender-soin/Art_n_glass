@@ -112,7 +112,7 @@ export default function NotificationBell() {
           <>
             {/* Backdrop */}
             <div
-              className="fixed inset-0 z-[99998] bg-black/40 backdrop-blur-xs sm:bg-black/20"
+              className="fixed inset-0 z-[999998] bg-black/40 backdrop-blur-xs sm:bg-black/20"
               onClick={() => setIsOpen(false)}
             />
 
@@ -121,7 +121,7 @@ export default function NotificationBell() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.95 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
-              className="fixed top-16 right-2 sm:right-6 z-[99999] w-[calc(100vw-16px)] sm:w-96 max-w-md bg-slate-900 text-white border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md"
+              className="fixed top-20 right-2 sm:top-16 sm:right-6 z-[999999] w-[calc(100vw-16px)] sm:w-96 max-w-md bg-slate-900 text-white border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/80">

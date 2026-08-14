@@ -5,7 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import {
   Bell, Check, CheckCheck, Trash2, Search, Filter, Calendar as CalendarIcon,
-  ChevronLeft, ChevronRight, ArrowUpRight, ShieldAlert, Sparkles, RefreshCw
+  ChevronLeft, ChevronRight, ArrowUpRight, ShieldAlert, Sparkles, RefreshCw, MessageSquareShare
 } from "lucide-react";
 import { formatDistanceToNow, parseISO, isToday, isYesterday, isThisWeek, isThisMonth } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
@@ -341,8 +341,8 @@ export default function NotificationsCenter() {
                           </p>
                         )}
 
-                        {/* CTA Deep-Link Footer Button */}
-                        <div className="pt-2 flex items-center justify-between">
+                        {/* CTA Deep-Link & WhatsApp Share Buttons */}
+                        <div className="pt-2 flex items-center justify-between gap-2 flex-wrap">
                           <Button
                             variant="secondary"
                             size="sm"
@@ -350,6 +350,20 @@ export default function NotificationsCenter() {
                           >
                             <span>Open Details</span>
                             <ArrowUpRight className="h-3 w-3" />
+                          </Button>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const text = `📊 *ART N GLASS MANAGEMENT ALERT*\n\n📌 *${item.title}*\n\n📝 ${messageText || ""}\n\n🕒 ${formatDistanceToNow(parseISO(item.created_at), { addSuffix: true })}\n\n_Generated via VisitWiz Enterprise_`;
+                              window.open(`https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`, "_blank");
+                            }}
+                            className="h-7 px-2.5 text-[11px] font-bold gap-1 rounded-lg border-emerald-500/40 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                          >
+                            <MessageSquareShare className="h-3 w-3 text-emerald-600" />
+                            <span>Share on WhatsApp</span>
                           </Button>
                         </div>
                       </div>

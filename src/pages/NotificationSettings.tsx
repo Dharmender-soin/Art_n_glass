@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Sliders, Save, ShieldAlert, BellRing, Settings, Loader2 } from "lucide-react";
+import { Sliders, Save, ShieldAlert, BellRing, Settings, Loader2, Clock, MessageSquareShare } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +46,14 @@ export default function NotificationSettings() {
     followup_overdue_days: 3,
   });
 
+  const [timings, setTimings] = useState<Record<string, string>>({
+    morning_plan_time: "08:30",
+    daily_summary_time: "19:00",
+    dsr_report_time: "20:00",
+    weekly_report_day: "Saturday",
+    weekly_report_time: "20:00",
+  });
+
   // Fetch preferences from Supabase
   const { data: prefs, isLoading } = useQuery({
     queryKey: ["notification-preferences", user?.id],
@@ -70,6 +78,9 @@ export default function NotificationSettings() {
       if (prefs.thresholds) {
         setThresholds((prev) => ({ ...prev, ...(prefs.thresholds as any) }));
       }
+      if ((prefs as any).timings) {
+        setTimings((prev) => ({ ...prev, ...((prefs as any).timings as any) }));
+      }
     }
   }, [prefs]);
 
@@ -82,6 +93,7 @@ export default function NotificationSettings() {
           user_id: user.id,
           enabled_notifications: toggles,
           thresholds,
+          timings,
           updated_at: new Date().toISOString(),
         },
         { onConflict: "user_id" }
@@ -215,6 +227,59 @@ export default function NotificationSettings() {
               type="number"
               value={thresholds.followup_overdue_days || 3}
               onChange={(e) => setThresholds({ ...thresholds, followup_overdue_days: parseFloat(e.target.value) || 0 })}
+              className="rounded-xl text-xs"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Scheduled Report Delivery Timings */}
+      <Card className="border-border shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg font-bold flex items-center gap-2">
+            <Clock className="h-5 w-5 text-blue-500" /> Scheduled Report Delivery Timings
+          </CardTitle>
+          <CardDescription>
+            Customize the exact hours when daily & weekly management summary reports are sent to your phone.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold">Morning Sales Plan Time</Label>
+            <Input
+              type="time"
+              value={timings.morning_plan_time || "08:30"}
+              onChange={(e) => setTimings({ ...timings, morning_plan_time: e.target.value })}
+              className="rounded-xl text-xs"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold">Daily Business Summary Time</Label>
+            <Input
+              type="time"
+              value={timings.daily_summary_time || "19:00"}
+              onChange={(e) => setTimings({ ...timings, daily_summary_time: e.target.value })}
+              className="rounded-xl text-xs"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold">End-of-Day (DSR) Report Time</Label>
+            <Input
+              type="time"
+              value={timings.dsr_report_time || "20:00"}
+              onChange={(e) => setTimings({ ...timings, dsr_report_time: e.target.value })}
+              className="rounded-xl text-xs"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold">Weekly Report Time</Label>
+            <Input
+              type="time"
+              value={timings.weekly_report_time || "20:00"}
+              onChange={(e) => setTimings({ ...timings, weekly_report_time: e.target.value })}
               className="rounded-xl text-xs"
             />
           </div>

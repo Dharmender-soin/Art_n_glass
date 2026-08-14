@@ -410,8 +410,8 @@ const Profile = () => {
         </CardContent>
       </Card>
 
-      <Button variant="outline" className="w-full flex items-center gap-2" onClick={signOut}>
-        <LogOut className="h-4 w-4" /> Sign Out
+      <Button variant="destructive" className="w-full h-11 text-sm font-bold flex items-center justify-center gap-2 rounded-xl shadow-md cursor-pointer" onClick={signOut}>
+        <LogOut className="h-4 w-4" /> Sign Out / Logout
       </Button>
     </div>
   );

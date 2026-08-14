@@ -39,7 +39,7 @@ const AppSidebar = () => {
   const { role, signOut } = useAuth();
   const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
 
-  const isExpanded = state === "expanded";
+  const isExpanded = isMobile || state === "expanded";
   const isManagerOrAdmin = role === "admin" || role === "manager" || role === "md";
   const isTL = role === "tl";
   const isAccountant = role === "accountant";

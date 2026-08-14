@@ -597,6 +597,35 @@ const Clients = () => {
       };
       const { error } = await supabase.from("clients").insert(insertData);
       if (error) throw error;
+
+      try {
+        const { data: mdAdmins } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .in("role", ["md", "admin"]);
+        const targetIds = (mdAdmins || []).map((m) => m.user_id);
+        if (rawData.created_by) {
+          const { data: creatorRole } = await supabase
+            .from("user_roles")
+            .select("reports_to")
+            .eq("user_id", rawData.created_by)
+            .maybeSingle();
+          if (creatorRole?.reports_to) targetIds.push(creatorRole.reports_to);
+        }
+        const uniqueTargetIds = [...new Set(targetIds)];
+        await Promise.all(
+          uniqueTargetIds.map((uid) =>
+            sendNotification({
+              userId: uid,
+              title: "New Lead Onboarded 🆕",
+              message: `Client ${rawData.name} was added to pipeline`,
+              targetUrl: "/clients",
+            })
+          )
+        );
+      } catch (e) {
+        console.error("Error notifying new client creation:", e);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });

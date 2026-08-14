@@ -8,18 +8,55 @@ export const usePushNotifications = (userId: string | undefined) => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Only run on native platforms (Android/iOS) when a user is logged in
-    if (!userId || !Capacitor.isNativePlatform()) {
-      return;
+    if (!userId) return;
+
+    // --- 1. WEB BROWSER NOTIFICATIONS (HTML5 + Supabase Realtime) ---
+    if (!Capacitor.isNativePlatform()) {
+      if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission().catch((err) =>
+          console.error("Web notification permission request error:", err)
+        );
+      }
+
+      // Realtime listener for incoming notifications for this user on Web
+      const channel = supabase
+        .channel(`web-notifications-${userId}`)
+        .on(
+          "postgres_changes",
+          {
+            event: "INSERT",
+            schema: "public",
+            table: "notifications",
+            filter: `user_id=eq.${userId}`,
+          },
+          (payload) => {
+            const notif = payload.new;
+            if ("Notification" in window && Notification.permission === "granted") {
+              const webNotif = new Notification(notif.title || "New Notification", {
+                body: notif.message || notif.body || "",
+                icon: "/favicon.ico",
+              });
+              if (notif.target_url) {
+                webNotif.onclick = () => {
+                  window.focus();
+                  navigate(notif.target_url);
+                };
+              }
+            }
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
 
+    // --- 2. NATIVE PLATFORMS (Android / iOS via Capacitor FCM) ---
     const registerPush = async () => {
       try {
-        // Request permissions (prompt will trigger on iOS, and Android 13+)
         const permStatus = await PushNotifications.requestPermissions();
-        
         if (permStatus.receive === "granted") {
-          // Register device with Apple / Google to get token
           await PushNotifications.register();
         } else {
           console.warn("Push notification permission was denied");
@@ -31,13 +68,10 @@ export const usePushNotifications = (userId: string | undefined) => {
 
     registerPush();
 
-    // Listener for successful registration
     const registrationListener = PushNotifications.addListener(
       "registration",
       async (token: Token) => {
         console.log("FCM registration success, token:", token.value);
-        
-        // Save FCM token to public.user_fcm_tokens table
         const { error } = await supabase
           .from("user_fcm_tokens")
           .upsert(
@@ -58,7 +92,6 @@ export const usePushNotifications = (userId: string | undefined) => {
       }
     );
 
-    // Listener for registration errors
     const registrationErrorListener = PushNotifications.addListener(
       "registrationError",
       (error: any) => {
@@ -66,34 +99,29 @@ export const usePushNotifications = (userId: string | undefined) => {
       }
     );
 
-    // Listener for notifications received while app is in foreground
     const notificationReceivedListener = PushNotifications.addListener(
       "pushNotificationReceived",
       (notification) => {
         console.log("Push notification received in foreground:", notification);
-        // We can display a custom UI Toast or banner inside the app here
       }
     );
 
-    // Listener for actions performed (user clicks on notification)
     const actionPerformedListener = PushNotifications.addListener(
       "pushNotificationActionPerformed",
       (action: ActionPerformed) => {
         console.log("Push notification action performed:", action);
         const targetUrl = action.notification.data?.targetUrl;
         if (targetUrl) {
-          console.log("Navigating to targetUrl:", targetUrl);
           navigate(targetUrl);
         }
       }
     );
 
-    // Cleanup listeners on unmount
     return () => {
-      registrationListener.remove();
-      registrationErrorListener.remove();
-      notificationReceivedListener.remove();
-      actionPerformedListener.remove();
+      registrationListener.then((h) => h.remove());
+      registrationErrorListener.then((h) => h.remove());
+      notificationReceivedListener.then((h) => h.remove());
+      actionPerformedListener.then((h) => h.remove());
     };
   }, [userId, navigate]);
 };

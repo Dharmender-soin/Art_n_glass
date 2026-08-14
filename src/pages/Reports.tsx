@@ -13,7 +13,7 @@ import { format, parseISO, startOfMonth, getDaysInMonth, eachDayOfInterval, star
 import { CalendarCheck, Users, Building2, CheckCircle, Clock, Package, Filter, ArrowUpRight, Download, Navigation, FileText, Printer, ChevronDown } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence } from "framer-motion";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { Database } from "@/integrations/supabase/types";
 
 type VisitWithRelations = Database["public"]["Tables"]["visits"]["Row"] & {
@@ -46,6 +46,22 @@ const Reports = () => {
   const [dsrFilterMode, setDsrFilterMode] = useState<DsrFilterMode>("this_month");
   const [dsrCustomFrom, setDsrCustomFrom] = useState<string>(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [dsrCustomTo, setDsrCustomTo] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+
+  // Fetch WON & LOST clients for Report Dialog
+  const { data: reportClients = [] } = useQuery({
+    queryKey: ["report-clients-won-lost"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id, name, status, created_at, phone")
+        .in("status", ["converted", "lost"])
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
   const { data: visits = [], isLoading: isLoadingVisits } = useQuery({
     queryKey: ["report-visits", dateFrom, dateTo],
@@ -385,6 +401,12 @@ const Reports = () => {
             Comprehensive overview of performance and activities
           </motion.p>
         </div>
+        <Button
+          onClick={() => setIsReportDialogOpen(true)}
+          className="gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 text-white font-bold shadow-lg hover:brightness-110"
+        >
+          <FileText className="h-4 w-4" /> Open Report Summary Dialog 📊
+        </Button>
       </div>
 
       {/* Tabs - hidden on print */}
@@ -1057,6 +1079,111 @@ const Reports = () => {
 
       </div>
       )}
+
+      {/* 📊 Executive & Sales Report Dialog Box for MD / Management */}
+      <Dialog open={isReportDialogOpen} onOpenChange={setIsReportDialogOpen}>
+        <DialogContent className="max-w-3xl bg-slate-950 border border-slate-800 text-white rounded-3xl shadow-2xl p-6 overflow-y-auto max-h-[90vh]">
+          <DialogHeader>
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 font-bold">
+                📊
+              </div>
+              <div>
+                <DialogTitle className="text-xl font-extrabold text-white">
+                  Executive Performance & Deals Report
+                </DialogTitle>
+                <DialogDescription className="text-slate-400 text-xs mt-0.5">
+                  Summary of WON Deals, LOST Deals, and Field Visit activity for MD & Management.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="space-y-6 mt-4">
+            {/* Quick Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-emerald-950/40 border border-emerald-500/20 rounded-2xl p-3.5 text-center">
+                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">Deals Won ✅</span>
+                <span className="text-2xl font-black text-emerald-300 mt-1 block">
+                  {reportClients.filter((c: any) => c.status === "converted").length}
+                </span>
+              </div>
+              <div className="bg-rose-950/40 border border-rose-500/20 rounded-2xl p-3.5 text-center">
+                <span className="text-[10px] font-bold text-rose-400 uppercase tracking-wider block">Deals Lost ❌</span>
+                <span className="text-2xl font-black text-rose-300 mt-1 block">
+                  {reportClients.filter((c: any) => c.status === "lost").length}
+                </span>
+              </div>
+              <div className="bg-blue-950/40 border border-blue-500/20 rounded-2xl p-3.5 text-center">
+                <span className="text-[10px] font-bold text-blue-400 uppercase tracking-wider block">Completed Visits</span>
+                <span className="text-2xl font-black text-blue-300 mt-1 block">{done}</span>
+              </div>
+              <div className="bg-purple-950/40 border border-purple-500/20 rounded-2xl p-3.5 text-center">
+                <span className="text-[10px] font-bold text-purple-400 uppercase tracking-wider block">Planned Visits</span>
+                <span className="text-2xl font-black text-purple-300 mt-1 block">{planned}</span>
+              </div>
+            </div>
+
+            {/* WON Deals List */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-emerald-400 flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4" /> WON Deals Breakdown
+                </h3>
+                <span className="text-[10px] text-slate-400">
+                  {reportClients.filter((c: any) => c.status === "converted").length} total won
+                </span>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {reportClients.filter((c: any) => c.status === "converted").length === 0 ? (
+                  <p className="text-xs text-slate-500 py-3 text-center">No WON deals recorded yet.</p>
+                ) : (
+                  reportClients.filter((c: any) => c.status === "converted").map((client: any) => (
+                    <div key={client.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 text-xs">
+                      <div>
+                        <p className="font-bold text-slate-200">{client.name}</p>
+                        <p className="text-[10px] text-slate-400">{client.phone || "No phone"}</p>
+                      </div>
+                      <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 text-[10px]">
+                        WON ✅
+                      </Badge>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* LOST Deals List */}
+            <div className="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-rose-400 flex items-center gap-2">
+                  <Clock className="h-4 w-4" /> LOST Deals Summary
+                </h3>
+                <span className="text-[10px] text-slate-400">
+                  {reportClients.filter((c: any) => c.status === "lost").length} total lost
+                </span>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                {reportClients.filter((c: any) => c.status === "lost").length === 0 ? (
+                  <p className="text-xs text-slate-500 py-3 text-center">No LOST deals recorded.</p>
+                ) : (
+                  reportClients.filter((c: any) => c.status === "lost").map((client: any) => (
+                    <div key={client.id} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/80 text-xs">
+                      <div>
+                        <p className="font-bold text-slate-200">{client.name}</p>
+                        <p className="text-[10px] text-slate-400">{client.phone || "No phone"}</p>
+                      </div>
+                      <Badge className="bg-rose-500/20 text-rose-300 border-rose-500/30 text-[10px]">
+                        LOST ❌
+                      </Badge>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </motion.div>
   );

@@ -104,19 +104,19 @@ const BottomNav = () => {
     ];
   } else if (isMdOrAdmin) {
     mainLinks = [
-      { to: "/md-dashboard",   label: "Command",    icon: Eye },
-      { to: "/daily-visits",   label: "Daily",      icon: ClipboardList },
+      { to: "/",               label: "Home",       icon: LayoutDashboard },
+      { to: "/reports",        label: "Reports",    icon: BarChart3 },
       { to: "/hierarchy",      label: "Hierarchy",  icon: GitBranch },
-      { to: "/partner-visits", label: "P.Visits",   icon: Handshake },
-      { to: "/conveyance",     label: "Conveyance", icon: Receipt },
+      { to: "/visits",         label: "Visits",     icon: CalendarCheck },
+      { to: "/clients",        label: "Clients",    icon: Users },
       { to: "/profile",        label: "Profile",    icon: UserCircle },
     ];
     moreLinks = [
-      { to: "/",               label: "Home",       icon: LayoutDashboard },
-      { to: "/reports",        label: "Reports",    icon: BarChart3 },
-      { to: "/visits",         label: "Visits",     icon: CalendarCheck },
+      { to: "/md-dashboard",   label: "Command",    icon: Eye },
+      { to: "/daily-visits",   label: "Daily",      icon: ClipboardList },
       { to: "/partners",       label: "Partners",   icon: Building2 },
-      { to: "/clients",        label: "Clients",    icon: Users },
+      { to: "/partner-visits", label: "P.Visits",   icon: Handshake },
+      { to: "/conveyance",     label: "Conveyance", icon: Receipt },
       { to: "/verification",   label: "Verify",     icon: ShieldCheck },
     ];
   } else if (isManager) {

@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -833,6 +834,27 @@ const AnalyticsDashboard = () => {
             <p className="text-sm text-muted-foreground">
               Welcome back! Here's your <Badge variant="secondary" className="ml-1 text-[10px] font-bold uppercase tracking-wider">{roleLabel}</Badge> overview.
             </p>
+
+            {/* Quick Top Shortcuts Bar for MD / Management */}
+            {(isMd || isAdmin || isManager) && (
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 pt-2.5 scrollbar-none">
+                <Link to="/reports" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs font-bold shrink-0 hover:bg-indigo-500/20 transition-all">
+                  <BarChart3 className="h-3.5 w-3.5" /> Reports 📊
+                </Link>
+                <Link to="/visits" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold shrink-0 hover:bg-emerald-500/20 transition-all">
+                  <CalendarCheck className="h-3.5 w-3.5" /> Visits
+                </Link>
+                <Link to="/clients" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-bold shrink-0 hover:bg-blue-500/20 transition-all">
+                  <Users className="h-3.5 w-3.5" /> Clients
+                </Link>
+                <Link to="/hierarchy" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold shrink-0 hover:bg-purple-500/20 transition-all">
+                  <GitCompare className="h-3.5 w-3.5" /> Hierarchy
+                </Link>
+                <Link to="/md-dashboard" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-bold shrink-0 hover:bg-amber-500/20 transition-all">
+                  <Crown className="h-3.5 w-3.5" /> Command Center
+                </Link>
+              </div>
+            )}
           </motion.div>
 
           {/* Start Day shortcut for Executives or Notification Bell for others */}

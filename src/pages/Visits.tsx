@@ -524,15 +524,28 @@ const Visits = () => {
       }
       return convResult;
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       queryClient.invalidateQueries({ queryKey: ["visits"] });
-      if (reportsTo) {
-        sendNotification({
-          userId: reportsTo,
-          title: "Visit Marked Done ✅",
-          message: `A visit was marked Done on ${format(new Date(), "dd MMM yyyy")}`,
-          targetUrl: "/visits",
-        });
+      try {
+        const { data: mdAdmins } = await supabase
+          .from("user_roles")
+          .select("user_id")
+          .in("role", ["md", "admin"]);
+        const targetIds = (mdAdmins || []).map((m) => m.user_id);
+        if (reportsTo) targetIds.push(reportsTo);
+        const uniqueTargetIds = [...new Set(targetIds)];
+        await Promise.all(
+          uniqueTargetIds.map((uid) =>
+            sendNotification({
+              userId: uid,
+              title: "Visit Marked Done ✅",
+              message: `A field visit was completed on ${format(new Date(), "dd MMM yyyy")}`,
+              targetUrl: "/visits",
+            })
+          )
+        );
+      } catch (e) {
+        console.error("Error notifying visit completed:", e);
       }
       setDoneDialogId(null);
       setRemarks("");

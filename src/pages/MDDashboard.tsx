@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { Link } from "react-router-dom";
@@ -1714,6 +1714,7 @@ const EmployeeDetailModal = ({
 /* ═══════════════════════════════ MAIN ═══════════════════════════════ */
 const MDDashboard = () => {
   const { user, role, showroomId, showroomIds } = useAuth();
+  const queryClient = useQueryClient();
   const isMdOrAdmin = role === "md" || role === "admin";
 
   /* ── UI State ── */
@@ -2769,6 +2770,10 @@ const MDDashboard = () => {
                         notificationType: "deal_lost",
                       });
                     }
+
+                    queryClient.invalidateQueries({ queryKey: ["in-app-notifications"] });
+                    queryClient.invalidateQueries({ queryKey: ["notifications-center"] });
+                    queryClient.invalidateQueries({ queryKey: ["attention-required-items"] });
 
                     toast.success("🚀 5 Suite Test Push Notifications sent to your phone & Notification Center! 🔔");
                   } catch (err: any) {

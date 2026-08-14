@@ -29,6 +29,8 @@ export default function NotificationBell() {
       if (error) throw error;
       return (data || []) as any[];
     },
+    refetchInterval: 5000,
+    staleTime: 0,
   });
 
   // Calculate unread count

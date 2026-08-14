@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, Fragment } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -516,10 +516,20 @@ const Hierarchy = () => {
   const isManager = role==="manager"||role==="admin"||role==="md";
   const isTL = role==="tl";
 
+  const [searchParams] = useSearchParams();
   const [fExec, setFExec]       = useState("all");
   const [fStatus, setFStatus]   = useState("all");
   const [fShowroom, setFShowroom] = useState("all");
   const [fSearch, setFSearch]   = useState("");
+
+  useEffect(() => {
+    const cId = searchParams.get("clientId");
+    const q = searchParams.get("search");
+    const ex = searchParams.get("execId");
+    if (cId) setFSearch(cId);
+    else if (q) setFSearch(q);
+    if (ex) setFExec(ex);
+  }, [searchParams]);
   const [viewGrouping, setViewGrouping] = useState<"executive" | "architect" | "partner">("executive");
   const [expandedExecs, setExpandedExecs] = useState<Record<string, boolean>>({});
   const [selectedCell, setSelectedCell] = useState<WOSRecord|null>(null);
@@ -809,6 +819,7 @@ const Hierarchy = () => {
       res = res.map(e => ({
         ...e,
         clients: e.clients.filter(c =>
+          (c.client_id || "").toLowerCase().includes(q) ||
           (c.client_name || "").toLowerCase().includes(q) ||
           (c.client_address || "").toLowerCase().includes(q) ||
           (c.client_mobile || "").toLowerCase().includes(q) ||

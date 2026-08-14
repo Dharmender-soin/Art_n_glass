@@ -8,6 +8,8 @@ import { formatDistanceToNow, parseISO } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
+import { parseNotificationDeepLink } from "@/lib/notificationDeepLinks";
+
 export default function NotificationBell() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -75,7 +77,8 @@ export default function NotificationBell() {
       await markAsReadMutation.mutateAsync(notif.id);
     }
     if (notif.target_url) {
-      navigate(notif.target_url);
+      const target = parseNotificationDeepLink(notif.target_url);
+      navigate(target.fullUrl, { replace: true });
     }
   };
 
@@ -109,7 +112,7 @@ export default function NotificationBell() {
           <>
             {/* Backdrop */}
             <div
-              className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs sm:bg-transparent sm:backdrop-blur-none"
+              className="fixed inset-0 z-[99998] bg-black/40 backdrop-blur-xs sm:bg-black/20"
               onClick={() => setIsOpen(false)}
             />
 
@@ -118,7 +121,7 @@ export default function NotificationBell() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.95 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
-              className="fixed top-16 left-3 right-3 sm:absolute sm:top-full sm:right-0 sm:left-auto sm:mt-2.5 z-50 sm:w-96 max-w-md bg-slate-900 text-white border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md"
+              className="fixed top-16 right-2 sm:right-6 z-[99999] w-[calc(100vw-16px)] sm:w-96 max-w-md bg-slate-900 text-white border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/80">

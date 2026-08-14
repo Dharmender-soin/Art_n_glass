@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { sendNotification } from "@/lib/notifications";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +72,74 @@ export function ScheduledNotificationsPanel() {
       return (data || []) as any[];
     },
   });
+
+  // --- Automatic Background Dispatcher Worker ---
+  useEffect(() => {
+    const processScheduledQueue = async () => {
+      try {
+        const { data: dueNotifs, error } = await supabase
+          .from("scheduled_notifications" as any)
+          .select("*")
+          .eq("status", "pending")
+          .lte("scheduled_for", new Date().toISOString());
+
+        if (error || !dueNotifs || dueNotifs.length === 0) return;
+
+        for (const item of dueNotifs) {
+          // Mark status as 'sending'
+          await supabase
+            .from("scheduled_notifications" as any)
+            .update({ status: "sending" } as any)
+            .eq("id", item.id);
+
+          try {
+            let targetUserIds: string[] = [];
+            if (item.target_type === "broadcast") {
+              const { data: allProfiles } = await supabase.from("profiles" as any).select("user_id");
+              targetUserIds = (allProfiles || []).map((p: any) => p.user_id);
+            } else if (item.target_type === "showroom" && item.target_id) {
+              const { data: showEmp } = await supabase
+                .from("user_roles" as any)
+                .select("user_id")
+                .eq("showroom_id", item.target_id);
+              targetUserIds = (showEmp || []).map((e: any) => e.user_id);
+            } else if (item.target_type === "individual" && item.target_id) {
+              targetUserIds = [item.target_id];
+            }
+
+            for (const uid of targetUserIds) {
+              await sendNotification({
+                userId: uid,
+                title: item.title,
+                message: item.body,
+                targetUrl: item.target_url || "/",
+              });
+            }
+
+            await supabase
+              .from("scheduled_notifications" as any)
+              .update({ status: "sent", sent_at: new Date().toISOString() } as any)
+              .eq("id", item.id);
+
+            toast.info(`Scheduled Notification '${item.title}' dispatched to phone status bar! 📱`);
+          } catch (procErr: any) {
+            await supabase
+              .from("scheduled_notifications" as any)
+              .update({ status: "failed", error_message: procErr.message } as any)
+              .eq("id", item.id);
+          }
+        }
+
+        queryClient.invalidateQueries({ queryKey: ["scheduled-notifications"] });
+      } catch (err) {
+        console.error("Scheduled worker error:", err);
+      }
+    };
+
+    processScheduledQueue();
+    const interval = setInterval(processScheduledQueue, 10000); // Check every 10s
+    return () => clearInterval(interval);
+  }, [queryClient]);
 
   // 4. Mutation to create scheduled notification
   const scheduleNotification = useMutation({

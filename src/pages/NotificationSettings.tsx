@@ -38,9 +38,9 @@ export default function NotificationSettings() {
   });
 
   const [thresholds, setThresholds] = useState<Record<string, number>>({
-    high_value_opportunity_min: 500000,
-    high_value_lost_deal_min: 500000,
     low_performance_pct_max: 50,
+    executive_inactivity_days: 5,
+    partner_overdue_days: 15,
     no_client_visit_days: 30,
     quotation_pending_days: 7,
     followup_overdue_days: 3,
@@ -155,35 +155,35 @@ export default function NotificationSettings() {
             <Sliders className="h-5 w-5 text-amber-500" /> Business Alert Thresholds
           </CardTitle>
           <CardDescription>
-            Custom minimum monetary values and day limits that trigger Critical and Important push notifications.
+            Configure activity limits, inactivity days, and target percentages that trigger MD alerts.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-1.5">
-            <Label className="text-xs font-bold">High-Value Opportunity Min (₹)</Label>
+            <Label className="text-xs font-bold">Executive Inactivity Escalation (Days)</Label>
             <Input
               type="number"
-              value={thresholds.high_value_opportunity_min}
-              onChange={(e) => setThresholds({ ...thresholds, high_value_opportunity_min: parseFloat(e.target.value) || 0 })}
+              value={thresholds.executive_inactivity_days || 5}
+              onChange={(e) => setThresholds({ ...thresholds, executive_inactivity_days: parseFloat(e.target.value) || 0 })}
               className="rounded-xl text-xs"
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-bold">High-Value Lost Deal Min (₹)</Label>
+            <Label className="text-xs font-bold">Partner Overdue Visit Alert (Days)</Label>
             <Input
               type="number"
-              value={thresholds.high_value_lost_deal_min}
-              onChange={(e) => setThresholds({ ...thresholds, high_value_lost_deal_min: parseFloat(e.target.value) || 0 })}
+              value={thresholds.partner_overdue_days || 15}
+              onChange={(e) => setThresholds({ ...thresholds, partner_overdue_days: parseFloat(e.target.value) || 0 })}
               className="rounded-xl text-xs"
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-bold">Low Performance Threshold (%)</Label>
+            <Label className="text-xs font-bold">Low Performance Target Warning (%)</Label>
             <Input
               type="number"
-              value={thresholds.low_performance_pct_max}
+              value={thresholds.low_performance_pct_max || 50}
               onChange={(e) => setThresholds({ ...thresholds, low_performance_pct_max: parseFloat(e.target.value) || 0 })}
               className="rounded-xl text-xs"
             />
@@ -193,27 +193,27 @@ export default function NotificationSettings() {
             <Label className="text-xs font-bold">No Client Visit Alert (Days)</Label>
             <Input
               type="number"
-              value={thresholds.no_client_visit_days}
+              value={thresholds.no_client_visit_days || 30}
               onChange={(e) => setThresholds({ ...thresholds, no_client_visit_days: parseFloat(e.target.value) || 0 })}
               className="rounded-xl text-xs"
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-bold">Pending Quotation Alert (Days)</Label>
+            <Label className="text-xs font-bold">Pending Quotation Follow-up (Days)</Label>
             <Input
               type="number"
-              value={thresholds.quotation_pending_days}
+              value={thresholds.quotation_pending_days || 7}
               onChange={(e) => setThresholds({ ...thresholds, quotation_pending_days: parseFloat(e.target.value) || 0 })}
               className="rounded-xl text-xs"
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-bold">Overdue Follow-up Alert (Days)</Label>
+            <Label className="text-xs font-bold">Overdue Client Follow-up (Days)</Label>
             <Input
               type="number"
-              value={thresholds.followup_overdue_days}
+              value={thresholds.followup_overdue_days || 3}
               onChange={(e) => setThresholds({ ...thresholds, followup_overdue_days: parseFloat(e.target.value) || 0 })}
               className="rounded-xl text-xs"
             />

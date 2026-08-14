@@ -859,7 +859,7 @@ const AnalyticsDashboard = () => {
 
           {/* Start Day shortcut for Executives or Notification Bell for others */}
           <motion.div variants={itemVariants} className="flex items-center gap-2">
-            {!isExec && <NotificationBell />}
+            {!isExec && <div className="hidden md:block"><NotificationBell /></div>}
             {isExec && (
               <a
                 href="/visits"

@@ -1074,10 +1074,10 @@ const Hierarchy = () => {
   );
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-20 text-sm">
+    <div className="w-full bg-slate-50 dark:bg-slate-950 pb-24 text-sm">
 
       {/* ══ TOP HEADER ══════════════════════════════════════════════════════════ */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-5 py-3">
+      <div className="hidden md:block bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 sm:px-5 py-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5 min-w-0">
             <button
@@ -1105,12 +1105,12 @@ const Hierarchy = () => {
       </div>
 
       {/* ══ STICKY FILTER BAR ════════════════════════════════════════════════ */}
-      <div className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-5 py-2.5 shadow-sm">
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="relative flex-1 min-w-[150px] max-w-xs">
+      <div className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-3 sm:px-5 py-2 shadow-sm">
+        <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-none">
+          <div className="relative shrink-0 w-36 sm:w-48">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-400 pointer-events-none"/>
-            <input type="text" placeholder="Search client, address..." value={fSearch} onChange={e=>setFSearch(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-7 pr-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-300/30 transition-all"/>
+            <input type="text" placeholder="Search..." value={fSearch} onChange={e=>setFSearch(e.target.value)}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg pl-7 pr-2 py-1 text-xs font-medium text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-indigo-400"/>
           </div>
           {(isMdOrAdmin || (role === "manager" && showroomIds && showroomIds.length > 1)) && (
             <div className="relative">

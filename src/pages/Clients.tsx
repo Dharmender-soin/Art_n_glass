@@ -769,10 +769,10 @@ const Clients = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Clients</h1>
+        <h1 className="hidden md:block text-2xl font-bold">Clients</h1>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
-            <Button size="sm"><Plus className="mr-1 h-4 w-4" />Add Client</Button>
+            <Button size="sm" className="w-full md:w-auto"><Plus className="mr-1 h-4 w-4" />Add Client</Button>
           </DialogTrigger>
           <DialogContent className="bg-popover max-h-[85vh] overflow-y-auto">
             <DialogHeader><DialogTitle>New Client</DialogTitle></DialogHeader>
@@ -781,39 +781,42 @@ const Clients = () => {
         </Dialog>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <div className="relative flex-1 min-w-[200px]">
+      <div className="space-y-2">
+        <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input className="pl-9" placeholder="Search name or mobile..." value={search} onChange={(e) => setSearch(e.target.value)} />
+          <Input className="pl-9 w-full bg-card" placeholder="Search name or mobile..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
-        <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-[130px]"><SelectValue placeholder="All Status" /></SelectTrigger>
-          <SelectContent className="bg-popover">
-            <SelectItem value="all">All Status</SelectItem>
-            <SelectItem value="new">New</SelectItem><SelectItem value="hot">Hot</SelectItem>
-            <SelectItem value="converted">Won ✅</SelectItem><SelectItem value="lost">Lost ❌</SelectItem>
-          </SelectContent>
-        </Select>
-        {role !== "executive" && (
-          <Select value={filterExecutive} onValueChange={setFilterExecutive}>
-            <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Executives" /></SelectTrigger>
+        <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+          <Select value={filterStatus} onValueChange={setFilterStatus}>
+            <SelectTrigger className="w-[120px] shrink-0"><SelectValue placeholder="All Status" /></SelectTrigger>
             <SelectContent className="bg-popover">
-              <SelectItem value="all">All Executives</SelectItem>
-              {executivesList.map((ex) => (
-                <SelectItem key={ex.user_id} value={ex.user_id}>{ex.full_name}</SelectItem>
-              ))}
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="new">New</SelectItem><SelectItem value="hot">Hot</SelectItem><SelectItem value="converted">Converted</SelectItem><SelectItem value="lost">Lost</SelectItem>
             </SelectContent>
           </Select>
-        )}
-        <Select value={filterArchitect} onValueChange={setFilterArchitect}>
-          <SelectTrigger className="w-[150px]"><SelectValue placeholder="All Architects" /></SelectTrigger>
-          <SelectContent className="bg-popover">
-            <SelectItem value="all">All Architects</SelectItem>
-            {architectsList.map((arch) => (
-              <SelectItem key={arch} value={arch}>{arch}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          {executivesList.length > 0 && (
+            <Select value={filterExecutive} onValueChange={setFilterExecutive}>
+              <SelectTrigger className="w-[140px] shrink-0"><SelectValue placeholder="All Executives" /></SelectTrigger>
+              <SelectContent className="bg-popover">
+                <SelectItem value="all">All Executives</SelectItem>
+                {executivesList.map((e) => (
+                  <SelectItem key={e.user_id} value={e.user_id}>{e.full_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          {architectsList.length > 0 && (
+            <Select value={filterArchitect} onValueChange={setFilterArchitect}>
+              <SelectTrigger className="w-[140px] shrink-0"><SelectValue placeholder="All Architects" /></SelectTrigger>
+              <SelectContent className="bg-popover">
+                <SelectItem value="all">All Architects</SelectItem>
+                {architectsList.map((arch) => (
+                  <SelectItem key={arch} value={arch}>{arch}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
       </div>
 
       {isLoading ? (

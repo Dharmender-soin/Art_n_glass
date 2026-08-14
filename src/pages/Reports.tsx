@@ -384,11 +384,11 @@ const Reports = () => {
     >
       {/* Page Header - hidden on print */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 print:hidden">
-        <div className="space-y-1">
+        <div className="space-y-1 hidden md:block">
           <motion.h1
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
-            className="text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent"
+            className="text-2xl md:text-3xl font-bold tracking-tight bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent"
           >
             Reports & Analytics
           </motion.h1>
@@ -396,14 +396,14 @@ const Reports = () => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
-            className="text-muted-foreground"
+            className="text-sm text-muted-foreground"
           >
             Comprehensive overview of performance and activities
           </motion.p>
         </div>
         <Button
           onClick={() => setIsReportDialogOpen(true)}
-          className="gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 text-white font-bold shadow-lg hover:brightness-110"
+          className="w-full md:w-auto gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 text-white font-bold shadow-lg hover:brightness-110"
         >
           <FileText className="h-4 w-4" /> Open Report Summary Dialog 📊
         </Button>

@@ -84,7 +84,7 @@ export function useScheduledNotifications() {
       }
 
       /* ── 2. Executive Role Scheduled Notifications (Target Visits & Partner Condition Meetings) ── */
-      if (role === "executive" || role === "backhand") {
+      if (role === "executive" || (role as string) === "backhand_executive") {
         // Today's Planned Visits (08:30 AM)
         const execVisitKey = `exec_visit_alert_${todayStr}_${user.id}`;
         if (currentHours === 8 && currentMinutes >= 30 && !localStorage.getItem(execVisitKey)) {

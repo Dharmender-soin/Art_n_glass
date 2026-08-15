@@ -11,6 +11,11 @@ import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 
 import { Navigate } from "react-router-dom";
+import {
+  triggerMorningSalesPlanReport,
+  triggerDailyBusinessSummaryReport,
+  triggerEODDSRReport,
+} from "@/lib/scheduledReportGenerator";
 
 export default function NotificationSettings() {
   const { user, role, loading } = useAuth();
@@ -303,6 +308,70 @@ export default function NotificationSettings() {
               className="rounded-xl text-xs"
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* 🚀 Manual Force Run Scheduled MD Reports */}
+      <Card className="border-indigo-500/30 bg-gradient-to-br from-indigo-950/20 to-slate-900 shadow-md">
+        <CardHeader>
+          <CardTitle className="text-lg font-bold flex items-center gap-2 text-indigo-400">
+            <Clock className="h-5 w-5" /> ⚡ Test & Force Run Scheduled MD Reports
+          </CardTitle>
+          <CardDescription>
+            Instantly dispatch daily automated report notifications to all MDs and Admins (push status bar alert + notification center).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <Button
+            onClick={async () => {
+              toast.loading("Sending Morning Sales Plan to all MDs...");
+              const res = await triggerMorningSalesPlanReport();
+              toast.dismiss();
+              if (res.success) {
+                toast.success(`🌅 Morning Sales Plan sent to ${res.count} MDs!`);
+              } else {
+                toast.error(`Error: ${res.error}`);
+              }
+            }}
+            variant="outline"
+            className="border-amber-500/40 text-amber-300 hover:bg-amber-500/10 font-bold text-xs h-11 rounded-xl"
+          >
+            🌅 Run Morning Plan (8:30 AM)
+          </Button>
+
+          <Button
+            onClick={async () => {
+              toast.loading("Sending Daily Business Summary to all MDs...");
+              const res = await triggerDailyBusinessSummaryReport();
+              toast.dismiss();
+              if (res.success) {
+                toast.success(`🌆 Daily Business Summary sent to ${res.count} MDs!`);
+              } else {
+                toast.error(`Error: ${res.error}`);
+              }
+            }}
+            variant="outline"
+            className="border-indigo-500/40 text-indigo-300 hover:bg-indigo-500/10 font-bold text-xs h-11 rounded-xl"
+          >
+            🌆 Run Daily Summary (7:00 PM)
+          </Button>
+
+          <Button
+            onClick={async () => {
+              toast.loading("Sending EOD DSR Report to all MDs...");
+              const res = await triggerEODDSRReport();
+              toast.dismiss();
+              if (res.success) {
+                toast.success(`📊 EOD DSR Report sent to ${res.count} MDs!`);
+              } else {
+                toast.error(`Error: ${res.error}`);
+              }
+            }}
+            variant="outline"
+            className="border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 font-bold text-xs h-11 rounded-xl"
+          >
+            📊 Run EOD DSR Report (8:00 PM)
+          </Button>
         </CardContent>
       </Card>
 

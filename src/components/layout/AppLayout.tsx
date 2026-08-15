@@ -12,6 +12,8 @@ import { GlobalSearch } from "./GlobalSearch";
 import { QuickAddModal } from "./QuickAddModal";
 import { LogOut } from "lucide-react";
 
+import { useScheduledNotifications } from "@/hooks/useScheduledNotifications";
+
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
   "/partners": "Partners",
@@ -32,6 +34,9 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
   const { isMobile, state, setOpen } = useSidebar();
   const { pathname } = useLocation();
   const [isHovered, setIsHovered] = useState(false);
+
+  // Activate automated background daily report scheduler
+  useScheduledNotifications();
 
   const pageTitle = pageTitles[pathname] || "Property OS";
 

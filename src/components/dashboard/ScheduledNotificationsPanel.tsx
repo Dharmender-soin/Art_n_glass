@@ -83,9 +83,9 @@ export function ScheduledNotificationsPanel() {
           .eq("status", "pending")
           .lte("scheduled_for", new Date().toISOString());
 
-        if (error || !dueNotifs || dueNotifs.length === 0) return;
+        if (error || !dueNotifs || (dueNotifs as any[]).length === 0) return;
 
-        for (const item of dueNotifs) {
+        for (const item of (dueNotifs as any[])) {
           // Mark status as 'sending'
           await supabase
             .from("scheduled_notifications" as any)

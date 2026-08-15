@@ -1433,12 +1433,12 @@ const PartnerDetailModal = ({
             <div className="space-y-4">
               <div>
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-2">Partner Details</h4>
-                {partner.mobile ? (
+                {(partner as any).mobile || (partner as any).phone ? (
                   <a
-                    href={`tel:${partner.mobile}`}
+                    href={`tel:${(partner as any).mobile || (partner as any).phone}`}
                     className="flex items-center gap-2 text-xs text-sky-400 font-semibold hover:underline bg-slate-900/60 border border-slate-800 px-3 py-2 rounded-lg"
                   >
-                    <Phone className="h-3.5 w-3.5" /> {partner.mobile}
+                    <Phone className="h-3.5 w-3.5" /> {(partner as any).mobile || (partner as any).phone}
                   </a>
                 ) : (
                   <p className="text-xs text-slate-500 italic">No mobile number recorded</p>
@@ -1861,7 +1861,7 @@ const MDDashboard = () => {
   });
 
   // Clients added within the selected date range
-  const { data: periodClients = [] } = useQuery<{id: string; created_by: string}>({
+  const { data: periodClients = [] } = useQuery<{id: string; created_by: string}[]>({
     queryKey: ["md-period-clients", dateFrom],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -2068,8 +2068,14 @@ const MDDashboard = () => {
       ),
     }));
 
-    const sorted = [...withScore].sort((a, b) => b.score - a.score);
-    return sorted.map((s, i) => ({ ...s, rank: i + 1 }));
+    return sorted.map((s, i) => ({
+      ...s,
+      rank: i + 1,
+      teamVisits: s.visits,
+      teamWos: s.wosCount,
+      teamWon: s.wonCount,
+      teamClients: 0,
+    }));
   }, [showrooms, userRoles, visits, wosItems, partners, partnerVisits, partnerShowroomMap, lastActiveMap, isMdOrAdmin, showroomId, allEmpStats]);
 
   /* ── Partner Stats ── */

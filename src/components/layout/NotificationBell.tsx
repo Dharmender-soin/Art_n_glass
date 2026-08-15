@@ -8,13 +8,14 @@ import { formatDistanceToNow, parseISO } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 
-import { parseNotificationDeepLink } from "@/lib/notificationDeepLinks";
+import { ReportDetailModal, NotificationRecord } from "./ReportDetailModal";
 
 export default function NotificationBell() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
+  const [selectedNotif, setSelectedNotif] = useState<NotificationRecord | null>(null);
 
   // 1. Fetch notifications for current user
   const { data: notifications = [], isLoading } = useQuery({
@@ -76,10 +77,8 @@ export default function NotificationBell() {
     if (!notif.is_read) {
       await markAsReadMutation.mutateAsync(notif.id);
     }
-    if (notif.target_url) {
-      const target = parseNotificationDeepLink(notif.target_url);
-      navigate(target.fullUrl, { replace: true });
-    }
+    // Open interactive Report Detail Modal!
+    setSelectedNotif(notif);
   };
 
   return (
@@ -233,6 +232,13 @@ export default function NotificationBell() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Interactive Full Report & Decision Modal */}
+      <ReportDetailModal
+        notification={selectedNotif}
+        isOpen={!!selectedNotif}
+        onClose={() => setSelectedNotif(null)}
+      />
     </div>
   );
 }

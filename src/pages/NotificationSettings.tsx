@@ -19,6 +19,7 @@ import {
   triggerPartnerOverdueReport,
   triggerGPSMisalignmentReport,
   triggerStartDayReminder,
+  triggerEndDayReminder,
 } from "@/lib/scheduledReportGenerator";
 
 export default function NotificationSettings() {
@@ -459,6 +460,23 @@ export default function NotificationSettings() {
             className="border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/10 font-bold text-xs h-11 rounded-xl"
           >
             ☀️ Run Start Day Reminder (09:30 AM)
+          </Button>
+
+          <Button
+            onClick={async () => {
+              toast.loading("Sending End Day Reminder to all non-MD/Admin staff...");
+              const res = await triggerEndDayReminder();
+              toast.dismiss();
+              if (res.success) {
+                toast.success(`🌙 End Day Reminder sent to ${res.count} field staff!`);
+              } else {
+                toast.error(`Error: ${res.error}`);
+              }
+            }}
+            variant="outline"
+            className="border-orange-500/40 text-orange-300 hover:bg-orange-500/10 font-bold text-xs h-11 rounded-xl"
+          >
+            🌙 Run End Day Reminder (09:30 PM)
           </Button>
         </CardContent>
       </Card>

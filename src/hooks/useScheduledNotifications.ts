@@ -6,6 +6,7 @@ import {
   triggerDailyBusinessSummaryReport,
   triggerEODDSRReport,
   triggerStartDayReminder,
+  triggerEndDayReminder,
 } from "@/lib/scheduledReportGenerator";
 import { sendNotification } from "@/lib/notifications";
 import { format } from "date-fns";
@@ -164,12 +165,20 @@ export function useScheduledNotifications() {
         }
       }
 
-      /* ── 4. ☀️ Start Day Reminder at 09:30 AM (Sent to All Staff EXCEPT MD & Admin) ── */
+      /* ── 4. ☀️ Start Day & 🌙 End Day Reminders (Sent to All Staff EXCEPT MD & Admin) ── */
       if (role !== "md" && role !== "admin") {
+        // 09:30 AM Start Day
         const startDayKey = `start_day_sent_${todayStr}_${user.id}`;
         if (currentHours === 9 && currentMinutes >= 30 && !localStorage.getItem(startDayKey)) {
           localStorage.setItem(startDayKey, "true");
           await triggerStartDayReminder();
+        }
+
+        // 09:30 PM (21:30) End Day
+        const endDayKey = `end_day_sent_${todayStr}_${user.id}`;
+        if (currentHours === 21 && currentMinutes >= 30 && !localStorage.getItem(endDayKey)) {
+          localStorage.setItem(endDayKey, "true");
+          await triggerEndDayReminder();
         }
       }
     };

@@ -407,3 +407,58 @@ export async function triggerStartDayReminder() {
     return { success: false, error: err.message };
   }
 }
+
+/**
+ * 🌙 8. Trigger End Day Reminder (Scheduled 09:30 PM IST - Sent to All Staff EXCEPT MD & Admin)
+ */
+export async function triggerEndDayReminder() {
+  try {
+    // Fetch user IDs for everyone EXCEPT MD and Admin
+    const { data: nonMdRoles, error } = await supabase
+      .from("user_roles" as any)
+      .select("user_id, role")
+      .not("role", "in", '("md","admin")');
+
+    let targetUserIds: string[] = [];
+
+    if (!error && nonMdRoles && nonMdRoles.length > 0) {
+      targetUserIds = [...new Set(nonMdRoles.map((r: any) => r.user_id))];
+    } else {
+      const { data: profiles } = await supabase.from("profiles").select("user_id").limit(50);
+      targetUserIds = (profiles || []).map((p: any) => p.user_id);
+    }
+
+    const title = "🌙 End Day & DSR Checkout Reminder — 09:30 PM";
+    const message = `Good evening! Please complete your 'End Day' checkout and submit your daily visit reports before logging off. Tap to open DSR screen!`;
+
+    for (const uId of targetUserIds) {
+      await sendNotification({
+        userId: uId,
+        title,
+        message,
+        category: "reminder",
+        priority: "high",
+        notificationType: "general",
+        targetUrl: "/visits",
+      });
+    }
+
+    try {
+      await supabase.functions.invoke("send-push-notification", {
+        body: {
+          broadcast: true,
+          title,
+          body: message,
+          customData: { target_url: "/visits" }
+        }
+      });
+    } catch (pushErr) {
+      console.warn("Push error:", pushErr);
+    }
+
+    return { success: true, count: targetUserIds.length, title, message };
+  } catch (err: any) {
+    console.error("Error triggering End Day reminder:", err);
+    return { success: false, error: err.message };
+  }
+}

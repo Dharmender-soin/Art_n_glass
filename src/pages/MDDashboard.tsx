@@ -1,4 +1,57 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, Component, ReactNode, ErrorInfo } from "react";
+
+// Safe date formatting helper to prevent RangeError crashes
+const safeFormatDate = (dateStr?: string | null, formatPattern: string = "dd MMM yyyy"): string => {
+  if (!dateStr) return "N/A";
+  try {
+    const d = parseISO(dateStr);
+    if (isNaN(d.getTime())) return "N/A";
+    return format(d, formatPattern);
+  } catch {
+    return "N/A";
+  }
+};
+
+class MDDashboardErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error("MDDashboard Error Boundary caught error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="p-8 max-w-xl mx-auto my-12 bg-slate-900 border border-slate-800 rounded-2xl text-center space-y-4 text-slate-200 shadow-2xl">
+          <div className="h-12 w-12 rounded-2xl bg-red-500/20 text-red-400 mx-auto flex items-center justify-center">
+            <AlertTriangle className="h-6 w-6" />
+          </div>
+          <h2 className="text-xl font-bold">Command Center Error Recovered</h2>
+          <p className="text-xs text-slate-400">
+            A rendering exception occurred: {this.state.error?.message || "Unknown error"}.
+          </p>
+          <button
+            onClick={() => {
+              this.setState({ hasError: false, error: null });
+              window.location.reload();
+            }}
+            className="px-5 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold text-xs shadow-md transition-all"
+          >
+            Refresh Command Center
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -3783,4 +3836,10 @@ const MDDashboard = () => {
   );
 };
 
-export default MDDashboard;
+const MDDashboardWithBoundary = (props: any) => (
+  <MDDashboardErrorBoundary>
+    <MDDashboard {...props} />
+  </MDDashboardErrorBoundary>
+);
+
+export default MDDashboardWithBoundary;

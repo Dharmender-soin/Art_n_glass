@@ -351,3 +351,59 @@ export async function triggerGPSMisalignmentReport() {
     return { success: false, error: err.message };
   }
 }
+
+/**
+ * ☀️ 7. Trigger Start Day Reminder (Scheduled 09:30 AM IST - Sent to All Staff EXCEPT MD & Admin)
+ */
+export async function triggerStartDayReminder() {
+  try {
+    // Fetch user IDs for everyone EXCEPT MD and Admin
+    const { data: nonMdRoles, error } = await supabase
+      .from("user_roles" as any)
+      .select("user_id, role")
+      .not("role", "in", '("md","admin")');
+
+    let targetUserIds: string[] = [];
+
+    if (!error && nonMdRoles && nonMdRoles.length > 0) {
+      targetUserIds = [...new Set(nonMdRoles.map((r: any) => r.user_id))];
+    } else {
+      // Fallback: fetch all profiles
+      const { data: profiles } = await supabase.from("profiles").select("user_id").limit(50);
+      targetUserIds = (profiles || []).map((p: any) => p.user_id);
+    }
+
+    const title = "☀️ Start Day Reminder — 09:30 AM";
+    const message = `Good morning! Please mark your 'Start Day' and check-in for today's scheduled field visits. Tap to open Day Start screen!`;
+
+    for (const uId of targetUserIds) {
+      await sendNotification({
+        userId: uId,
+        title,
+        message,
+        category: "reminder",
+        priority: "high",
+        notificationType: "general",
+        targetUrl: "/visits",
+      });
+    }
+
+    try {
+      await supabase.functions.invoke("send-push-notification", {
+        body: {
+          broadcast: true,
+          title,
+          body: message,
+          customData: { target_url: "/visits" }
+        }
+      });
+    } catch (pushErr) {
+      console.warn("Push error:", pushErr);
+    }
+
+    return { success: true, count: targetUserIds.length, title, message };
+  } catch (err: any) {
+    console.error("Error triggering Start Day reminder:", err);
+    return { success: false, error: err.message };
+  }
+}

@@ -5,6 +5,7 @@ import {
   triggerMorningSalesPlanReport,
   triggerDailyBusinessSummaryReport,
   triggerEODDSRReport,
+  triggerStartDayReminder,
 } from "@/lib/scheduledReportGenerator";
 import { sendNotification } from "@/lib/notifications";
 import { format } from "date-fns";
@@ -160,6 +161,15 @@ export function useScheduledNotifications() {
             priority: "high",
             targetUrl: "/reports",
           });
+        }
+      }
+
+      /* ── 4. ☀️ Start Day Reminder at 09:30 AM (Sent to All Staff EXCEPT MD & Admin) ── */
+      if (role !== "md" && role !== "admin") {
+        const startDayKey = `start_day_sent_${todayStr}_${user.id}`;
+        if (currentHours === 9 && currentMinutes >= 30 && !localStorage.getItem(startDayKey)) {
+          localStorage.setItem(startDayKey, "true");
+          await triggerStartDayReminder();
         }
       }
     };

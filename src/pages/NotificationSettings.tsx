@@ -18,6 +18,7 @@ import {
   triggerInactivityEscalationReport,
   triggerPartnerOverdueReport,
   triggerGPSMisalignmentReport,
+  triggerStartDayReminder,
 } from "@/lib/scheduledReportGenerator";
 
 export default function NotificationSettings() {
@@ -441,6 +442,23 @@ export default function NotificationSettings() {
             className="border-purple-500/40 text-purple-300 hover:bg-purple-500/10 font-bold text-xs h-11 rounded-xl"
           >
             📍 Run GPS Exception Alert
+          </Button>
+
+          <Button
+            onClick={async () => {
+              toast.loading("Sending Start Day Reminder to all non-MD/Admin staff...");
+              const res = await triggerStartDayReminder();
+              toast.dismiss();
+              if (res.success) {
+                toast.success(`☀️ Start Day Reminder sent to ${res.count} field staff!`);
+              } else {
+                toast.error(`Error: ${res.error}`);
+              }
+            }}
+            variant="outline"
+            className="border-yellow-500/40 text-yellow-300 hover:bg-yellow-500/10 font-bold text-xs h-11 rounded-xl"
+          >
+            ☀️ Run Start Day Reminder (09:30 AM)
           </Button>
         </CardContent>
       </Card>

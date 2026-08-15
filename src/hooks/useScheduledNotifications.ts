@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
 import {
   triggerMorningSalesPlanReport,
   triggerDailyBusinessSummaryReport,
@@ -17,29 +18,73 @@ export function useScheduledNotifications() {
     const checkAndTriggerScheduledReports = async () => {
       const now = new Date();
       const todayStr = format(now, "yyyy-MM-dd");
-      const hours = now.getHours();
-      const minutes = now.getMinutes();
+      const currentHours = now.getHours();
+      const currentMinutes = now.getMinutes();
 
-      // 1. Morning Sales Plan at 08:30 AM
+      // Fetch dynamic saved timings from DB
+      let morningTime = "08:30";
+      let summaryTime = "19:00";
+      let dsrTime = "20:00";
+
+      try {
+        const { data: dbSettings } = await supabase
+          .from("notification_settings" as any)
+          .select("key, value")
+          .in("key", ["morning_plan_time", "daily_summary_time", "dsr_report_time"]);
+
+        if (dbSettings) {
+          dbSettings.forEach((setting: any) => {
+            if (setting.key === "morning_plan_time" && setting.value) morningTime = setting.value;
+            if (setting.key === "daily_summary_time" && setting.value) summaryTime = setting.value;
+            if (setting.key === "dsr_report_time" && setting.value) dsrTime = setting.value;
+          });
+        }
+      } catch (err) {
+        console.warn("Could not load custom report timings from DB, using defaults:", err);
+      }
+
+      // Parse HH:MM helper
+      const parseTime = (timeStr: string) => {
+        const parts = timeStr.split(":");
+        return {
+          h: parseInt(parts[0] || "8", 10),
+          m: parseInt(parts[1] || "0", 10),
+        };
+      };
+
+      const mTime = parseTime(morningTime);
+      const sTime = parseTime(summaryTime);
+      const dTime = parseTime(dsrTime);
+
+      // 1. Morning Sales Plan
       const morningKey = `morning_plan_sent_${todayStr}`;
-      if (hours === 8 && minutes >= 30 && !localStorage.getItem(morningKey)) {
-        console.log("⏰ Auto-triggering Morning Sales Plan Report for MDs...");
+      if (
+        (currentHours > mTime.h || (currentHours === mTime.h && currentMinutes >= mTime.m)) &&
+        !localStorage.getItem(morningKey)
+      ) {
+        console.log(`⏰ Auto-triggering Morning Sales Plan Report for MDs (Target Time: ${morningTime})...`);
         localStorage.setItem(morningKey, "true");
         await triggerMorningSalesPlanReport();
       }
 
-      // 2. Daily Business Summary at 19:00 (07:00 PM)
+      // 2. Daily Business Summary
       const summaryKey = `daily_summary_sent_${todayStr}`;
-      if (hours === 19 && minutes >= 0 && !localStorage.getItem(summaryKey)) {
-        console.log("⏰ Auto-triggering Daily Business Summary Report for MDs...");
+      if (
+        (currentHours > sTime.h || (currentHours === sTime.h && currentMinutes >= sTime.m)) &&
+        !localStorage.getItem(summaryKey)
+      ) {
+        console.log(`⏰ Auto-triggering Daily Business Summary Report for MDs (Target Time: ${summaryTime})...`);
         localStorage.setItem(summaryKey, "true");
         await triggerDailyBusinessSummaryReport();
       }
 
-      // 3. EOD DSR Report at 20:00 (08:00 PM)
+      // 3. EOD DSR Report
       const dsrKey = `dsr_report_sent_${todayStr}`;
-      if (hours === 20 && minutes >= 0 && !localStorage.getItem(dsrKey)) {
-        console.log("⏰ Auto-triggering EOD DSR Report for MDs...");
+      if (
+        (currentHours > dTime.h || (currentHours === dTime.h && currentMinutes >= dTime.m)) &&
+        !localStorage.getItem(dsrKey)
+      ) {
+        console.log(`⏰ Auto-triggering EOD DSR Report for MDs (Target Time: ${dsrTime})...`);
         localStorage.setItem(dsrKey, "true");
         await triggerEODDSRReport();
       }

@@ -2121,6 +2121,7 @@ const MDDashboard = () => {
       ),
     }));
 
+    const sorted = [...withScore].sort((a, b) => b.score - a.score);
     return sorted.map((s, i) => ({
       ...s,
       rank: i + 1,

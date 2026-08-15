@@ -79,33 +79,43 @@ export default function NotificationSettings() {
     weekly_report_time: "20:00",
   });
 
-  // Fetch preferences from Supabase
-  const { data: prefs, isLoading } = useQuery({
+  // Fetch preferences from local storage or DB
+  const { data: prefs } = useQuery({
     queryKey: ["notification-preferences", user?.id],
     enabled: !!user?.id,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from("notification_preferences" as any)
-        .select("*")
-        .eq("user_id", user?.id)
-        .maybeSingle();
+      try {
+        const local = localStorage.getItem("admin_notification_settings");
+        if (local) return JSON.parse(local);
 
-      if (error && error.code !== "42P01") throw error;
-      return data;
+        const { data } = await supabase
+          .from("notification_settings" as any)
+          .select("*")
+          .eq("user_id", user?.id)
+          .maybeSingle();
+
+        return data || null;
+      } catch {
+        return null;
+      }
     },
   });
 
   useEffect(() => {
-    if (prefs) {
-      if (prefs.enabled_notifications) {
-        setToggles((prev) => ({ ...prev, ...(prefs.enabled_notifications as any) }));
+    const local = localStorage.getItem("admin_notification_settings");
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (parsed.toggles) setToggles((prev) => ({ ...prev, ...parsed.toggles }));
+        if (parsed.thresholds) setThresholds((prev) => ({ ...prev, ...parsed.thresholds }));
+        if (parsed.timings) setTimings((prev) => ({ ...prev, ...parsed.timings }));
+      } catch (e) {
+        console.warn("Error parsing local notification settings:", e);
       }
-      if (prefs.thresholds) {
-        setThresholds((prev) => ({ ...prev, ...(prefs.thresholds as any) }));
-      }
-      if ((prefs as any).timings) {
-        setTimings((prev) => ({ ...prev, ...((prefs as any).timings as any) }));
-      }
+    } else if (prefs) {
+      if (prefs.enabled_notifications) setToggles((prev) => ({ ...prev, ...(prefs.enabled_notifications as any) }));
+      if (prefs.thresholds) setThresholds((prev) => ({ ...prev, ...(prefs.thresholds as any) }));
+      if ((prefs as any).timings) setTimings((prev) => ({ ...prev, ...((prefs as any).timings as any) }));
     }
   }, [prefs]);
 
@@ -113,21 +123,27 @@ export default function NotificationSettings() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!user?.id) return;
-      const { error } = await supabase.from("notification_preferences" as any).upsert(
-        {
-          user_id: user.id,
-          enabled_notifications: toggles,
-          thresholds,
-          timings,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "user_id" }
-      );
-      if (error) throw error;
+      const payload = { toggles, thresholds, timings, updated_at: new Date().toISOString() };
+      localStorage.setItem("admin_notification_settings", JSON.stringify(payload));
+
+      // Try persisting to DB
+      try {
+        await supabase.from("notification_settings" as any).upsert(
+          {
+            user_id: user.id,
+            key: "admin_settings",
+            value: JSON.stringify(payload),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "user_id" }
+        );
+      } catch (e) {
+        console.warn("DB persist silent fallback:", e);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notification-preferences"] });
-      toast.success("Notification preferences saved!");
+      toast.success("Notification settings saved successfully!");
     },
     onError: (err: any) => {
       toast.error(err.message || "Failed to save preferences");

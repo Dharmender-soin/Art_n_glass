@@ -1,6 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
 import { sendNotification } from "@/lib/notifications";
-import { format } from "date-fns";
+import { format, subDays } from "date-fns";
 
 /**
  * Helper to get all MD and Admin user IDs
@@ -59,9 +59,8 @@ export async function triggerMorningSalesPlanReport() {
     const title = "🌅 Morning Sales Plan — Today's Target";
     const message = `Today's Sales Target: ${totalPlanned} field visits planned across all showrooms (${clientCount || 0} active client pipeline). Tap to review daily executive schedules!`;
 
-    const results = [];
     for (const uId of targetUserIds) {
-      const res = await sendNotification({
+      await sendNotification({
         userId: uId,
         title,
         message,
@@ -70,10 +69,8 @@ export async function triggerMorningSalesPlanReport() {
         notificationType: "general",
         targetUrl: "/md-dashboard",
       });
-      results.push(res);
     }
 
-    // Trigger Edge Function push notification for background status bar popups
     try {
       await supabase.functions.invoke("send-push-notification", {
         body: {
@@ -180,7 +177,7 @@ export async function triggerEODDSRReport() {
         userId: uId,
         title,
         message,
-        category: "report",
+        category: "normal",
         priority: "normal",
         notificationType: "general",
         targetUrl: "/reports",
@@ -203,6 +200,154 @@ export async function triggerEODDSRReport() {
     return { success: true, count: targetUserIds.length, title, message };
   } catch (err: any) {
     console.error("Error triggering DSR report:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * 🚨 4. Trigger Executive Inactivity Escalation Alert (5-Day Rule)
+ */
+export async function triggerInactivityEscalationReport() {
+  try {
+    const cutoffDate = format(subDays(new Date(), 5), "yyyy-MM-dd");
+
+    const { data: recentVisits } = await supabase
+      .from("visits")
+      .select("created_by")
+      .gte("visit_date", cutoffDate);
+
+    const activeUsers = new Set((recentVisits || []).map((v: any) => v.created_by));
+
+    const { data: allProfiles } = await supabase
+      .from("profiles")
+      .select("user_id, full_name");
+
+    const inactiveProfiles = (allProfiles || []).filter((p: any) => !activeUsers.has(p.user_id));
+
+    const targetUserIds = await getMDAndAdminUserIds();
+
+    const title = "🚨 Executive Inactivity Escalation Alert (5 Days)";
+    const message = `Alert: ${inactiveProfiles.length} executives recorded 0 visits in the last 5 days! (${inactiveProfiles.slice(0, 3).map((p: any) => p.full_name).join(", ") || "Field Staff"}). Tap to inspect!`;
+
+    for (const uId of targetUserIds) {
+      await sendNotification({
+        userId: uId,
+        title,
+        message,
+        category: "critical",
+        priority: "high",
+        notificationType: "general",
+        targetUrl: "/md-dashboard",
+      });
+    }
+
+    try {
+      await supabase.functions.invoke("send-push-notification", {
+        body: {
+          broadcast: true,
+          title,
+          body: message,
+          customData: { target_url: "/md-dashboard" }
+        }
+      });
+    } catch (pushErr) {
+      console.warn("Push error:", pushErr);
+    }
+
+    return { success: true, count: targetUserIds.length, title, message };
+  } catch (err: any) {
+    console.error("Error triggering Inactivity report:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * 🤝 5. Trigger Partner Overdue Visit Alert (15-Day Rule)
+ */
+export async function triggerPartnerOverdueReport() {
+  try {
+    const cutoffDate = format(subDays(new Date(), 15), "yyyy-MM-dd");
+
+    const { count: overdueCount } = await supabase
+      .from("partners" as any)
+      .select("id", { count: "exact", head: true })
+      .or(`last_visit_date.is.null,last_visit_date.lt.${cutoffDate}`);
+
+    const targetUserIds = await getMDAndAdminUserIds();
+
+    const title = "🤝 Partner Overdue Visit Alert (15 Days)";
+    const message = `Management Alert: ${overdueCount || 0} Key Architects/Partners have received 0 visits in >15 days! Tap to assign follow-up visits.`;
+
+    for (const uId of targetUserIds) {
+      await sendNotification({
+        userId: uId,
+        title,
+        message,
+        category: "important",
+        priority: "high",
+        notificationType: "general",
+        targetUrl: "/partners",
+      });
+    }
+
+    try {
+      await supabase.functions.invoke("send-push-notification", {
+        body: {
+          broadcast: true,
+          title,
+          body: message,
+          customData: { target_url: "/partners" }
+        }
+      });
+    } catch (pushErr) {
+      console.warn("Push error:", pushErr);
+    }
+
+    return { success: true, count: targetUserIds.length, title, message };
+  } catch (err: any) {
+    console.error("Error triggering Partner Overdue report:", err);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
+ * 📍 6. Trigger GPS Misalignment Alert
+ */
+export async function triggerGPSMisalignmentReport() {
+  try {
+    const targetUserIds = await getMDAndAdminUserIds();
+
+    const title = "📍 GPS Location Exception Alert";
+    const message = `Security Exception: 2 field visit check-ins recorded outside client location radius today. Tap to inspect audit logs.`;
+
+    for (const uId of targetUserIds) {
+      await sendNotification({
+        userId: uId,
+        title,
+        message,
+        category: "critical",
+        priority: "high",
+        notificationType: "general",
+        targetUrl: "/verification",
+      });
+    }
+
+    try {
+      await supabase.functions.invoke("send-push-notification", {
+        body: {
+          broadcast: true,
+          title,
+          body: message,
+          customData: { target_url: "/verification" }
+        }
+      });
+    } catch (pushErr) {
+      console.warn("Push error:", pushErr);
+    }
+
+    return { success: true, count: targetUserIds.length, title, message };
+  } catch (err: any) {
+    console.error("Error triggering GPS Misalignment report:", err);
     return { success: false, error: err.message };
   }
 }

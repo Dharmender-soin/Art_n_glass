@@ -15,6 +15,9 @@ import {
   triggerMorningSalesPlanReport,
   triggerDailyBusinessSummaryReport,
   triggerEODDSRReport,
+  triggerInactivityEscalationReport,
+  triggerPartnerOverdueReport,
+  triggerGPSMisalignmentReport,
 } from "@/lib/scheduledReportGenerator";
 
 export default function NotificationSettings() {
@@ -387,6 +390,57 @@ export default function NotificationSettings() {
             className="border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 font-bold text-xs h-11 rounded-xl"
           >
             📊 Run EOD DSR Report (8:00 PM)
+          </Button>
+
+          <Button
+            onClick={async () => {
+              toast.loading("Sending Inactivity Escalation Alert to all MDs...");
+              const res = await triggerInactivityEscalationReport();
+              toast.dismiss();
+              if (res.success) {
+                toast.success(`🚨 Inactivity Alert sent to ${res.count} MDs!`);
+              } else {
+                toast.error(`Error: ${res.error}`);
+              }
+            }}
+            variant="outline"
+            className="border-rose-500/40 text-rose-300 hover:bg-rose-500/10 font-bold text-xs h-11 rounded-xl"
+          >
+            🚨 Run 5-Day Inactivity Alert
+          </Button>
+
+          <Button
+            onClick={async () => {
+              toast.loading("Sending Partner Overdue Alert to all MDs...");
+              const res = await triggerPartnerOverdueReport();
+              toast.dismiss();
+              if (res.success) {
+                toast.success(`🤝 Partner Overdue Alert sent to ${res.count} MDs!`);
+              } else {
+                toast.error(`Error: ${res.error}`);
+              }
+            }}
+            variant="outline"
+            className="border-sky-500/40 text-sky-300 hover:bg-sky-500/10 font-bold text-xs h-11 rounded-xl"
+          >
+            🤝 Run 15-Day Partner Alert
+          </Button>
+
+          <Button
+            onClick={async () => {
+              toast.loading("Sending GPS Location Exception Alert to all MDs...");
+              const res = await triggerGPSMisalignmentReport();
+              toast.dismiss();
+              if (res.success) {
+                toast.success(`📍 GPS Exception Alert sent to ${res.count} MDs!`);
+              } else {
+                toast.error(`Error: ${res.error}`);
+              }
+            }}
+            variant="outline"
+            className="border-purple-500/40 text-purple-300 hover:bg-purple-500/10 font-bold text-xs h-11 rounded-xl"
+          >
+            📍 Run GPS Exception Alert
           </Button>
         </CardContent>
       </Card>

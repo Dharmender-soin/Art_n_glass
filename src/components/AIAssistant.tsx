@@ -119,11 +119,11 @@ export const AIAssistant = () => {
       {/* Floating Button - Art & Glass Animated Logo */}
       <motion.button
         onClick={() => setOpen(true)}
-        className={`fixed bottom-[164px] right-4 z-50 h-14 w-14 rounded-2xl shadow-2xl flex items-center justify-center transition-all overflow-hidden ${open ? "opacity-0 pointer-events-none scale-75" : "opacity-100 scale-100"}`}
+        className={`fixed bottom-[72px] right-3 sm:right-6 z-40 h-11 w-11 rounded-xl shadow-xl flex items-center justify-center transition-all overflow-hidden ${open ? "opacity-0 pointer-events-none scale-75" : "opacity-85 hover:opacity-100 scale-100"}`}
         style={{
-          background: "linear-gradient(135deg, rgba(160, 20, 30, 0.9) 0%, rgba(30, 10, 15, 0.9) 100%)",
+          background: "linear-gradient(135deg, rgba(160, 20, 30, 0.95) 0%, rgba(30, 10, 15, 0.95) 100%)",
           backdropFilter: "blur(12px)",
-          border: "1px solid rgba(255, 70, 70, 0.3)"
+          border: "1px solid rgba(255, 70, 70, 0.4)"
         }}
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.95 }}

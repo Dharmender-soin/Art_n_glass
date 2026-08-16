@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
-import { Bell, BellRing, Check, Loader2, X } from "lucide-react";
+import { Bell, BellRing, Check, Loader2, X, Trash2 } from "lucide-react";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 import { ReportDetailModal, NotificationRecord } from "./ReportDetailModal";
 
@@ -68,6 +69,30 @@ export default function NotificationBell() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["in-app-notifications", user?.id] });
+      toast.success("All marked as read");
+    },
+  });
+
+  // 4. Mutation: Clear All Notifications
+  const clearAllNotificationsMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) return;
+      const { error } = await supabase
+        .from("notifications" as any)
+        .delete()
+        .eq("user_id", user.id);
+
+      if (error) {
+        // Fallback if RLS restricts delete: mark all as read
+        await supabase
+          .from("notifications" as any)
+          .update({ is_read: true } as any)
+          .eq("user_id", user.id);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["in-app-notifications", user?.id] });
+      toast.success("Notifications cleared!");
     },
   });
 
@@ -120,7 +145,7 @@ export default function NotificationBell() {
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.95 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
-              className="fixed top-20 right-2 sm:top-16 sm:right-6 z-[999999] w-[calc(100vw-16px)] sm:w-96 max-w-md bg-slate-900 text-white border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md"
+              className="fixed top-14 left-2 right-2 sm:top-16 sm:right-6 sm:left-auto sm:w-96 max-w-md z-[999999] bg-slate-900 text-white border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden backdrop-blur-md"
             >
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950/80">
@@ -139,6 +164,7 @@ export default function NotificationBell() {
                       onClick={() => markAllAsReadMutation.mutate()}
                       disabled={markAllAsReadMutation.isPending}
                       className="text-[10px] text-amber-400 hover:text-amber-300 flex items-center gap-1 font-bold disabled:opacity-50 transition-colors"
+                      title="Mark all as read"
                     >
                       {markAllAsReadMutation.isPending ? (
                         <Loader2 className="h-3 w-3 animate-spin" />
@@ -148,9 +174,24 @@ export default function NotificationBell() {
                       Mark read
                     </button>
                   )}
+                  {notifications.length > 0 && (
+                    <button
+                      onClick={() => clearAllNotificationsMutation.mutate()}
+                      disabled={clearAllNotificationsMutation.isPending}
+                      className="text-[10px] text-rose-400 hover:text-rose-300 flex items-center gap-1 font-bold disabled:opacity-50 transition-colors ml-1"
+                      title="Clear all notifications"
+                    >
+                      {clearAllNotificationsMutation.isPending ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3 w-3" />
+                      )}
+                      Clear
+                    </button>
+                  )}
                   <button
                     onClick={() => setIsOpen(false)}
-                    className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors"
+                    className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white transition-colors ml-1"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>

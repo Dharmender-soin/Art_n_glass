@@ -93,7 +93,7 @@ const BottomNav = () => {
   let moreLinks: NavItem[] = [];
 
   if (isSupportRole) {
-    // 3 or 4 links total: show all directly without "More" menu
+    // Support roles (Accountant / Backhand): 3 or 4 links directly
     mainLinks = [
       { to: "/daily-visits", label: "Daily",    icon: ClipboardList },
       { to: "/reports",      label: "Reports",  icon: BarChart3 },
@@ -103,53 +103,54 @@ const BottomNav = () => {
       { to: "/profile", label: "Profile", icon: UserCircle },
     ];
   } else if (isMdOrAdmin) {
+    // MD/Admin: 4 core + More = 5 items total
     mainLinks = [
       { to: "/md-dashboard",   label: "Command",    icon: Eye },
-      { to: "/partners",       label: "Partners",   icon: Building2 },
       { to: "/clients",        label: "Clients",    icon: Users },
       { to: "/visits",         label: "Visits",     icon: CalendarCheck },
       { to: "/reports",        label: "Reports",    icon: BarChart3 },
-      { to: "/profile",        label: "Profile",    icon: UserCircle },
     ];
     moreLinks = [
       { to: "/",               label: "Home",       icon: LayoutDashboard },
+      { to: "/partners",       label: "Partners",   icon: Building2 },
       { to: "/hierarchy",      label: "Hierarchy",  icon: GitBranch },
       { to: "/daily-visits",   label: "Daily",      icon: ClipboardList },
       { to: "/partner-visits", label: "P.Visits",   icon: Handshake },
       { to: "/conveyance",     label: "Conveyance", icon: Receipt },
       { to: "/verification",   label: "Verify",     icon: ShieldCheck },
+      { to: "/profile",        label: "Profile",    icon: UserCircle },
     ];
   } else if (isManager) {
     mainLinks = [
       { to: "/",         label: "Home",     icon: LayoutDashboard },
-      { to: "/partners", label: "Partners", icon: Building2 },
       { to: "/clients",  label: "Clients",  icon: Users },
       { to: "/visits",   label: "Visits",   icon: CalendarCheck },
-      { to: "/profile",  label: "Profile",  icon: UserCircle },
+      { to: "/reports",  label: "Reports",  icon: BarChart3 },
     ];
     moreLinks = [
-      { to: "/reports",        label: "Reports",   icon: BarChart3 },
+      { to: "/partners",       label: "Partners",  icon: Building2 },
       { to: "/daily-visits",   label: "Daily",     icon: ClipboardList },
       { to: "/verification",   label: "Verify",    icon: ShieldCheck },
       { to: "/hierarchy",      label: "Hierarchy", icon: GitBranch },
       { to: "/conveyance",     label: "Conveyance",icon: Receipt },
       { to: "/partner-visits", label: "P.Visits",  icon: Handshake },
+      { to: "/profile",        label: "Profile",   icon: UserCircle },
     ];
   } else if (isTL) {
     mainLinks = [
       { to: "/",         label: "Home",     icon: LayoutDashboard },
-      { to: "/partners", label: "Partners", icon: Building2 },
       { to: "/clients",  label: "Clients",  icon: Users },
       { to: "/visits",   label: "Visits",   icon: CalendarCheck },
-      { to: "/profile",  label: "Profile",  icon: UserCircle },
+      { to: "/reports",  label: "Reports",  icon: BarChart3 },
     ];
     moreLinks = [
-      { to: "/reports",      label: "Reports",  icon: BarChart3 },
+      { to: "/partners",     label: "Partners", icon: Building2 },
       { to: "/daily-visits", label: "Daily",    icon: ClipboardList },
       { to: "/hierarchy",    label: "My Team",  icon: GitBranch },
+      { to: "/profile",      label: "Profile",  icon: UserCircle },
     ];
   } else {
-    // Executives / standard user: show 4 primary, group others in "More"
+    // Executives / standard user
     mainLinks = [
       { to: "/",        label: "Home",     icon: LayoutDashboard },
       { to: "/visits",  label: "Visits",   icon: CalendarCheck },

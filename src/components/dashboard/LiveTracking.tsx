@@ -57,6 +57,8 @@ interface ExecutiveLocation {
   showroom_name?: string;
   current_address?: string; // reverse geocoded
   is_live?: boolean;
+  conveyance_type?: string;
+  _role?: string;
 }
 
 interface VisitPoint {
@@ -166,7 +168,7 @@ export const LiveTracking = () => {
   useEffect(() => {
     const fetchLocations = async () => {
       const { data: locData } = await supabase.from("live_locations").select("*");
-      const { data: profiles } = await supabase.from("profiles").select("user_id, full_name");
+      const { data: profiles } = await supabase.from("profiles").select("user_id, full_name, conveyance_type");
       const { data: showrooms } = await supabase.from("showrooms").select("id, name");
       const showroomMap = Object.fromEntries((showrooms || []).map(s => [s.id, s.name]));
 
@@ -200,7 +202,8 @@ export const LiveTracking = () => {
       const enriched: ExecutiveLocation[] = ((locData || []) as { user_id: string; lat: number; lng: number; updated_at: string }[]).map((loc) => {
         const profile = profiles?.find((p) => p.user_id === loc.user_id);
         const roleData = rolesList.find((r) => r.user_id === loc.user_id);
-        const isLive = differenceInMinutes(new Date(), new Date(loc.updated_at)) <= 15;
+        const minsAgo = differenceInMinutes(new Date(), new Date(loc.updated_at));
+        const isLive = minsAgo <= 15;
         return {
           user_id: loc.user_id,
           lat: loc.lat,
@@ -211,7 +214,7 @@ export const LiveTracking = () => {
           showroom_name: roleData?.showroom_name || "—",
           current_address: undefined,
           is_live: isLive,
-          // Store role so we can filter out md/admin below
+          conveyance_type: profile?.conveyance_type || undefined,
           _role: roleData?.role,
         };
       });

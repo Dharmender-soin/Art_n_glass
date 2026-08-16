@@ -65,7 +65,7 @@ const AppSidebar = () => {
         ...(isManagerOrAdmin ? [
           { to: "/reports",               label: "Reports",               icon: BarChart3 },
           { to: "/daily-visits",          label: "Daily Visits",          icon: ClipboardList },
-          { to: "/verification",          label: "Verification font-bold",icon: ShieldCheck },
+          { to: "/verification",          label: "Verification",          icon: ShieldCheck },
           { to: "/hierarchy",             label: "Hierarchy",             icon: GitBranch },
           { to: "/live-map",              label: "Live Map",              icon: Map },
           { to: "/conveyance",            label: "Conveyance",            icon: Receipt },

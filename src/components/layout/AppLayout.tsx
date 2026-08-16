@@ -27,6 +27,11 @@ const pageTitles: Record<string, string> = {
   "/hierarchy": "Hierarchy",
   "/my-pipeline": "My Pipeline",
   "/md-dashboard": "Command Center",
+  "/live-map": "Live Map",
+  "/conveyance": "Conveyance",
+  "/partner-visits": "Partner Visits",
+  "/notifications": "Notifications",
+  "/notification-settings": "Notification Settings",
 };
 
 const AppLayoutContent = ({ children }: { children: ReactNode }) => {
@@ -38,7 +43,7 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
   // Activate automated background daily report scheduler
   useScheduledNotifications();
 
-  const pageTitle = pageTitles[pathname] || "Property OS";
+  const pageTitle = pageTitles[pathname] || "Art N Glass CRM";
 
   // Smart Sidebar Logic
   const handleMouseEnter = () => {
@@ -70,21 +75,19 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
 
       <SidebarInset className="flex flex-1 flex-col h-full min-w-0 overflow-hidden relative">
         {/* — Top Bar — */}
-        <header className="flex h-14 items-center gap-3 border-b bg-background/95 backdrop-blur-md px-4 md:px-6 shrink-0 z-30">
-          {/* Mobile trigger */}
-          {isMobile && <SidebarTrigger className="-ml-1" />}
-
-          {/* Breadcrumb / Page Title */}
-          <div className="flex items-center gap-2 shrink-0">
+        <header className="flex h-14 items-center justify-between gap-2 border-b bg-background/95 backdrop-blur-md px-3 md:px-6 shrink-0 z-30">
+          {/* Mobile trigger & Page Title */}
+          <div className="flex items-center gap-2 min-w-0">
+            {isMobile && <SidebarTrigger className="-ml-1 text-slate-700 dark:text-slate-200" aria-label="Toggle Navigation Sidebar" />}
             {!isMobile && (
               <span className="text-xs text-muted-foreground font-medium hidden md:inline">
-                Property OS
+                Art N Glass
               </span>
             )}
             {!isMobile && (
               <span className="text-muted-foreground/40 hidden md:inline">/</span>
             )}
-            <h1 className="text-sm font-bold tracking-tight">{pageTitle}</h1>
+            <h1 className="text-sm font-bold tracking-tight truncate">{pageTitle}</h1>
           </div>
 
           {/* Global Search Bar */}

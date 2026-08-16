@@ -831,9 +831,11 @@ const AnalyticsDashboard = () => {
               <Sparkles className="h-6 w-6 text-primary" />
               Dashboard
             </h1>
-            <p className="text-sm text-muted-foreground">
-              Welcome back! Here's your <Badge variant="secondary" className="ml-1 text-[10px] font-bold uppercase tracking-wider">{roleLabel}</Badge> overview.
-            </p>
+            <div className="text-sm text-muted-foreground flex items-center flex-wrap gap-1">
+              <span>Welcome back! Here's your</span>
+              <Badge variant="secondary" className="text-[10px] font-bold uppercase tracking-wider">{roleLabel}</Badge>
+              <span>overview.</span>
+            </div>
 
             {/* Quick Top Shortcuts Bar for MD / Management */}
             {(isMd || isAdmin || isManager) && (

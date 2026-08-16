@@ -26,24 +26,6 @@ export default function NotificationSettings() {
   const { user, role, loading } = useAuth();
   const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!loading && role !== "admin") {
-      toast.error("Only System Admin can access notification settings.");
-    }
-  }, [loading, role]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  if (role !== "admin") {
-    return <Navigate to="/" replace />;
-  }
-
   const [toggles, setToggles] = useState<Record<string, boolean>>({
     daily_summary: true,
     morning_plan: true,
@@ -154,6 +136,24 @@ export default function NotificationSettings() {
       toast.error(err.message || "Failed to save preferences");
     },
   });
+
+  useEffect(() => {
+    if (!loading && role !== "admin") {
+      toast.error("Only System Admin can access notification settings.");
+    }
+  }, [loading, role]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (role !== "admin") {
+    return <Navigate to="/" replace />;
+  }
 
   const notificationTypes = [
     { key: "daily_summary", label: "Daily Summary Report", category: "Report" },

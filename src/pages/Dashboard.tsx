@@ -360,18 +360,28 @@ const AnalyticsDashboard = () => {
   const { data: visits = [], isLoading: visitsLoading } = useQuery({
     queryKey: ["dashboard-visits-all", targetUserIds, dateRange, prevDateRange],
     queryFn: async () => {
-      let q = supabase.from("visits").select("id, status, visit_date, created_at, created_by, client_id, partner_id, client:clients(name), partner:partners(name)");
-      if (targetUserIds.length > 0) {
-        q = q.in("created_by", targetUserIds);
+      // Supabase projects commonly cap every response at 1,000 rows even when
+      // a larger `.limit()` is requested. Fetch in pages so dashboard totals
+      // are actual totals instead of stopping at exactly 1,000.
+      const pageSize = 1000;
+      const allRows: any[] = [];
+      for (let from = 0; ; from += pageSize) {
+        let q = supabase.from("visits").select("id, status, visit_date, created_at, created_by, client_id, partner_id, client:clients(name), partner:partners(name)");
+        if (targetUserIds.length > 0) q = q.in("created_by", targetUserIds);
+        if (dateRange && prevDateRange) {
+          q = q.gte("visit_date", prevDateRange.from).lte("visit_date", dateRange.to);
+        } else if (dateRange) {
+          q = q.gte("visit_date", dateRange.from).lte("visit_date", dateRange.to);
+        }
+        const { data, error } = await q
+          .order("visit_date", { ascending: false })
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const rows = data || [];
+        allRows.push(...rows);
+        if (rows.length < pageSize) break;
       }
-      if (dateRange && prevDateRange) {
-        q = q.gte("visit_date", prevDateRange.from).lte("visit_date", dateRange.to);
-      } else if (dateRange) {
-        q = q.gte("visit_date", dateRange.from).lte("visit_date", dateRange.to);
-      }
-      const { data, error } = await q.order("visit_date", { ascending: false }).limit(10000); // bypass default 1000 row limit
-      if (error) throw error;
-      return data || [];
+      return allRows;
     },
   });
 

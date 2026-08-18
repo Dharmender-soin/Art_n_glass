@@ -6,6 +6,13 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const toFcmData = (value: Record<string, unknown> = {}) =>
+  Object.fromEntries(
+    Object.entries(value)
+      .filter(([, item]) => item !== undefined && item !== null)
+      .map(([key, item]) => [key, typeof item === "string" ? item : JSON.stringify(item)])
+  );
+
 // Helper: Sign JWT using Web Crypto API (RS256)
 async function signRS256(payload: any, privateKeyPem: string) {
   const header = { alg: "RS256", typ: "JWT" };
@@ -96,7 +103,26 @@ serve(async (req) => {
   }
 
   try {
-    const { userId, showroomId, role, broadcast, title, body, data: customData } = await req.json();
+    const {
+      userId,
+      showroomId,
+      role,
+      broadcast,
+      title,
+      body,
+      category = "informational",
+      priority = "normal",
+      notificationType = "general",
+      persistInApp = true,
+      source = "manual",
+      style = "standard",
+      imageUrl,
+      templateKey,
+      variables = {},
+      scheduledNotificationId,
+      dedupeKey,
+      data: customData,
+    } = await req.json();
 
     if (!title || !body) {
       return new Response(
@@ -110,18 +136,89 @@ serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    let targetTokens: string[] = [];
+    const authHeader = req.headers.get("Authorization");
+    let createdBy: string | null = null;
+    if (authHeader) {
+      const { data: authData } = await supabase.auth.getUser(authHeader.replace(/^Bearer\s+/i, ""));
+      createdBy = authData.user?.id ?? null;
+    }
+
+    const targetType = broadcast ? "broadcast" : showroomId ? "showroom" : role ? "role" : "individual";
+    const targetId = showroomId || role || userId || null;
+    const targetUrl = customData?.targetUrl || "/notifications";
+    const safeImageUrl = typeof imageUrl === "string" && imageUrl.startsWith("https://") ? imageUrl : null;
+
+    // Observability is intentionally best-effort while the additive migration is rolled out.
+    // Push delivery must not be blocked if an older environment has not applied it yet.
+    let dispatchId: string | null = null;
+    if (dedupeKey) {
+      const { data: existingDispatch, error: dedupeLookupError } = await supabase
+        .from("notification_dispatches")
+        .select("id,status,recipient_count,device_count,success_count")
+        .eq("idempotency_key", dedupeKey)
+        .maybeSingle();
+      // The lookup is best-effort while the migration rolls out. Once the
+      // column exists, repeat login/app mounts return the original campaign.
+      if (!dedupeLookupError && existingDispatch) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            deduplicated: true,
+            dispatch_id: existingDispatch.id,
+            status: existingDispatch.status,
+            recipients_count: existingDispatch.recipient_count,
+            results_count: existingDispatch.device_count,
+            success_count: existingDispatch.success_count,
+          }),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+    }
+    const { data: dispatch, error: dispatchError } = await supabase
+      .from("notification_dispatches")
+      .insert({
+        title,
+        body,
+        category,
+        priority,
+        notification_type: notificationType,
+        source,
+        style,
+        target_type: targetType,
+        target_id: targetId,
+        target_url: targetUrl,
+        image_url: safeImageUrl,
+        template_key: templateKey || null,
+        variables,
+        created_by: createdBy,
+        scheduled_notification_id: scheduledNotificationId || null,
+        idempotency_key: dedupeKey || null,
+        status: "resolving",
+      })
+      .select("id")
+      .maybeSingle();
+    if (!dispatchError) dispatchId = dispatch?.id ?? null;
+    else if (dedupeKey && dispatchError.code === "23505") {
+      const { data: racedDispatch } = await supabase
+        .from("notification_dispatches")
+        .select("id")
+        .eq("idempotency_key", dedupeKey)
+        .maybeSingle();
+      return new Response(
+        JSON.stringify({ success: true, deduplicated: true, dispatch_id: racedDispatch?.id || null }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    } else console.warn("Notification dispatch log unavailable:", dispatchError.message);
+
+    let targetUserIds: string[] = [];
 
     if (broadcast) {
-      // 1. Broadcast to all active tokens
-      const { data: allTokens, error: tokenError } = await supabase
-        .from("user_fcm_tokens")
-        .select("token");
-
-      if (tokenError) throw new Error(`Error fetching broadcast tokens: ${tokenError.message}`);
-      if (allTokens) {
-        targetTokens = allTokens.map(t => t.token);
-      }
+      // Bell history must include users without a currently registered device.
+      const { data: profiles, error: profileError } = await supabase
+        .from("profiles")
+        .select("user_id");
+      if (profileError) throw new Error(`Error fetching broadcast users: ${profileError.message}`);
+      targetUserIds = (profiles || []).map((profile) => profile.user_id);
     } else if (showroomId) {
       // 2. Send to all employees belonging to a specific showroom
       const { data: showroomUsers, error: userError } = await supabase
@@ -131,18 +228,7 @@ serve(async (req) => {
 
       if (userError) throw new Error(`Error fetching showroom users: ${userError.message}`);
       
-      if (showroomUsers && showroomUsers.length > 0) {
-        const userIds = showroomUsers.map(u => u.user_id);
-        const { data: tokens, error: tokenError } = await supabase
-          .from("user_fcm_tokens")
-          .select("token")
-          .in("user_id", userIds);
-
-        if (tokenError) throw new Error(`Error fetching showroom tokens: ${tokenError.message}`);
-        if (tokens) {
-          targetTokens = tokens.map(t => t.token);
-        }
-      }
+      targetUserIds = (showroomUsers || []).map((user) => user.user_id);
     } else if (role) {
       // 2b. Send to all users with a specific role
       const { data: roleUsers, error: userError } = await supabase
@@ -152,29 +238,9 @@ serve(async (req) => {
 
       if (userError) throw new Error(`Error fetching role users: ${userError.message}`);
       
-      if (roleUsers && roleUsers.length > 0) {
-        const userIds = roleUsers.map(u => u.user_id);
-        const { data: tokens, error: tokenError } = await supabase
-          .from("user_fcm_tokens")
-          .select("token")
-          .in("user_id", userIds);
-
-        if (tokenError) throw new Error(`Error fetching role tokens: ${tokenError.message}`);
-        if (tokens) {
-          targetTokens = tokens.map(t => t.token);
-        }
-      }
+      targetUserIds = (roleUsers || []).map((user) => user.user_id);
     } else if (userId) {
-      // 3. Send to a single user
-      const { data: tokens, error: tokenError } = await supabase
-        .from("user_fcm_tokens")
-        .select("token")
-        .eq("user_id", userId);
-
-      if (tokenError) throw new Error(`Error fetching user tokens: ${tokenError.message}`);
-      if (tokens) {
-        targetTokens = tokens.map(t => t.token);
-      }
+      targetUserIds = [userId];
     } else {
       return new Response(
         JSON.stringify({ error: "Missing notification target. Specify userId, showroomId, role, or set broadcast to true." }),
@@ -182,9 +248,78 @@ serve(async (req) => {
       );
     }
 
-    if (targetTokens.length === 0) {
+    targetUserIds = [...new Set(targetUserIds.filter(Boolean))];
+
+    if (targetUserIds.length === 0) {
+      if (dispatchId) {
+        await supabase.from("notification_dispatches").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", dispatchId);
+      }
       return new Response(
-        JSON.stringify({ success: true, message: "No active device tokens found for the specified target." }),
+        JSON.stringify({ success: true, dispatch_id: dispatchId, recipients_count: 0, results_count: 0, message: "No recipients found for the specified target." }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // Persist once per recipient so every push is also available from the bell
+    // and Notification Center. sendNotification() opts out because it already
+    // writes the richer entity record before invoking this function.
+    if (persistInApp) {
+      const notificationRows = targetUserIds.map((targetUserId) => ({
+        user_id: targetUserId,
+        title,
+        message: body,
+        body,
+        category,
+        priority,
+        notification_type: notificationType,
+        target_url: targetUrl,
+        deep_link: targetUrl,
+        metadata: customData || {},
+        dispatch_id: dispatchId,
+        source,
+        style,
+        image_url: safeImageUrl,
+        template_key: templateKey || null,
+        variables,
+        is_read: false,
+      }));
+      const { error: notificationError } = await supabase
+        .from("notifications")
+        .insert(notificationRows);
+      if (notificationError) {
+        throw new Error(`Error saving notification history: ${notificationError.message}`);
+      }
+    }
+
+    const { data: tokenRows, error: tokenError } = await supabase
+      .from("user_fcm_tokens")
+      .select("id, user_id, token, device_platform")
+      .in("user_id", targetUserIds);
+    if (tokenError) throw new Error(`Error fetching device tokens: ${tokenError.message}`);
+    const uniqueTokenRows = Array.from(
+      new Map((tokenRows || []).filter((row) => row.token).map((row) => [row.token, row])).values()
+    );
+
+    if (dispatchId) {
+      await supabase.from("notification_dispatches").update({
+        recipient_count: targetUserIds.length,
+        device_count: uniqueTokenRows.length,
+        status: uniqueTokenRows.length ? "sending" : "completed",
+        completed_at: uniqueTokenRows.length ? null : new Date().toISOString(),
+      }).eq("id", dispatchId);
+    }
+
+    // Saving the Bell notification is still a successful delivery when the
+    // recipient has not registered an Android device token yet.
+    if (uniqueTokenRows.length === 0) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          dispatch_id: dispatchId,
+          recipients_count: targetUserIds.length,
+          results_count: 0,
+          message: "Saved to Notification Center; no active device tokens found.",
+        }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -203,15 +338,50 @@ serve(async (req) => {
     const results = [];
 
     // Send push notification to all matched device tokens
-    for (const token of targetTokens) {
+    for (const tokenRow of uniqueTokenRows) {
+      let deliveryLogId: string | null = null;
+      if (dispatchId) {
+        const { data: deliveryLog } = await supabase
+          .from("notification_delivery_logs")
+          .insert({
+            dispatch_id: dispatchId,
+            user_id: tokenRow.user_id,
+            device_token_id: tokenRow.id,
+            device_platform: tokenRow.device_platform,
+            status: "queued",
+          })
+          .select("id")
+          .maybeSingle();
+        deliveryLogId = deliveryLog?.id ?? null;
+      }
+
+      const richData = toFcmData({
+        ...(customData || {}),
+        targetUrl,
+        category,
+        priority,
+        style,
+        dispatchId,
+        deliveryLogId,
+        imageUrl: safeImageUrl,
+      });
       const payload = {
         message: {
-          token,
+          token: tokenRow.token,
           notification: {
             title,
             body,
+            ...(safeImageUrl ? { image: safeImageUrl } : {}),
           },
-          data: customData ? { ...customData } : {},
+          data: richData,
+          android: {
+            priority: priority === "urgent" || priority === "high" ? "HIGH" : "NORMAL",
+            notification: {
+              channel_id: category === "critical" ? "critical-alerts" : "default",
+              color: "#C21833",
+              ...(safeImageUrl ? { image: safeImageUrl } : {}),
+            },
+          },
         },
       };
 
@@ -226,14 +396,38 @@ serve(async (req) => {
         });
 
         const respData = await response.json();
-        results.push({ token, success: response.ok, details: respData });
+        results.push({ token_id: tokenRow.id, success: response.ok, details: respData });
+        if (deliveryLogId) {
+          await supabase.from("notification_delivery_logs").update({
+            status: response.ok ? "sent" : "failed",
+            provider_message_id: response.ok ? respData.name || null : null,
+            error_message: response.ok ? null : JSON.stringify(respData),
+            sent_at: response.ok ? new Date().toISOString() : null,
+          }).eq("id", deliveryLogId);
+        }
       } catch (err: any) {
-        results.push({ token, success: false, error: err.message });
+        results.push({ token_id: tokenRow.id, success: false, error: err.message });
+        if (deliveryLogId) {
+          await supabase.from("notification_delivery_logs").update({
+            status: "failed",
+            error_message: err.message,
+          }).eq("id", deliveryLogId);
+        }
       }
     }
 
+    const successCount = results.filter((result) => result.success).length;
+    if (dispatchId) {
+      await supabase.from("notification_dispatches").update({
+        success_count: successCount,
+        failure_count: results.length - successCount,
+        status: successCount === 0 ? "failed" : successCount === results.length ? "completed" : "partial",
+        completed_at: new Date().toISOString(),
+      }).eq("id", dispatchId);
+    }
+
     return new Response(
-      JSON.stringify({ success: true, results_count: results.length, results }),
+      JSON.stringify({ success: true, dispatch_id: dispatchId, recipients_count: targetUserIds.length, results_count: results.length, success_count: successCount, results }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 

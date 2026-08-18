@@ -29,7 +29,7 @@ interface RawWOS {
   work_status: string; created_at: string; submitted_at: string | null;
   verified_at: string | null; quantity: number | null;
   description: string | null; created_by: string;
-  clients: { name: string; address: string | null; mobile: string; project_status: string | null; partners: { name: string } | null } | null;
+  clients: { name: string; address: string | null; mobile: string; project_status: string | null; created_by?: string | null; partners: { name: string } | null } | null;
   master_work_types: { type_of_work: string; sub_work: string } | null;
 }
 interface PivotClient {
@@ -596,7 +596,7 @@ const Hierarchy = () => {
   const { data: rawWOS=[], isLoading } = useQuery({ queryKey:["wos-h3", user?.id, role, showroomIds], enabled:canAccess && !!user,
     queryFn: async()=>{
       let q = supabase.from("work_scope_items")
-        .select(`id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile,project_status,architect_name,partner_id,partners(id,name)),master_work_types(type_of_work,sub_work)`);
+        .select(`id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile,project_status,architect_name,created_by,partner_id,partners(id,name)),master_work_types(type_of_work,sub_work)`);
 
       if (role === "tl" && user) {
         // TL: own WOS + all executives who report to this TL
@@ -703,6 +703,11 @@ const Hierarchy = () => {
       if (clientProjStatus !== statusFilter) return;
 
       const creatorId = c.created_by || "unknown";
+      const creatorShowroom = showroomMap[creatorId] ?? null;
+      // Showroom/executive filters must be applied before grouping. Otherwise
+      // Architect/Partner views keep showing records from every executive.
+      if (fShowroom !== "all" && creatorShowroom !== fShowroom) return;
+      if (fExec !== "all" && creatorId !== fExec) return;
       const builderName = getPartnerName((c as any).partners);
       const archName = (c.architect_name && typeof c.architect_name === "string") ? c.architect_name.trim() : "";
       const groupKey = viewGrouping === "partner"
@@ -710,7 +715,7 @@ const Hierarchy = () => {
         : viewGrouping === "architect"
         ? (archName ? `Arch: ${archName}` : "Direct / No Architect")
         : creatorId;
-      const displayName = (viewGrouping === "architect" || viewGrouping === "partner") ? groupKey : (profileMap[groupKey] || "Unknown");
+      const displayName = (viewGrouping === "architect" || viewGrouping === "partner") ? groupKey : (profileMap[groupKey] || "Unassigned User");
 
       if (!em.has(groupKey)) {
         em.set(groupKey, {
@@ -749,6 +754,12 @@ const Hierarchy = () => {
       const clientObj = r.clients as any;
       const clientProjStatus = clientObj.project_status || "active";
       if (clientProjStatus !== statusFilter) return;
+      // Older WOS rows can have a missing creator. In that case use the
+      // owning client's creator so the row stays under the correct person.
+      const creatorId = r.created_by || clientObj.created_by || "unassigned";
+      const creatorShowroom = showroomMap[creatorId] ?? null;
+      if (fShowroom !== "all" && creatorShowroom !== fShowroom) return;
+      if (fExec !== "all" && creatorId !== fExec) return;
 
       const builderName = getPartnerName(clientObj.partners);
       const archName = (clientObj.architect_name && typeof clientObj.architect_name === "string") ? clientObj.architect_name.trim() : "";
@@ -756,8 +767,8 @@ const Hierarchy = () => {
         ? (builderName && builderName.trim() ? `Partner: ${builderName.trim()}` : "Direct / No Partner")
         : viewGrouping === "architect"
         ? (archName ? `Arch: ${archName}` : "Direct / No Architect")
-        : (r.created_by || "unknown");
-      const displayName = (viewGrouping === "architect" || viewGrouping === "partner") ? groupKey : (profileMap[groupKey] || "Unknown");
+        : creatorId;
+      const displayName = (viewGrouping === "architect" || viewGrouping === "partner") ? groupKey : (profileMap[groupKey] || "Unassigned User");
 
       if (!em.has(groupKey)) {
         em.set(groupKey, {
@@ -783,7 +794,7 @@ const Hierarchy = () => {
           partner_name: builderName,
           partner_id: pId,
           project_status: clientProjStatus,
-          created_by: r.created_by || clientObj.created_by,
+          created_by: creatorId === "unassigned" ? "" : creatorId,
           wos: {},
           partners: []
         };
@@ -804,7 +815,7 @@ const Hierarchy = () => {
           verified_at: r.verified_at,
           quantity: r.quantity,
           description: r.description,
-          created_by: r.created_by || ""
+          created_by: creatorId === "unassigned" ? "" : creatorId
         };
       }
       const pName = wtPartnerMap[r.work_type_id];
@@ -867,9 +878,9 @@ const Hierarchy = () => {
   };
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const activePivot = useMemo(()=>buildPivot("active"),[rawWOS,allClients,profileMap,showroomMap,fExec,fStatus,fShowroom,fSearch,allWorkTypes]);
+  const activePivot = useMemo(()=>buildPivot("active"),[rawWOS,allClients,profileMap,showroomMap,fExec,fStatus,fShowroom,fSearch,allWorkTypes,viewGrouping]);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const closedPivot = useMemo(()=>buildPivot("closed"),[rawWOS,allClients,profileMap,showroomMap,fExec,fStatus,fShowroom,fSearch,allWorkTypes]);
+  const closedPivot = useMemo(()=>buildPivot("closed"),[rawWOS,allClients,profileMap,showroomMap,fExec,fStatus,fShowroom,fSearch,allWorkTypes,viewGrouping]);
 
   const stats = useMemo(() => {
     let total = 0, won = 0, quotation = 0, lost = 0, pending = 0;

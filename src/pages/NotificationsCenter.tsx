@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { CATEGORY_META, NotificationCategory } from "@/lib/notifications";
 import { parseNotificationDeepLink } from "@/lib/notificationDeepLinks";
+import { recordNotificationOpened } from "@/lib/notificationDelivery";
 
 const PAGE_SIZE = 20;
 
@@ -137,6 +138,7 @@ export default function NotificationsCenter() {
     if (!notif.is_read) {
       await markReadMutation.mutateAsync(notif.id);
     }
+    await recordNotificationOpened(notif, user?.id);
     const target = parseNotificationDeepLink(notif.target_url || notif.deep_link);
     navigate(target.fullUrl);
   };

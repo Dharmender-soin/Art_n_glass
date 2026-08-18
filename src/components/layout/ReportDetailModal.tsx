@@ -60,7 +60,7 @@ export function ReportDetailModal({
 
   // Helper to trigger WhatsApp Share
   const handleShareWhatsApp = () => {
-    const text = `*${notification.title}*\n\n${notification.message}\n\n_Sent via Art N Glass Property OS_`;
+    const text = `*${notification.title}*\n\n${notification.message}\n\n_Sent via Art N Glass CRM_`;
     const encoded = encodeURIComponent(text);
     window.open(`https://wa.me/?text=${encoded}`, "_blank");
   };

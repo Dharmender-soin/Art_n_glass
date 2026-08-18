@@ -12,6 +12,17 @@ export const usePushNotifications = (userId: string | undefined) => {
   useEffect(() => {
     if (!userId) return;
 
+    const updateDeliveryEvent = async (deliveryLogId: string | undefined, status: "received" | "opened") => {
+      if (!deliveryLogId) return;
+      const timestampField = status === "received" ? "received_at" : "opened_at";
+      const { error } = await supabase
+        .from("notification_delivery_logs" as any)
+        .update({ status, [timestampField]: new Date().toISOString() })
+        .eq("id", deliveryLogId)
+        .eq("user_id", userId);
+      if (error) console.warn(`Unable to record notification ${status}:`, error.message);
+    };
+
     // --- 1. WEB & IN-APP REALTIME NOTIFICATIONS ---
     const channel = supabase
       .channel(`realtime-notifications-${userId}`)
@@ -111,8 +122,9 @@ export const usePushNotifications = (userId: string | undefined) => {
 
       const notificationReceivedListener = PushNotifications.addListener(
         "pushNotificationReceived",
-        (notification) => {
+        async (notification) => {
           console.log("Push notification received in foreground:", notification);
+          await updateDeliveryEvent(notification.data?.deliveryLogId, "received");
           toast(notification.title || "Notification Received", {
             description: notification.body || "",
             action: notification.data?.targetUrl
@@ -127,8 +139,9 @@ export const usePushNotifications = (userId: string | undefined) => {
 
       const actionPerformedListener = PushNotifications.addListener(
         "pushNotificationActionPerformed",
-        (action: ActionPerformed) => {
+        async (action: ActionPerformed) => {
           console.log("Push notification action performed:", action);
+          await updateDeliveryEvent(action.notification.data?.deliveryLogId, "opened");
           const targetUrl = action.notification.data?.targetUrl;
           if (targetUrl) {
             navigate(targetUrl);
@@ -159,6 +172,16 @@ export const usePushNotifications = (userId: string | undefined) => {
                 vibration: true,
                 lights: true,
                 lightColor: "#DC2626",
+              });
+              await PushNotifications.createChannel({
+                id: "critical-alerts",
+                name: "Critical Alerts",
+                description: "Urgent business alerts that need immediate attention",
+                importance: 5,
+                visibility: 1,
+                vibration: true,
+                lights: true,
+                lightColor: "#C21833",
               });
             }
             await PushNotifications.register();

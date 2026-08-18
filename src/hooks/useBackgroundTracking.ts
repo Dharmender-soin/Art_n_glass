@@ -74,21 +74,31 @@ const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>(
 );
 
 // ── Helper: push a location update to Supabase ──────────────────────────────
-async function pushLocation(userId: string, lat: number, lng: number) {
+async function pushLocation(userId: string, location: Pick<Location, "latitude" | "longitude" | "accuracy" | "altitude" | "speed" | "bearing" | "time">) {
   const now = new Date().toISOString();
+  const telemetry = {
+    accuracy_m: Number.isFinite(location.accuracy) ? location.accuracy : null,
+    speed_mps: location.speed != null && Number.isFinite(location.speed) ? location.speed : null,
+    bearing_deg: location.bearing != null && Number.isFinite(location.bearing) ? location.bearing : null,
+    altitude_m: location.altitude != null && Number.isFinite(location.altitude) ? location.altitude : null,
+  };
   try {
     const [liveResult, histResult] = await Promise.all([
       supabase.from("live_locations").upsert({
         user_id: userId,
-        lat,
-        lng,
+        lat: location.latitude,
+        lng: location.longitude,
         updated_at: now,
+        recorded_at: location.time ? new Date(location.time).toISOString() : now,
+        permission_status: "granted",
+        ...telemetry,
       }),
       supabase.from("location_history").insert({
         user_id: userId,
-        lat,
-        lng,
+        lat: location.latitude,
+        lng: location.longitude,
         timestamp: now,
+        ...telemetry,
       }),
     ]);
     if (liveResult.error) {
@@ -98,7 +108,7 @@ async function pushLocation(userId: string, lat: number, lng: number) {
       console.error("[BGTracking] location_history insert error:", histResult.error.message);
     }
     if (!liveResult.error && !histResult.error) {
-      console.log(`[BGTracking] ✓ Location saved: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      console.log(`[BGTracking] ✓ Location saved: ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`);
     }
   } catch (err: any) {
     console.error("[BGTracking] pushLocation exception:", err?.message || err);
@@ -117,6 +127,9 @@ interface UseBackgroundTrackingOptions {
 export function useBackgroundTracking({ active, userId }: UseBackgroundTrackingOptions) {
   const watcherIdRef = useRef<CallbackId | null>(null);
   const webIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
+  const startingRef = useRef(false);
+  const pushInFlightRef = useRef(false);
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
@@ -127,6 +140,9 @@ export function useBackgroundTracking({ active, userId }: UseBackgroundTrackingO
 
     if (isNative) {
       startNativeTracking(userId);
+      // A distance-only watcher can stay silent while an employee is parked
+      // or at a client. Heartbeats keep "last seen" genuinely current.
+      startHeartbeat(userId);
     } else {
       startWebTracking(userId);
     }
@@ -137,6 +153,8 @@ export function useBackgroundTracking({ active, userId }: UseBackgroundTrackingO
 
   // ── Native tracking (Capacitor) ──────────────────────────────────────────
   async function startNativeTracking(userId: string) {
+    if (startingRef.current || watcherIdRef.current) return;
+    startingRef.current = true;
     try {
       const id = await BackgroundGeolocation.addWatcher(
         {
@@ -144,7 +162,7 @@ export function useBackgroundTracking({ active, userId }: UseBackgroundTrackingO
           backgroundMessage: "Your location is being recorded for field management.",
           requestPermissions: true,
           stale: false,
-          distanceFilter: 30, // update every 30 metres of movement
+          distanceFilter: 15, // smoother route updates without excessive battery use
         },
         async (location, error) => {
           if (error) {
@@ -158,7 +176,10 @@ export function useBackgroundTracking({ active, userId }: UseBackgroundTrackingO
             return;
           }
           if (location) {
-            await pushLocation(userId, location.latitude, location.longitude);
+            if (!pushInFlightRef.current) {
+              pushInFlightRef.current = true;
+              await pushLocation(userId, location).finally(() => { pushInFlightRef.current = false; });
+            }
           }
         }
       );
@@ -167,7 +188,32 @@ export function useBackgroundTracking({ active, userId }: UseBackgroundTrackingO
     } catch (err) {
       console.error("[BGTracking] Failed to start native tracking:", err);
       toast.error("Could not start background tracking.");
+    } finally {
+      startingRef.current = false;
     }
+  }
+
+  function startHeartbeat(userId: string) {
+    if (heartbeatRef.current || !navigator.geolocation) return;
+    const heartbeat = () => navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        if (pushInFlightRef.current) return;
+        pushInFlightRef.current = true;
+        pushLocation(userId, {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          altitude: pos.coords.altitude,
+          speed: pos.coords.speed,
+          bearing: pos.coords.heading,
+          time: pos.timestamp,
+        }).finally(() => { pushInFlightRef.current = false; });
+      },
+      (error) => console.warn("[BGTracking] heartbeat unavailable:", error.message),
+      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 60_000 },
+    );
+    heartbeat();
+    heartbeatRef.current = setInterval(heartbeat, 120_000);
   }
 
   // ── Web fallback tracking ─────────────────────────────────────────────────
@@ -183,7 +229,15 @@ export function useBackgroundTracking({ active, userId }: UseBackgroundTrackingO
             enableHighAccuracy: true,
           })
         );
-        await pushLocation(userId, pos.coords.latitude, pos.coords.longitude);
+        await pushLocation(userId, {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          altitude: pos.coords.altitude,
+          speed: pos.coords.speed,
+          bearing: pos.coords.heading,
+          time: pos.timestamp,
+        });
       } catch (err: any) {
         console.error("[BGTracking] Web GPS error:", err);
         if (err?.code === 1) {
@@ -204,6 +258,10 @@ export function useBackgroundTracking({ active, userId }: UseBackgroundTrackingO
     if (webIntervalRef.current) {
       clearInterval(webIntervalRef.current);
       webIntervalRef.current = null;
+    }
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
     }
     // Remove native watcher
     if (watcherIdRef.current && watcherIdRef.current !== "web-noop-watcher") {

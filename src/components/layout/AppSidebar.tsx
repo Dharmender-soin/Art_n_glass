@@ -6,10 +6,10 @@ import {
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarRail, useSidebar,
 } from "@/components/ui/sidebar";
 import {
-  Building2, Users, CalendarCheck, BarChart3, LayoutDashboard,
-  LogOut, UserCircle, Shield, ClipboardList, ShieldCheck,
-  GitBranch, PanelLeftClose, PanelLeftOpen, Map, Receipt,
-  Handshake, Eye, Bell, Settings,
+  Users, CalendarCheck, LayoutDashboard, LogOut, UserCircle,
+  ClipboardList, PanelLeftClose, PanelLeftOpen, Handshake, Bell,
+  Command, MapPinned, BellRing, ScrollText, UserCog, Network,
+  BadgeCheck, Route, ChartNoAxesCombined, WalletCards, ContactRound,
 } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
@@ -34,6 +34,8 @@ const itemVariants = {
 // ─── Active Pill (layoutId for smooth transitions) ───
 const ACTIVE_PILL_ID = "sidebar-active-pill";
 
+type NavigationGroup = "Overview" | "Sales" | "Team" | "Operations" | "Administration" | "Account";
+
 const AppSidebar = () => {
   const { pathname } = useLocation();
   const { role, signOut } = useAuth();
@@ -49,42 +51,56 @@ const AppSidebar = () => {
 
   const links = isSupportRole
     ? [
-        { to: "/daily-visits",  label: "Daily Visits",  icon: ClipboardList },
-        { to: "/reports",       label: "Reports",        icon: BarChart3 },
-        ...(isAccountant ? [{ to: "/conveyance", label: "Conveyance", icon: Receipt }] : []),
-        { to: "/profile",       label: "Profile",        icon: UserCircle },
+        { to: "/daily-visits",  label: "Daily Visits",  icon: ClipboardList, group: "Operations" as NavigationGroup },
+        { to: "/reports",       label: "Reports",        icon: ChartNoAxesCombined, group: "Operations" as NavigationGroup },
+        ...(isAccountant ? [{ to: "/conveyance", label: "Conveyance", icon: WalletCards, group: "Operations" as NavigationGroup }] : []),
+        { to: "/profile",       label: "Profile",        icon: UserCircle, group: "Account" as NavigationGroup },
       ]
     : [
-        { to: "/",              label: "Dashboard",      icon: LayoutDashboard },
-        ...(isManagerOrAdmin ? [{ to: "/md-dashboard", label: "Command Center", icon: Eye }] : []),
-        { to: "/notifications", label: "Notification Center", icon: Bell },
-        { to: "/partners",      label: "Partners",       icon: Building2 },
-        { to: "/clients",       label: "Clients",        icon: Users },
-        { to: "/visits",        label: "Visits",         icon: CalendarCheck },
-        ...(isAdminOnly ? [{ to: "/notification-settings", label: "Notification Settings", icon: Settings }] : []),
+        { to: "/",              label: "Dashboard",      icon: LayoutDashboard, group: "Overview" as NavigationGroup },
+        ...(isManagerOrAdmin ? [{ to: "/md-dashboard", label: "Command Center", icon: Command, group: "Overview" as NavigationGroup }] : []),
+        { to: "/notifications", label: "Notifications", icon: Bell, group: "Overview" as NavigationGroup },
+        { to: "/partners",      label: "Partners",       icon: Handshake, group: "Sales" as NavigationGroup },
+        { to: "/clients",       label: "Clients",        icon: ContactRound, group: "Sales" as NavigationGroup },
+        { to: "/visits",        label: "Visits",         icon: CalendarCheck, group: "Sales" as NavigationGroup },
         ...(isManagerOrAdmin ? [
-          { to: "/reports",               label: "Reports",               icon: BarChart3 },
-          { to: "/daily-visits",          label: "Daily Visits",          icon: ClipboardList },
-          { to: "/verification",          label: "Verification",          icon: ShieldCheck },
-          { to: "/hierarchy",             label: "Hierarchy",             icon: GitBranch },
-          { to: "/live-map",              label: "Live Map",              icon: Map },
-          { to: "/conveyance",            label: "Conveyance",            icon: Receipt },
-          { to: "/partner-visits",        label: "Partner Visits",        icon: Handshake },
+          { to: "/partner-visits",        label: "Partner Visits",        icon: Route, group: "Sales" as NavigationGroup },
+          { to: "/daily-visits",          label: "Daily Visits",          icon: ClipboardList, group: "Team" as NavigationGroup },
+          { to: "/verification",          label: "Verification",          icon: BadgeCheck, group: "Team" as NavigationGroup },
+          { to: "/hierarchy",             label: "Hierarchy",             icon: Network, group: "Team" as NavigationGroup },
+          { to: "/live-map",              label: "Live Map",              icon: MapPinned, group: "Team" as NavigationGroup },
+          { to: "/reports",               label: "Reports",               icon: ChartNoAxesCombined, group: "Operations" as NavigationGroup },
+          { to: "/conveyance",            label: "Conveyance",            icon: WalletCards, group: "Operations" as NavigationGroup },
         ] : []),
         ...(isTL ? [
-          { to: "/reports",      label: "Reports",      icon: BarChart3 },
-          { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList },
-          { to: "/hierarchy",    label: "My Team",      icon: GitBranch },
+          { to: "/daily-visits", label: "Daily Visits", icon: ClipboardList, group: "Team" as NavigationGroup },
+          { to: "/hierarchy",    label: "My Team",      icon: Network, group: "Team" as NavigationGroup },
+          { to: "/reports",      label: "Reports",      icon: ChartNoAxesCombined, group: "Operations" as NavigationGroup },
         ] : []),
-        ...(role === "admin" ? [{ to: "/admin", label: "User Management", icon: Shield }] : []),
-        { to: "/profile",       label: "Profile",       icon: UserCircle },
+        ...(role === "md" ? [
+          { to: "/notification-logs", label: "Notification Logs", icon: ScrollText, group: "Administration" as NavigationGroup },
+        ] : []),
+        ...(isAdminOnly ? [
+          { to: "/notification-settings", label: "Notification Settings", icon: BellRing, group: "Administration" as NavigationGroup },
+          { to: "/notification-logs", label: "Notification Logs", icon: ScrollText, group: "Administration" as NavigationGroup },
+          { to: "/admin", label: "User Management", icon: UserCog, group: "Administration" as NavigationGroup },
+        ] : []),
+        { to: "/profile",       label: "Profile",       icon: UserCircle, group: "Account" as NavigationGroup },
       ];
 
+  const groupedLinks = links.reduce((groups, link) => {
+    (groups[link.group] ||= []).push(link);
+    return groups;
+  }, {} as Record<NavigationGroup, typeof links>);
+
   return (
-    <Sidebar collapsible="icon" className="border-r border-sidebar-border overflow-hidden">
+    <Sidebar
+      collapsible="icon"
+      className="border-r border-red-950/20 overflow-hidden [&_[data-sidebar=sidebar]]:bg-gradient-to-b [&_[data-sidebar=sidebar]]:from-[#b31324] [&_[data-sidebar=sidebar]]:to-[#8f0f1e] [&_[data-sidebar=sidebar]]:text-white"
+    >
 
       {/* ── HEADER ── */}
-      <SidebarHeader className="h-16 border-b border-sidebar-border overflow-hidden">
+      <SidebarHeader className="h-16 border-b border-white/15 overflow-hidden bg-transparent">
         <div className="flex items-center gap-3 px-3 h-full">
 
           {/* Logo — spins on mount, rotates on hover */}
@@ -94,7 +110,7 @@ const AppSidebar = () => {
             whileHover={{ rotate: 20, scale: 1.12 }}
             whileTap={{ scale: 0.93 }}
             transition={{ type: "spring", stiffness: 260, damping: 18 }}
-            className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/15 shrink-0 shadow-md cursor-pointer border border-white/10 backdrop-blur-sm"
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-white shrink-0 shadow-sm cursor-pointer border border-slate-200"
           >
             <img src={logo} alt="Art-N-Glass" className="h-6 w-auto object-contain" />
           </motion.div>
@@ -111,7 +127,7 @@ const AppSidebar = () => {
                 className="flex flex-col overflow-hidden min-w-0"
               >
                 <span className="text-sm font-bold tracking-tight truncate leading-tight">Art-N-Glass</span>
-                <span className="text-[10px] text-white/60 capitalize truncate font-medium">
+                <span className="text-[10px] text-white/65 capitalize truncate font-medium">
                   {role || "executive"}
                 </span>
               </motion.div>
@@ -128,8 +144,16 @@ const AppSidebar = () => {
           initial="hidden"
           animate="visible"
         >
-          <SidebarMenu className="space-y-0.5">
-            {links.map(({ to, label, icon: Icon }, index) => {
+          <div className={isExpanded ? "space-y-4" : "space-y-1"}>
+          {(Object.entries(groupedLinks) as [NavigationGroup, typeof links][]).map(([group, groupLinks]) => (
+            <div key={group}>
+              {isExpanded && (
+                <p className="px-3 pb-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-white/55">
+                  {group}
+                </p>
+              )}
+              <SidebarMenu className="space-y-0.5">
+            {groupLinks.map(({ to, label, icon: Icon }, index) => {
               const isActive = pathname === to;
               return (
                 <motion.div key={to} variants={itemVariants} custom={index}>
@@ -139,7 +163,7 @@ const AppSidebar = () => {
                       isActive={isActive}
                       tooltip={label}
                       onClick={() => isMobile && setOpenMobile(false)}
-                      className="relative rounded-xl overflow-hidden group/item border border-transparent transition-colors duration-150 hover:border-white/8"
+                      className="relative min-h-10 rounded-xl overflow-hidden group/item border border-transparent transition-colors duration-150 hover:bg-white/10 hover:border-white/10 data-[active=true]:bg-white data-[active=true]:text-red-700"
                     >
                       <Link to={to} className="flex items-center gap-3 px-3 py-2.5 w-full">
 
@@ -147,14 +171,14 @@ const AppSidebar = () => {
                         {isActive && (
                           <motion.div
                             layoutId={ACTIVE_PILL_ID}
-                            className="absolute inset-0 bg-white/15 rounded-xl"
+                            className="absolute inset-0 bg-white rounded-xl shadow-[0_8px_20px_rgba(69,10,10,0.18)]"
                             transition={{ type: "spring", stiffness: 380, damping: 32 }}
                           />
                         )}
 
                         {/* Hover glow (non-active) */}
                         {!isActive && (
-                          <div className="absolute inset-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-200 bg-white/8 rounded-xl" />
+                          <div className="absolute inset-0 opacity-0 group-hover/item:opacity-100 transition-opacity duration-200 bg-white/10 rounded-xl" />
                         )}
 
                         {/* Active left indicator bar */}
@@ -162,7 +186,7 @@ const AppSidebar = () => {
                           {isActive && (
                             <motion.div
                               layoutId="sidebar-indicator"
-                              className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-white shadow-[0_0_6px_rgba(255,255,255,0.6)]"
+                              className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-full bg-red-600"
                               initial={{ scaleY: 0, opacity: 0 }}
                               animate={{ scaleY: 1, opacity: 1 }}
                               exit={{ scaleY: 0, opacity: 0 }}
@@ -179,7 +203,7 @@ const AppSidebar = () => {
                         >
                           <Icon
                             className={`h-4 w-4 transition-colors duration-150 ${
-                              isActive ? "text-white" : "text-white/70 group-hover/item:text-white"
+                              isActive ? "text-red-700" : "text-white/70 group-hover/item:text-white"
                             }`}
                           />
                         </motion.div>
@@ -191,7 +215,7 @@ const AppSidebar = () => {
                               key={`label-${to}`}
                               {...labelMotion}
                               className={`relative z-10 text-sm truncate overflow-hidden whitespace-nowrap ${
-                                isActive ? "font-semibold text-white" : "font-medium text-white/75 group-hover/item:text-white"
+                                isActive ? "font-semibold text-red-700" : "font-medium text-white/80 group-hover/item:text-white"
                               }`}
                             >
                               {label}
@@ -204,12 +228,15 @@ const AppSidebar = () => {
                 </motion.div>
               );
             })}
-          </SidebarMenu>
+              </SidebarMenu>
+            </div>
+          ))}
+          </div>
         </motion.div>
       </SidebarContent>
 
       {/* ── FOOTER ── */}
-      <SidebarFooter className="border-t border-sidebar-border p-2">
+      <SidebarFooter className="border-t border-white/15 bg-transparent p-2">
         <SidebarMenu className="space-y-0.5">
 
           {/* Theme Toggle */}

@@ -10,10 +10,7 @@ type VisitStatus = Database["public"]["Enums"]["visit_status"];
 
 const visitStatusColors: Record<VisitStatus, string> = {
   planned: "bg-[hsl(var(--status-new))] text-white",
-  in_progress: "bg-blue-500 text-white",
   done: "bg-[hsl(var(--status-converted))] text-white",
-  missed: "bg-red-500 text-white",
-  rescheduled: "bg-orange-500 text-white",
   cancelled: "bg-[hsl(var(--status-lost))] text-white",
 };
 

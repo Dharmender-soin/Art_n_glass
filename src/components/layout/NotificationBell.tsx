@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 import { ReportDetailModal, NotificationRecord } from "./ReportDetailModal";
+import { recordNotificationOpened } from "@/lib/notificationDelivery";
 
 export default function NotificationBell() {
   const { user } = useAuth();
@@ -102,6 +103,7 @@ export default function NotificationBell() {
     if (!notif.is_read) {
       await markAsReadMutation.mutateAsync(notif.id);
     }
+    await recordNotificationOpened(notif, user?.id);
     // Open interactive Report Detail Modal!
     setSelectedNotif(notif);
   };

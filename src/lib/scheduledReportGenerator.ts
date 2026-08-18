@@ -18,13 +18,10 @@ export async function getMDAndAdminUserIds(): Promise<string[]> {
 
     const userIds = (roles || []).map((r: any) => r.user_id);
 
-    // Fallback: If no roles matched, fetch top profiles
+    // Management reports must never fall back to arbitrary profiles.
     if (userIds.length === 0) {
-      const { data: profiles } = await supabase
-        .from("profiles")
-        .select("user_id")
-        .limit(10);
-      return (profiles || []).map((p: any) => p.user_id);
+      console.warn("No MD/Admin recipients found for scheduled management report.");
+      return [];
     }
 
     return [...new Set(userIds)];
@@ -47,12 +44,13 @@ export async function triggerMorningSalesPlanReport() {
       .select("id, showroom_id, status")
       .eq("visit_date", todayStr);
 
-    const totalPlanned = visits ? visits.length : 0;
+    const totalPlanned = (visits || []).filter((visit: any) => visit.status === "planned").length;
 
     // Fetch total active clients
     const { count: clientCount } = await supabase
       .from("clients")
-      .select("id", { count: "exact", head: true });
+      .select("id", { count: "exact", head: true })
+      .neq("status", "lost");
 
     const targetUserIds = await getMDAndAdminUserIds();
 
@@ -66,22 +64,10 @@ export async function triggerMorningSalesPlanReport() {
         message,
         category: "report",
         priority: "high",
-        notificationType: "general",
+        notificationType: "morning_plan",
         targetUrl: "/md-dashboard",
+        dedupeKey: `morning_plan:${todayStr}:${uId}`,
       });
-    }
-
-    try {
-      await supabase.functions.invoke("send-push-notification", {
-        body: {
-          broadcast: true,
-          title,
-          body: message,
-          customData: { target_url: "/md-dashboard" }
-        }
-      });
-    } catch (pushErr) {
-      console.warn("Edge function push error:", pushErr);
     }
 
     return { success: true, count: targetUserIds.length, title, message };
@@ -128,22 +114,10 @@ export async function triggerDailyBusinessSummaryReport() {
         message,
         category: "report",
         priority: "high",
-        notificationType: "general",
+        notificationType: "daily_summary",
         targetUrl: "/reports",
+        dedupeKey: `daily_summary:${todayStr}:${uId}`,
       });
-    }
-
-    try {
-      await supabase.functions.invoke("send-push-notification", {
-        body: {
-          broadcast: true,
-          title,
-          body: message,
-          customData: { target_url: "/reports" }
-        }
-      });
-    } catch (pushErr) {
-      console.warn("Push error:", pushErr);
     }
 
     return { success: true, count: targetUserIds.length, title, message };
@@ -177,24 +151,12 @@ export async function triggerEODDSRReport() {
         userId: uId,
         title,
         message,
-        category: "normal",
+        category: "informational",
         priority: "normal",
-        notificationType: "general",
+        notificationType: "dsr_compliance",
         targetUrl: "/reports",
+        dedupeKey: `dsr_compliance:${todayStr}:${uId}`,
       });
-    }
-
-    try {
-      await supabase.functions.invoke("send-push-notification", {
-        body: {
-          broadcast: true,
-          title,
-          body: message,
-          customData: { target_url: "/reports" }
-        }
-      });
-    } catch (pushErr) {
-      console.warn("Push error:", pushErr);
     }
 
     return { success: true, count: targetUserIds.length, title, message };
@@ -209,6 +171,7 @@ export async function triggerEODDSRReport() {
  */
 export async function triggerInactivityEscalationReport() {
   try {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
     const cutoffDate = format(subDays(new Date(), 5), "yyyy-MM-dd");
 
     const { data: recentVisits } = await supabase
@@ -236,22 +199,10 @@ export async function triggerInactivityEscalationReport() {
         message,
         category: "critical",
         priority: "high",
-        notificationType: "general",
+        notificationType: "inactivity_alert",
         targetUrl: "/md-dashboard",
+        dedupeKey: `inactivity_alert:${todayStr}:${uId}`,
       });
-    }
-
-    try {
-      await supabase.functions.invoke("send-push-notification", {
-        body: {
-          broadcast: true,
-          title,
-          body: message,
-          customData: { target_url: "/md-dashboard" }
-        }
-      });
-    } catch (pushErr) {
-      console.warn("Push error:", pushErr);
     }
 
     return { success: true, count: targetUserIds.length, title, message };
@@ -266,6 +217,7 @@ export async function triggerInactivityEscalationReport() {
  */
 export async function triggerPartnerOverdueReport() {
   try {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
     const cutoffDate = format(subDays(new Date(), 15), "yyyy-MM-dd");
 
     const { count: overdueCount } = await supabase
@@ -285,22 +237,10 @@ export async function triggerPartnerOverdueReport() {
         message,
         category: "important",
         priority: "high",
-        notificationType: "general",
+        notificationType: "partner_overdue",
         targetUrl: "/partners",
+        dedupeKey: `partner_overdue:${todayStr}:${uId}`,
       });
-    }
-
-    try {
-      await supabase.functions.invoke("send-push-notification", {
-        body: {
-          broadcast: true,
-          title,
-          body: message,
-          customData: { target_url: "/partners" }
-        }
-      });
-    } catch (pushErr) {
-      console.warn("Push error:", pushErr);
     }
 
     return { success: true, count: targetUserIds.length, title, message };
@@ -315,6 +255,7 @@ export async function triggerPartnerOverdueReport() {
  */
 export async function triggerGPSMisalignmentReport() {
   try {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
     const targetUserIds = await getMDAndAdminUserIds();
 
     const title = "📍 GPS Location Exception Alert";
@@ -327,22 +268,10 @@ export async function triggerGPSMisalignmentReport() {
         message,
         category: "critical",
         priority: "high",
-        notificationType: "general",
+        notificationType: "gps_exception",
         targetUrl: "/verification",
+        dedupeKey: `gps_exception:${todayStr}:${uId}`,
       });
-    }
-
-    try {
-      await supabase.functions.invoke("send-push-notification", {
-        body: {
-          broadcast: true,
-          title,
-          body: message,
-          customData: { target_url: "/verification" }
-        }
-      });
-    } catch (pushErr) {
-      console.warn("Push error:", pushErr);
     }
 
     return { success: true, count: targetUserIds.length, title, message };
@@ -357,6 +286,7 @@ export async function triggerGPSMisalignmentReport() {
  */
 export async function triggerStartDayReminder() {
   try {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
     // Fetch user IDs for everyone EXCEPT MD and Admin
     const { data: nonMdRoles, error } = await supabase
       .from("user_roles" as any)
@@ -368,9 +298,8 @@ export async function triggerStartDayReminder() {
     if (!error && nonMdRoles && nonMdRoles.length > 0) {
       targetUserIds = [...new Set(nonMdRoles.map((r: any) => r.user_id))];
     } else {
-      // Fallback: fetch all profiles
-      const { data: profiles } = await supabase.from("profiles").select("user_id").limit(50);
-      targetUserIds = (profiles || []).map((p: any) => p.user_id);
+      console.warn("No non-management recipients found for Start Day reminder.");
+      targetUserIds = [];
     }
 
     const title = "☀️ Start Day Reminder — 09:30 AM";
@@ -383,22 +312,10 @@ export async function triggerStartDayReminder() {
         message,
         category: "reminder",
         priority: "high",
-        notificationType: "general",
+        notificationType: "start_day",
         targetUrl: "/visits",
+        dedupeKey: `start_day:${todayStr}:${uId}`,
       });
-    }
-
-    try {
-      await supabase.functions.invoke("send-push-notification", {
-        body: {
-          broadcast: true,
-          title,
-          body: message,
-          customData: { target_url: "/visits" }
-        }
-      });
-    } catch (pushErr) {
-      console.warn("Push error:", pushErr);
     }
 
     return { success: true, count: targetUserIds.length, title, message };
@@ -413,6 +330,7 @@ export async function triggerStartDayReminder() {
  */
 export async function triggerEndDayReminder() {
   try {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
     // Fetch user IDs for everyone EXCEPT MD and Admin
     const { data: nonMdRoles, error } = await supabase
       .from("user_roles" as any)
@@ -424,8 +342,8 @@ export async function triggerEndDayReminder() {
     if (!error && nonMdRoles && nonMdRoles.length > 0) {
       targetUserIds = [...new Set(nonMdRoles.map((r: any) => r.user_id))];
     } else {
-      const { data: profiles } = await supabase.from("profiles").select("user_id").limit(50);
-      targetUserIds = (profiles || []).map((p: any) => p.user_id);
+      console.warn("No non-management recipients found for End Day reminder.");
+      targetUserIds = [];
     }
 
     const title = "🌙 End Day & DSR Checkout Reminder — 09:30 PM";
@@ -438,22 +356,10 @@ export async function triggerEndDayReminder() {
         message,
         category: "reminder",
         priority: "high",
-        notificationType: "general",
+        notificationType: "end_day",
         targetUrl: "/visits",
+        dedupeKey: `end_day:${todayStr}:${uId}`,
       });
-    }
-
-    try {
-      await supabase.functions.invoke("send-push-notification", {
-        body: {
-          broadcast: true,
-          title,
-          body: message,
-          customData: { target_url: "/visits" }
-        }
-      });
-    } catch (pushErr) {
-      console.warn("Push error:", pushErr);
     }
 
     return { success: true, count: targetUserIds.length, title, message };

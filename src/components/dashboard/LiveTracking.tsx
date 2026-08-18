@@ -6,6 +6,7 @@ import {
   DirectionsRenderer,
   TrafficLayer,
   Polyline,
+  Circle,
 } from "@react-google-maps/api";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,7 +14,8 @@ import { useQuery } from "@tanstack/react-query";
 import {
   MapPin, Navigation, Clock, Users, Calendar, ChevronRight,
   CheckCircle2, XCircle, AlertCircle, Activity, Route,
-  Building2, ArrowLeft, Layers, Zap, Timer, Car, Target,
+  Building2, ArrowLeft, Layers, Zap, Timer, Car, Bike, Target,
+  Search, Gauge,
 } from "lucide-react";
 import { format, formatDistanceToNow, differenceInMinutes } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +61,9 @@ interface ExecutiveLocation {
   is_live?: boolean;
   conveyance_type?: string;
   _role?: string;
+  accuracy_m?: number | null;
+  speed_mps?: number | null;
+  bearing_deg?: number | null;
 }
 
 interface VisitPoint {
@@ -101,6 +106,29 @@ const statusIcon = (s: string) => {
   if (s === "done") return <CheckCircle2 className="h-3.5 w-3.5 text-green-400" />;
   if (s === "cancelled") return <XCircle className="h-3.5 w-3.5 text-red-400" />;
   return <AlertCircle className="h-3.5 w-3.5 text-amber-400" />;
+};
+
+type LocationFreshness = "live" | "stale" | "offline";
+
+const locationFreshness = (updatedAt: string): LocationFreshness => {
+  const ageMs = Date.now() - new Date(updatedAt).getTime();
+  if (ageMs <= 5 * 60_000) return "live";
+  if (ageMs <= 15 * 60_000) return "stale";
+  return "offline";
+};
+
+const vehicleLabel = (vehicle?: string) => {
+  const value = (vehicle || "").toLowerCase();
+  if (value.includes("car")) return "Car";
+  if (value.includes("bike") || value.includes("motor")) return "Bike";
+  return "Vehicle not set";
+};
+
+const VehicleMarkerIcon = ({ vehicle, className = "h-4 w-4" }: { vehicle?: string; className?: string }) => {
+  const value = (vehicle || "").toLowerCase();
+  if (value.includes("car")) return <Car className={className} aria-hidden="true" />;
+  if (value.includes("bike") || value.includes("motor")) return <Bike className={className} aria-hidden="true" />;
+  return <Navigation className={className} aria-hidden="true" />;
 };
 
 function durationStr(from: string | null, to: string | null): string {
@@ -149,7 +177,12 @@ export const LiveTracking = () => {
   const [selectedExecId, setSelectedExecId] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [filterShowroom, setFilterShowroom] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | LocationFreshness>("all");
+  const [employeeSearch, setEmployeeSearch] = useState("");
   const [showroomList, setShowroomList] = useState<{ id: string; name: string }[]>([]);
+  const [teamCount, setTeamCount] = useState(0);
+  const [presentCount, setPresentCount] = useState(0);
+  const [locationsLoading, setLocationsLoading] = useState(true);
   const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
   const [showTraffic, setShowTraffic] = useState(false);
   const [distMatrix, setDistMatrix] = useState<DistMatrixResult | null>(null);
@@ -167,9 +200,13 @@ export const LiveTracking = () => {
   // ── Fetch live locations + enrich with reverse geocode ──────────────────────
   useEffect(() => {
     const fetchLocations = async () => {
-      const { data: locData } = await supabase.from("live_locations").select("*");
-      const { data: profiles } = await supabase.from("profiles").select("user_id, full_name, conveyance_type");
-      const { data: showrooms } = await supabase.from("showrooms").select("id, name");
+      setLocationsLoading(true);
+      const [{ data: locData }, { data: profiles }, { data: showrooms }, { data: attendanceRows }] = await Promise.all([
+        supabase.from("live_locations").select("*"),
+        supabase.from("profiles").select("user_id, full_name, conveyance_type"),
+        supabase.from("showrooms").select("id, name"),
+        supabase.from("daily_attendance").select("user_id").eq("date", format(new Date(), "yyyy-MM-dd")),
+      ]);
       const showroomMap = Object.fromEntries((showrooms || []).map(s => [s.id, s.name]));
 
       let rolesList: { user_id: string; role: string; showroom_id: string | null; showroom_name: string }[] = [];
@@ -199,11 +236,11 @@ export const LiveTracking = () => {
         }));
       }
 
-      const enriched: ExecutiveLocation[] = ((locData || []) as { user_id: string; lat: number; lng: number; updated_at: string }[]).map((loc) => {
+      const enriched: ExecutiveLocation[] = ((locData || []) as Array<{ user_id: string; lat: number; lng: number; updated_at: string; accuracy_m?: number | null; speed_mps?: number | null; bearing_deg?: number | null }>).map((loc) => {
         const profile = profiles?.find((p) => p.user_id === loc.user_id);
         const roleData = rolesList.find((r) => r.user_id === loc.user_id);
         const minsAgo = differenceInMinutes(new Date(), new Date(loc.updated_at));
-        const isLive = minsAgo <= 15;
+        const isLive = minsAgo <= 5;
         return {
           user_id: loc.user_id,
           lat: loc.lat,
@@ -215,6 +252,9 @@ export const LiveTracking = () => {
           current_address: undefined,
           is_live: isLive,
           conveyance_type: profile?.conveyance_type || undefined,
+          accuracy_m: loc.accuracy_m,
+          speed_mps: loc.speed_mps,
+          bearing_deg: loc.bearing_deg,
           _role: roleData?.role,
         };
       });
@@ -228,6 +268,19 @@ export const LiveTracking = () => {
           : withoutAdmins.filter(e => e.showroom_id === showroomId);
       setLiveLocations(filtered);
 
+      const visibleRoles = rolesList.filter((item) =>
+        item.role !== "md" && item.role !== "admin" && (
+          isAdminOrMd ||
+          (isManager && showroomIds && showroomIds.length > 0
+            ? !!item.showroom_id && showroomIds.includes(item.showroom_id)
+            : item.showroom_id === showroomId)
+        )
+      );
+      const visibleUserIds = new Set(visibleRoles.map((item) => item.user_id));
+      const attendedUserIds = new Set((attendanceRows || []).map((item) => item.user_id));
+      setTeamCount(visibleUserIds.size);
+      setPresentCount([...visibleUserIds].filter((userId) => attendedUserIds.has(userId)).length);
+
       // Build showroom list
       const seen = new Set<string>();
       const rooms: { id: string; name: string }[] = [];
@@ -239,10 +292,12 @@ export const LiveTracking = () => {
       });
       setShowroomList(rooms);
 
-      // Reverse geocode each live exec (only if Maps is loaded)
-      if (isLoaded && filtered.length > 0) {
+      // Reverse geocode only fresh locations. Geocoding every historical marker
+      // on every refresh was the largest source of Live Map loading latency.
+      if (isLoaded && filtered.some((item) => locationFreshness(item.updated_at) !== "offline")) {
         const withAddresses = await Promise.all(
           filtered.map(async (loc) => {
+            if (locationFreshness(loc.updated_at) === "offline") return loc;
             try {
               const addr = await reverseGeocode(loc.lat, loc.lng);
               return { ...loc, current_address: addr };
@@ -253,6 +308,7 @@ export const LiveTracking = () => {
         );
         setLiveLocations(withAddresses);
       }
+      setLocationsLoading(false);
     };
 
     fetchLocations();
@@ -508,8 +564,21 @@ export const LiveTracking = () => {
   }, [execVisits, locationHistory, startDayLocation, selectedExecId]);
 
   // ── Fit bounds on data change ───────────────────────────────────────────────
-  const filteredLocations = liveLocations.filter(loc =>
+  const showroomLocations = liveLocations.filter(loc =>
     filterShowroom === "all" || loc.showroom_id === filterShowroom
+  );
+  const filteredLocations = showroomLocations.filter((location) => {
+    const matchesStatus = statusFilter === "all" || locationFreshness(location.updated_at) === statusFilter;
+    const term = employeeSearch.trim().toLowerCase();
+    const matchesSearch = !term || `${location.full_name} ${location.showroom_name || ""} ${vehicleLabel(location.conveyance_type)}`.toLowerCase().includes(term);
+    return matchesStatus && matchesSearch;
+  });
+  const freshnessCounts = showroomLocations.reduce(
+    (counts, location) => {
+      counts[locationFreshness(location.updated_at)] += 1;
+      return counts;
+    },
+    { live: 0, stale: 0, offline: 0 }
   );
   const selectedExec = liveLocations.find(l => l.user_id === selectedExecId);
 
@@ -541,7 +610,41 @@ export const LiveTracking = () => {
   const nextPending = execVisits.find(v => v.status === "planned" && v.gps_lat && v.gps_lng);
 
   return (
-    <div className="flex flex-col h-[calc(100vh-7rem)] gap-0 text-[#f1f5f9]">
+    <div className="flex flex-col h-[calc(100vh-7rem)] gap-2.5 text-[#f1f5f9]">
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+        {[
+          { label: "Team", value: teamCount, sub: "field staff", color: "text-sky-400", dot: "bg-sky-400" },
+          { label: "Present", value: presentCount, sub: "Start Day done", color: "text-emerald-400", dot: "bg-emerald-400" },
+          { label: "Live GPS", value: freshnessCounts.live, sub: "updated < 5 min", color: "text-green-400", dot: "bg-green-500 animate-pulse" },
+          { label: "Stale", value: freshnessCounts.stale, sub: "5–15 min old", color: "text-amber-400", dot: "bg-amber-400" },
+          { label: "Last known", value: freshnessCounts.offline, sub: "over 15 min", color: "text-slate-400", dot: "bg-slate-500" },
+        ].map((metric) => (
+          <div key={metric.label} className="rounded-xl border border-[#2a2d3a] bg-[#1a1d27] px-3 py-2.5 shadow-sm">
+            <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${metric.dot}`} /><span className="text-[9px] font-bold uppercase tracking-wider text-[#778096]">{metric.label}</span></div>
+            <div className="mt-1 flex items-end gap-1.5"><span className={`text-xl font-black leading-none ${metric.color}`}>{metric.value}</span><span className="text-[8px] text-[#6b7280]">{metric.sub}</span></div>
+          </div>
+        ))}
+      </div>
+
+      {!selectedExecId && (
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="relative min-w-0 flex-1">
+            <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-[#6b7280]" />
+            <Input value={employeeSearch} onChange={(event) => setEmployeeSearch(event.target.value)} placeholder="Search employee, showroom or vehicle..." className="h-9 rounded-xl border-[#2a2d3a] bg-[#1a1d27] pl-9 text-xs text-white placeholder:text-[#5f6675]" />
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto scrollbar-none">
+            {[
+              { value: "all", label: "All", count: showroomLocations.length },
+              { value: "live", label: "Live", count: freshnessCounts.live },
+              { value: "stale", label: "Stale", count: freshnessCounts.stale },
+              { value: "offline", label: "Last known", count: freshnessCounts.offline },
+            ].map((filter) => (
+              <button key={filter.value} type="button" onClick={() => setStatusFilter(filter.value as typeof statusFilter)} className={`h-9 shrink-0 rounded-xl border px-3 text-[10px] font-bold transition-colors ${statusFilter === filter.value ? "border-red-500 bg-red-600 text-white" : "border-[#2a2d3a] bg-[#1a1d27] text-[#9ca3af] hover:border-[#4b5563]"}`}>{filter.label} <span className="ml-1 opacity-70">{filter.count}</span></button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── COMPACT FILTER BAR ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 pb-2.5 flex-nowrap overflow-x-auto scrollbar-none">
@@ -616,10 +719,10 @@ export const LiveTracking = () => {
       </div>
 
       {/* ── MAIN LAYOUT ────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 gap-3 overflow-hidden">
+      <div className="flex flex-1 flex-col md:flex-row gap-3 overflow-hidden min-h-0">
 
         {/* MAP */}
-        <div className="flex-1 rounded-2xl overflow-hidden border border-[#2a2d3a] bg-[#1a1d27] relative shadow-lg">
+        <div className="flex-1 min-h-[42vh] md:min-h-0 rounded-2xl overflow-hidden border border-[#2a2d3a] bg-[#1a1d27] relative shadow-lg">
           <GoogleMap
             mapContainerStyle={containerStyle}
             center={defaultCenter}
@@ -705,27 +808,41 @@ export const LiveTracking = () => {
 
             {/* All execs — overview mode */}
             {!selectedExecId && filteredLocations.map(loc => {
-              const isStale = Date.now() - new Date(loc.updated_at).getTime() > 300000;
+              const freshness = locationFreshness(loc.updated_at);
+              const markerTone = freshness === "live"
+                ? "bg-green-500 border-green-300 text-white"
+                : freshness === "stale"
+                  ? "bg-amber-400 border-amber-200 text-[#0e0f12]"
+                  : "bg-slate-500 border-slate-300 text-white";
               return (
                 <OverlayView key={loc.user_id} position={{ lat: loc.lat, lng: loc.lng }} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
                   <div className="relative -translate-x-1/2 -translate-y-[calc(100%+10px)] flex flex-col items-center cursor-pointer group"
                     onClick={() => setSelectedExecId(loc.user_id)}>
-                    <div className="bg-[#0e0f12] border border-[#2a2d3a] group-hover:border-[#dc2626]/60 shadow-xl rounded-xl px-2.5 py-1.5 min-w-max mb-1 transition-all">
+                    <div className={`bg-[#0e0f12] border border-[#2a2d3a] group-hover:border-[#dc2626]/60 shadow-xl rounded-xl px-2.5 py-1.5 min-w-max mb-1 transition-all ${freshness === "live" ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
                       <p className="text-[11px] font-bold text-[#f1f5f9]">{loc.full_name}</p>
                       {loc.current_address && (
                         <p className="text-[9px] text-[#6b7280] mt-0.5 max-w-[160px] truncate">📍 {loc.current_address}</p>
                       )}
-                      <p className={`text-[9px] font-medium mt-0.5 ${isStale ? "text-amber-400" : "text-green-400"}`}>
-                        {isStale ? "⚠ " : "● "}{formatDistanceToNow(new Date(loc.updated_at))} ago
+                      <p className={`text-[9px] font-medium mt-0.5 ${freshness === "live" ? "text-green-400" : freshness === "stale" ? "text-amber-400" : "text-slate-400"}`}>
+                        {freshness === "live" ? "Live" : freshness === "stale" ? "Stale" : "Last known location"} · {formatDistanceToNow(new Date(loc.updated_at))} ago
                       </p>
                     </div>
-                    <Navigation className={`w-7 h-7 fill-current stroke-[#0e0f12] stroke-2 drop-shadow-lg ${isStale ? "text-amber-400" : "text-green-500 animate-bounce"}`} />
+                    <div
+                      className={`h-9 w-9 rounded-full border-2 shadow-xl flex items-center justify-center transition-transform group-hover:scale-110 ${markerTone}`}
+                      title={`${loc.full_name} · ${vehicleLabel(loc.conveyance_type)}`}
+                      aria-label={`${loc.full_name}, ${vehicleLabel(loc.conveyance_type)}, ${freshness}`}
+                    >
+                      <span className="transition-transform duration-700" style={{ transform: `rotate(${loc.bearing_deg || 0}deg)` }}><VehicleMarkerIcon vehicle={loc.conveyance_type} className="h-5 w-5" /></span>
+                    </div>
                   </div>
                 </OverlayView>
               );
             })}
 
             {/* Selected exec current location */}
+            {selectedExecId && selectedExec?.accuracy_m && selectedExec.accuracy_m > 0 && (
+              <Circle center={{ lat: selectedExec.lat, lng: selectedExec.lng }} radius={Math.min(selectedExec.accuracy_m, 500)} options={{ fillColor: "#38bdf8", fillOpacity: 0.12, strokeColor: "#38bdf8", strokeOpacity: 0.55, strokeWeight: 1 }} />
+            )}
             {selectedExecId && selectedExec && (
               <OverlayView position={{ lat: selectedExec.lat, lng: selectedExec.lng }} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
                 <div className="relative -translate-x-1/2 -translate-y-[calc(100%+10px)] flex flex-col items-center">
@@ -735,7 +852,9 @@ export const LiveTracking = () => {
                       <p className="text-[8px] text-white/70 max-w-[150px] truncate">{selectedExec.current_address}</p>
                     )}
                   </div>
-                  <Navigation className="w-7 h-7 fill-[#dc2626] stroke-[#0e0f12] stroke-2 drop-shadow-lg animate-bounce" />
+                  <div className="h-10 w-10 rounded-full border-2 border-white bg-[#dc2626] text-white shadow-xl flex items-center justify-center">
+                    <span className="transition-transform duration-700" style={{ transform: `rotate(${selectedExec.bearing_deg || 0}deg)` }}><VehicleMarkerIcon vehicle={selectedExec.conveyance_type} className="h-5 w-5" /></span>
+                  </div>
                 </div>
               </OverlayView>
             )}
@@ -743,7 +862,9 @@ export const LiveTracking = () => {
         </div>
 
         {/* ── RIGHT SIDEBAR ───────────────────────────────────────────────── */}
-        <div className="w-80 xl:w-96 flex flex-col gap-2.5 overflow-hidden">
+        <div className={`${selectedExecId ? "fixed inset-x-2 bottom-20 z-30 max-h-[58vh] rounded-3xl border border-[#343846] bg-[#101218]/95 p-2 shadow-2xl backdrop-blur-xl md:static md:inset-auto md:z-auto md:max-h-none md:rounded-none md:border-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none" : "w-full max-h-[36vh]"} md:w-80 xl:w-96 flex flex-col gap-2.5 overflow-hidden shrink-0`}>
+
+          {selectedExecId && <div className="mx-auto h-1 w-10 shrink-0 rounded-full bg-[#4b5563] md:hidden" aria-hidden="true" />}
 
           {/* ── EXEC DETAIL VIEW ── */}
           {selectedExecId && routeSummary && (
@@ -756,15 +877,27 @@ export const LiveTracking = () => {
                   </div>
                   <div className="min-w-0">
                     <p className="text-sm font-bold text-[#f1f5f9] truncate">{selectedExec?.full_name}</p>
+                    <p className="text-[9px] text-[#9ca3af] flex items-center gap-1">
+                      <VehicleMarkerIcon vehicle={selectedExec?.conveyance_type} className="h-3 w-3" />
+                      {vehicleLabel(selectedExec?.conveyance_type)}
+                    </p>
                     {selectedExec?.current_address && (
                       <p className="text-[10px] text-[#6b7280] truncate">📍 {selectedExec.current_address}</p>
                     )}
                   </div>
                   <div className="ml-auto flex items-center gap-1.5 shrink-0">
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                    <span className="text-[9px] text-green-400 font-bold uppercase tracking-wider">Live</span>
+                    <div className={`w-1.5 h-1.5 rounded-full ${selectedExec && locationFreshness(selectedExec.updated_at) === "live" ? "bg-green-500 animate-pulse" : selectedExec && locationFreshness(selectedExec.updated_at) === "stale" ? "bg-amber-400" : "bg-slate-500"}`} />
+                    <span className={`text-[9px] font-bold uppercase tracking-wider ${selectedExec && locationFreshness(selectedExec.updated_at) === "live" ? "text-green-400" : selectedExec && locationFreshness(selectedExec.updated_at) === "stale" ? "text-amber-400" : "text-slate-400"}`}>
+                      {selectedExec && locationFreshness(selectedExec.updated_at) === "live" ? "Live" : selectedExec && locationFreshness(selectedExec.updated_at) === "stale" ? "Stale" : "Last known"}
+                    </span>
                   </div>
                 </div>
+                {(selectedExec?.speed_mps != null || selectedExec?.accuracy_m != null) && (
+                  <div className="mt-2 flex flex-wrap gap-2 border-t border-[#2a2d3a] pt-2 text-[9px] text-[#9ca3af]">
+                    {selectedExec.speed_mps != null && <span className="flex items-center gap-1 rounded-lg bg-[#0e0f12] px-2 py-1"><Gauge className="h-3 w-3 text-sky-400" />{Math.round(selectedExec.speed_mps * 3.6)} km/h</span>}
+                    {selectedExec.accuracy_m != null && <span className="rounded-lg bg-[#0e0f12] px-2 py-1">Accuracy ±{Math.round(selectedExec.accuracy_m)}m</span>}
+                  </div>
+                )}
 
                 {/* Next Visit ETA — only today */}
                 {isToday && nextPending && (
@@ -925,13 +1058,18 @@ export const LiveTracking = () => {
                 <Badge className="bg-[#0e0f12] text-[#9ca3af] border-[#2a2d3a] text-[9px]">{filteredLocations.length}</Badge>
               </div>
               <div className="overflow-y-auto flex-1 divide-y divide-[#2a2d3a]">
-                {filteredLocations.length === 0 ? (
+                {locationsLoading ? (
+                  <div className="space-y-2 p-3" aria-label="Loading executive locations">
+                    {[1,2,3,4].map((item) => <div key={item} className="h-14 animate-pulse rounded-xl bg-[#252935]" />)}
+                  </div>
+                ) : filteredLocations.length === 0 ? (
                   <div className="p-8 text-center text-sm text-[#4b5563] flex flex-col items-center gap-2">
                     <Users className="h-8 w-8 opacity-30" />
-                    <p>No executives found</p>
+                    <p className="font-semibold text-[#9ca3af]">No saved location found</p>
+                    <p className="text-[10px]">Present status aur GPS tracking alag signals hain.</p>
                   </div>
                 ) : [...filteredLocations].sort((a,b) => (a.is_live === b.is_live ? 0 : a.is_live ? -1 : 1)).map(loc => {
-                  const isStale = Date.now() - new Date(loc.updated_at).getTime() > 300000;
+                  const freshness = locationFreshness(loc.updated_at);
                   return (
                     <div
                       key={loc.user_id}
@@ -939,8 +1077,8 @@ export const LiveTracking = () => {
                       onClick={() => setSelectedExecId(loc.user_id)}
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2a2d3a] to-[#3a3d4a] border border-[#3a3d4a] flex items-center justify-center text-xs font-bold text-[#f1f5f9] shrink-0">
-                          {loc.full_name.charAt(0)}
+                        <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#2a2d3a] to-[#3a3d4a] border border-[#3a3d4a] flex items-center justify-center text-[#f1f5f9] shrink-0" title={vehicleLabel(loc.conveyance_type)}>
+                          <VehicleMarkerIcon vehicle={loc.conveyance_type} className="h-4 w-4" />
                         </div>
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-[#f1f5f9] truncate">{loc.full_name}</p>
@@ -958,13 +1096,14 @@ export const LiveTracking = () => {
                           {loc.showroom_name && (
                             <p className="text-[9px] text-[#4b5563]">{loc.showroom_name}</p>
                           )}
+                          <p className="text-[9px] text-[#9ca3af]">{vehicleLabel(loc.conveyance_type)}</p>
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         <div className="flex items-center gap-2">
-                          {!loc.is_live ? (
+                          {freshness === "offline" ? (
                             <div className="w-2 h-2 rounded-full bg-[#4b5563]" />
-                          ) : isStale ? (
+                          ) : freshness === "stale" ? (
                             <div className="w-2 h-2 rounded-full bg-amber-400" />
                           ) : (
                             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -972,8 +1111,8 @@ export const LiveTracking = () => {
                           <ChevronRight className="h-3.5 w-3.5 text-[#4b5563] group-hover:text-[#9ca3af] transition-colors" />
                         </div>
                         <span className="text-[8px] font-bold uppercase tracking-wider" 
-                          style={{ color: !loc.is_live ? "#6b7280" : isStale ? "#fbbf24" : "#4ade80" }}>
-                          {!loc.is_live ? "OFFLINE" : isStale ? "AWAY" : "LIVE"}
+                          style={{ color: freshness === "offline" ? "#94a3b8" : freshness === "stale" ? "#fbbf24" : "#4ade80" }}>
+                          {freshness === "offline" ? "LAST KNOWN" : freshness === "stale" ? "STALE" : "LIVE"}
                         </span>
                       </div>
                     </div>

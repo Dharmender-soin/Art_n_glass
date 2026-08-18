@@ -981,7 +981,7 @@ const Hierarchy = () => {
                   userId: uid,
                   title,
                   message,
-                  targetUrl: "/hierarchy",
+                  targetUrl: `/hierarchy?clientId=${wosItem.client_id}`,
                 })
               )
             );

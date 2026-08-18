@@ -38,10 +38,27 @@ export default function NotificationBell() {
     staleTime: 0,
   });
 
+  // Defensive UI dedupe for legacy rows created before backend idempotency was
+  // introduced. Keep the newest copy when identical content was generated
+  // within five minutes (the common app-open/server double-trigger window).
+  const displayNotifications = useMemo(() => {
+    const seen = new Map<string, number>();
+    return notifications.filter((notif: any) => {
+      const message = notif.message || notif.body || "";
+      const target = notif.target_url || notif.deep_link || notif.data?.targetUrl || "";
+      const key = `${notif.title || ""}|${message}|${target}`;
+      const timestamp = new Date(notif.created_at || 0).getTime();
+      const previous = seen.get(key);
+      if (previous !== undefined && Math.abs(previous - timestamp) <= 5 * 60 * 1000) return false;
+      seen.set(key, timestamp);
+      return true;
+    });
+  }, [notifications]);
+
   // Calculate unread count
   const unreadCount = useMemo(() => {
-    return notifications.filter((n) => !n.is_read).length;
-  }, [notifications]);
+    return displayNotifications.filter((n) => !n.is_read).length;
+  }, [displayNotifications]);
 
   // 2. Mutation: Mark single notification as read
   const markAsReadMutation = useMutation({
@@ -104,8 +121,14 @@ export default function NotificationBell() {
       await markAsReadMutation.mutateAsync(notif.id);
     }
     await recordNotificationOpened(notif, user?.id);
-    // Open interactive Report Detail Modal!
-    setSelectedNotif(notif);
+    // Normalize legacy rows: older database records used `body` while the
+    // report dialog expected `message`, which produced an empty dark box.
+    setSelectedNotif({
+      ...notif,
+      message: notif.message || notif.body || notif.data?.body || "Notification details are unavailable.",
+      target_url: notif.target_url || notif.deep_link || notif.data?.targetUrl || "/notifications",
+      data: notif.data || notif.metadata || {},
+    });
   };
 
   return (
@@ -176,7 +199,7 @@ export default function NotificationBell() {
                       Mark read
                     </button>
                   )}
-                  {notifications.length > 0 && (
+                  {displayNotifications.length > 0 && (
                     <button
                       onClick={() => clearAllNotificationsMutation.mutate()}
                       disabled={clearAllNotificationsMutation.isPending}
@@ -207,7 +230,7 @@ export default function NotificationBell() {
                     <Loader2 className="h-5 w-5 animate-spin text-amber-500" />
                     <span className="text-xs font-medium">Loading alerts...</span>
                   </div>
-                ) : notifications.length === 0 ? (
+                ) : displayNotifications.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
                     <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center mb-2.5">
                       <Bell className="h-5 w-5 text-slate-500" />
@@ -216,7 +239,7 @@ export default function NotificationBell() {
                     <p className="text-[10px] text-slate-400 mt-0.5">All caught up with updates.</p>
                   </div>
                 ) : (
-                  notifications.map((notif) => {
+                  displayNotifications.map((notif) => {
                     const messageText = notif.message || notif.body || "";
                     const isUnread = !notif.is_read;
 

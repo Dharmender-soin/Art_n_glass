@@ -131,9 +131,9 @@ export function ReportDetailModal({
               </span>
             </div>
             <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-center">
-              <span className="text-[10px] uppercase font-bold text-slate-400">Delivery Status</span>
+              <span className="text-[10px] uppercase font-bold text-slate-400">Record Status</span>
               <span className="text-emerald-400 font-semibold flex items-center gap-1 pt-0.5">
-                <CheckCircle2 className="h-3 w-3" /> Live Synced
+                <CheckCircle2 className="h-3 w-3" /> Saved in App
               </span>
             </div>
           </div>

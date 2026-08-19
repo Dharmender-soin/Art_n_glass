@@ -80,6 +80,7 @@ interface DrawerItem {
   badge?: string;
   badgeColor?: string;
   amount?: string;
+  details?: string[];
 }
 
 const ClickableStatCard = ({ label, value, icon: Icon, gradient, sub, onClick, accent, change }: {
@@ -188,23 +189,28 @@ const DetailDrawer = ({ open, onClose, title, items, emptyMsg }: {
             </button>
           </div>
           {/* List */}
-          <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2 pb-8">
+          <div className="overflow-y-auto flex-1 px-4 py-3 pb-8">
             {items.length === 0 ? (
               <div className="py-12 text-center">
                 <p className="text-sm text-[#8E939D]">{emptyMsg || "No data found."}</p>
               </div>
             ) : (
-              items.map((item, i) => (
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {items.map((item, i) => (
                 <motion.div
                   key={item.id + i}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.03 }}
-                  className="flex items-center gap-3 bg-[#1A1D24] rounded-xl px-4 py-3 border border-white/5"
+                  transition={{ delay: Math.min(i, 20) * 0.015 }}
+                  style={{ contentVisibility: "auto", containIntrinsicSize: "88px" }}
+                  className="flex items-start gap-3 bg-[#1A1D24] rounded-xl px-4 py-3 border border-white/5 hover:border-white/10 transition-colors"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-bold text-[#F5F5F7] truncate leading-tight">{item.primary}</p>
                     {item.secondary && <p className="text-[11px] text-[#8E939D] mt-0.5 truncate">{item.secondary}</p>}
+                    {item.details?.map((detail, detailIndex) => (
+                      <p key={detailIndex} className="text-[10px] text-[#A1A5AE] mt-1 leading-relaxed line-clamp-2">{detail}</p>
+                    ))}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {item.amount && <span className="text-[11px] font-bold text-emerald-400">{item.amount}</span>}
@@ -215,7 +221,8 @@ const DetailDrawer = ({ open, onClose, title, items, emptyMsg }: {
                     )}
                   </div>
                 </motion.div>
-              ))
+              ))}
+              </div>
             )}
           </div>
         </motion.div>
@@ -365,21 +372,23 @@ const AnalyticsDashboard = () => {
       // are actual totals instead of stopping at exactly 1,000.
       const pageSize = 1000;
       const allRows: any[] = [];
+      let exactTotal: number | null = null;
       for (let from = 0; ; from += pageSize) {
-        let q = supabase.from("visits").select("id, status, visit_date, created_at, created_by, client_id, partner_id, client:clients(name), partner:partners(name)");
+        let q = supabase.from("visits").select("id, status, visit_date, created_at, created_by, client_id, partner_id, visit_with_type, purpose, address, client:clients(name,address), partner:partners(name,address)", { count: "exact" });
         if (targetUserIds.length > 0) q = q.in("created_by", targetUserIds);
         if (dateRange && prevDateRange) {
           q = q.gte("visit_date", prevDateRange.from).lte("visit_date", dateRange.to);
         } else if (dateRange) {
           q = q.gte("visit_date", dateRange.from).lte("visit_date", dateRange.to);
         }
-        const { data, error } = await q
+        const { data, error, count } = await q
           .order("visit_date", { ascending: false })
           .range(from, from + pageSize - 1);
         if (error) throw error;
         const rows = data || [];
         allRows.push(...rows);
-        if (rows.length < pageSize) break;
+        if (exactTotal === null && count !== null) exactTotal = count;
+        if (rows.length < pageSize || (exactTotal !== null && allRows.length >= exactTotal)) break;
       }
       return allRows;
     },
@@ -729,8 +738,22 @@ const AnalyticsDashboard = () => {
     [...filteredVisits].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .map(v => {
         const vb = visitsBadge(v.status);
-        return { id: v.id, primary: (v.partner as any)?.name || (v.client as any)?.name || "Visit", secondary: v.visit_date, badge: vb.badge, badgeColor: vb.color };
-      }), [filteredVisits]);
+        const entityName = (v.partner as any)?.name || (v.client as any)?.name || (v.address ? v.address.split(",")[0] : "Visit");
+        const employee = profileMap[v.created_by] || "Unassigned employee";
+        const formattedDate = format(new Date(`${v.visit_date}T00:00:00`), "dd MMM yyyy");
+        const entityAddress = v.address || (v.client as any)?.address || (v.partner as any)?.address;
+        return {
+          id: v.id,
+          primary: entityName,
+          secondary: `${formattedDate} · ${employee}`,
+          details: [
+            `${String(v.visit_with_type || "visit").replace(/_/g, " ")} · ${v.purpose || "Purpose not recorded"}`,
+            entityAddress || "Address not recorded",
+          ],
+          badge: vb.badge,
+          badgeColor: vb.color,
+        };
+      }), [filteredVisits, profileMap]);
 
   const completedItems: DrawerItem[] = useMemo(() =>
     [...filteredVisits].filter(v => v.status === "done").sort((a, b) => new Date(b.visit_date).getTime() - new Date(a.visit_date).getTime())

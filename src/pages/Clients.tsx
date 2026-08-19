@@ -215,6 +215,7 @@ const ClientCard = ({
   openEdit,
   openDelete,
   setSelectedClient,
+  canDelete,
 }: {
   c: Client & { _creator_name?: string | null; _creator_role?: string | null; architect_name?: string | null; partner_id?: string | null };
   creatorName: string | null;
@@ -226,6 +227,7 @@ const ClientCard = ({
   openEdit: (c: Client, e: React.MouseEvent) => void;
   openDelete: (c: Client, e: React.MouseEvent) => void;
   setSelectedClient: (id: string) => void;
+  canDelete: boolean;
 }) => {
   const [remarkExpanded, setRemarkExpanded] = useState(false);
   const [wosExpanded, setWosExpanded] = useState(false);
@@ -249,9 +251,11 @@ const ClientCard = ({
         <button type="button" className="h-7 w-7 rounded-lg bg-gray-100 dark:bg-white/10 hover:bg-gray-200 flex items-center justify-center transition-colors" onClick={(e) => openEdit(c, e)} title="Edit client">
           <Pencil className="h-3.5 w-3.5 text-gray-400" />
         </button>
-        <button type="button" className="h-7 w-7 rounded-lg bg-red-50 dark:bg-red-500/10 hover:bg-red-100 flex items-center justify-center transition-colors" onClick={(e) => openDelete(c, e)} title="Delete client">
-          <Trash2 className="h-3.5 w-3.5 text-red-400" />
-        </button>
+        {canDelete && (
+          <button type="button" className="h-7 w-7 rounded-lg bg-red-50 dark:bg-red-500/10 hover:bg-red-100 flex items-center justify-center transition-colors" onClick={(e) => openDelete(c, e)} title="Delete client">
+            <Trash2 className="h-3.5 w-3.5 text-red-400" />
+          </button>
+        )}
       </div>
 
       <div className="p-4 flex flex-col gap-3 flex-1">
@@ -406,6 +410,7 @@ const ClientCard = ({
 
 const Clients = () => {
   const { user, role, showroomId, showroomIds, reportsTo } = useAuth();
+  const canDelete = role !== "executive" && role !== "tl";
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
@@ -716,6 +721,7 @@ const Clients = () => {
 
   const deleteClientMutation = useMutation({
     mutationFn: async (id: string) => {
+      if (!canDelete) throw new Error("Your role is not allowed to delete clients.");
       const { error } = await supabase.from("clients").delete().eq("id", id);
       if (error) throw error;
     },
@@ -846,6 +852,7 @@ const Clients = () => {
                 openEdit={openEdit}
                 openDelete={openDelete}
                 setSelectedClient={setSelectedClient}
+                canDelete={canDelete}
               />
             );
           })}
@@ -861,7 +868,7 @@ const Clients = () => {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={!!deleteClient} onOpenChange={(open) => !open && setDeleteClient(null)}>
+      <AlertDialog open={canDelete && !!deleteClient} onOpenChange={(open) => !open && setDeleteClient(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Client</AlertDialogTitle>

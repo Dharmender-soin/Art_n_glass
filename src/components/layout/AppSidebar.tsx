@@ -10,6 +10,7 @@ import {
   ClipboardList, PanelLeftClose, PanelLeftOpen, Handshake, Bell,
   Command, MapPinned, BellRing, ScrollText, UserCog, Network,
   BadgeCheck, Route, ChartNoAxesCombined, WalletCards, ContactRound,
+  TrendingUp,
 } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
@@ -63,6 +64,9 @@ const AppSidebar = () => {
         { to: "/partners",      label: "Partners",       icon: Handshake, group: "Sales" as NavigationGroup },
         { to: "/clients",       label: "Clients",        icon: ContactRound, group: "Sales" as NavigationGroup },
         { to: "/visits",        label: "Visits",         icon: CalendarCheck, group: "Sales" as NavigationGroup },
+        ...(role === "executive" ? [
+          { to: "/my-pipeline", label: "My Pipeline", icon: TrendingUp, group: "Sales" as NavigationGroup },
+        ] : []),
         ...(isManagerOrAdmin ? [
           { to: "/partner-visits",        label: "Partner Visits",        icon: Route, group: "Sales" as NavigationGroup },
           { to: "/daily-visits",          label: "Daily Visits",          icon: ClipboardList, group: "Team" as NavigationGroup },

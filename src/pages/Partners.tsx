@@ -10,9 +10,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { Plus, Search, Phone, MapPin, Pencil, Trash2, Building2, Users, ChevronDown, X, UserCircle, Calendar, MessageSquare } from "lucide-react";
+import { Plus, Search, Phone, MapPin, Pencil, Trash2, Building2, Users, ChevronDown, X, UserCircle, Calendar, MessageSquare, Briefcase, Loader2 } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 import VisitHistoryList from "@/components/VisitHistoryList";
+import WorkScopeSection from "@/components/WorkScopeSection";
 import { format, parseISO } from "date-fns";
 import { useMemo } from "react";
 
@@ -160,6 +161,7 @@ interface PartnerCardProps {
   openEdit: (p: Partner, e: React.MouseEvent) => void;
   setDeletePartner: (p: Partner) => void;
   setSelectedPartner: (id: string) => void;
+  canDelete: boolean;
 }
 
 /* ─── Partner Card ─────────────────────────────────────────── */
@@ -180,6 +182,7 @@ const PartnerCard = ({
   openEdit,
   setDeletePartner,
   setSelectedPartner,
+  canDelete,
 }: PartnerCardProps) => {
   const [remarkExpanded, setRemarkExpanded] = useState(false);
 
@@ -202,13 +205,15 @@ const PartnerCard = ({
         >
           <Pencil className="h-3.5 w-3.5 text-gray-400 dark:text-white/50" />
         </button>
-        <button
-          className="h-7 w-7 rounded-lg bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 flex items-center justify-center transition-colors"
-          onClick={(e) => { e.stopPropagation(); setDeletePartner(p); }}
-          title="Delete partner"
-        >
-          <Trash2 className="h-3.5 w-3.5 text-red-400" />
-        </button>
+        {canDelete && (
+          <button
+            className="h-7 w-7 rounded-lg bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 flex items-center justify-center transition-colors"
+            onClick={(e) => { e.stopPropagation(); setDeletePartner(p); }}
+            title="Delete partner"
+          >
+            <Trash2 className="h-3.5 w-3.5 text-red-400" />
+          </button>
+        )}
       </div>
 
       <div className="p-4 flex flex-col gap-3 flex-1">
@@ -415,9 +420,63 @@ const EmptyState = ({ isFiltered, onAdd }: { isFiltered: boolean; onAdd: () => v
   </div>
 );
 
+const PartnerLinkedClients = ({ partnerId, onManageWos }: { partnerId: string; onManageWos: (clientId: string, clientName: string) => void }) => {
+  const { data: clients = [], isLoading } = useQuery({
+    queryKey: ["partner-linked-clients", partnerId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("clients")
+        .select("id,name,mobile,address,city,status,work_scope_items(work_status)")
+        .eq("partner_id", partnerId)
+        .order("name");
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  if (isLoading) return <div className="flex items-center gap-2 py-5 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading linked clients…</div>;
+  if (!clients.length) return <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">No clients linked to this partner.</div>;
+
+  return (
+    <div className="space-y-2">
+      {clients.map((client) => {
+        const items = client.work_scope_items || [];
+        const counts = items.reduce((acc: Record<string, number>, item) => {
+          const status = item.work_status || "pending";
+          acc[status] = (acc[status] || 0) + 1;
+          return acc;
+        }, {});
+        return (
+          <div key={client.id} className="rounded-xl border bg-card p-3 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-bold text-sm truncate">{client.name}</p>
+                <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5"><Phone className="h-3 w-3" />{client.mobile}</p>
+                {(client.address || client.city) && <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1 truncate"><MapPin className="h-3 w-3 shrink-0" />{[client.address, client.city].filter(Boolean).join(", ")}</p>}
+              </div>
+              <span className="rounded-full bg-slate-100 dark:bg-slate-800 px-2 py-1 text-[10px] font-bold uppercase">{client.status}</span>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] font-bold">
+              <span className="rounded-lg bg-sky-50 text-sky-700 px-2 py-1"><Briefcase className="inline h-3 w-3 mr-1" />{items.length} WOS</span>
+              {!!counts.submitted && <span className="rounded-lg bg-amber-50 text-amber-700 px-2 py-1">{counts.submitted} Quoted</span>}
+              {!!counts.won && <span className="rounded-lg bg-emerald-50 text-emerald-700 px-2 py-1">{counts.won} Won</span>}
+              {!!counts.hold && <span className="rounded-lg bg-purple-50 text-purple-700 px-2 py-1">{counts.hold} Hold</span>}
+              {!!counts.lost && <span className="rounded-lg bg-rose-50 text-rose-700 px-2 py-1">{counts.lost} Lost</span>}
+            </div>
+            <Button type="button" size="sm" variant="outline" className="mt-3 w-full h-8 text-xs font-bold" onClick={() => onManageWos(client.id, client.name)}>
+              <Plus className="h-3.5 w-3.5 mr-1" /> Manage WOS
+            </Button>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 /* ─── Main Component ───────────────────────────────────────── */
 const Partners = () => {
   const { user, role, showroomId, showroomIds, reportsTo } = useAuth();
+  const canDelete = role !== "executive" && role !== "tl";
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [filterCity, setFilterCity] = useState("");
@@ -428,6 +487,7 @@ const Partners = () => {
   const [deletePartner, setDeletePartner] = useState<Partner | null>(null);
   const [showClientForm, setShowClientForm] = useState<string | null>(null);
   const [selectedPartner, setSelectedPartner] = useState<string | null>(null);
+  const [wosClient, setWosClient] = useState<{ id: string; name: string } | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [editForm, setEditForm] = useState({ ...emptyForm });
   const [clientForm, setClientForm] = useState({ name: "", mobile: "", address: "", city: "", notes: "", status: "new" as const });
@@ -528,6 +588,7 @@ const Partners = () => {
 
   const deletePartnerMutation = useMutation({
     mutationFn: async (id: string) => {
+      if (!canDelete) throw new Error("Your role is not allowed to delete partners.");
       const { error } = await supabase.from("partners").delete().eq("id", id);
       if (error) throw error;
     },
@@ -733,6 +794,7 @@ const Partners = () => {
                 openEdit={openEdit}
                 setDeletePartner={setDeletePartner}
                 setSelectedPartner={setSelectedPartner}
+                canDelete={canDelete}
               />
             );
           })}
@@ -748,7 +810,7 @@ const Partners = () => {
       </Dialog>
 
       {/* ── Delete Confirmation ── */}
-      <AlertDialog open={!!deletePartner} onOpenChange={(open) => !open && setDeletePartner(null)}>
+      <AlertDialog open={canDelete && !!deletePartner} onOpenChange={(open) => !open && setDeletePartner(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Partner</AlertDialogTitle>
@@ -765,16 +827,32 @@ const Partners = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ── Visit History Sheet ── */}
+      {/* ── Partner details: linked clients + visit history ── */}
       <Sheet open={!!selectedPartner} onOpenChange={() => setSelectedPartner(null)}>
-        <SheetContent className="overflow-y-auto bg-background sm:max-w-md">
+        <SheetContent className="overflow-y-auto bg-background sm:max-w-lg">
           <SheetHeader><SheetTitle>Partner Details</SheetTitle></SheetHeader>
-          <div className="mt-4">
+          <div className="mt-5">
+            <div className="flex items-center justify-between mb-2 px-1">
+              <h3 className="font-semibold text-sm">Linked Clients</h3>
+              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pipeline overview</span>
+            </div>
+            {selectedPartner && <PartnerLinkedClients partnerId={selectedPartner} onManageWos={(id, name) => setWosClient({ id, name })} />}
+          </div>
+          <div className="mt-6 border-t pt-5">
             <h3 className="font-semibold text-sm mb-2 px-1">Visit History</h3>
             {selectedPartner && <VisitHistoryList partnerId={selectedPartner} />}
           </div>
         </SheetContent>
       </Sheet>
+
+      <Dialog open={!!wosClient} onOpenChange={(open) => !open && setWosClient(null)}>
+        <DialogContent className="bg-popover max-h-[88vh] overflow-y-auto sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Work Scope — {wosClient?.name}</DialogTitle>
+          </DialogHeader>
+          {wosClient && <WorkScopeSection clientId={wosClient.id} />}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -12,7 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, CalendarCheck, MapPin, Camera, Loader2, ChevronDown, ChevronRight, Search, UserCircle, Clock } from "lucide-react";
+import { Plus, CalendarCheck, MapPin, Camera, Loader2, ChevronDown, ChevronRight, Search, UserCircle, Clock, Users } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import type { Database } from "@/integrations/supabase/types";
@@ -209,6 +209,26 @@ const Visits = () => {
       return Object.fromEntries((data || []).map(p => [p.user_id, p.full_name]));
     },
   });
+
+  const overlappingPlans = useMemo(() => {
+    const groups = new Map<string, typeof visits>();
+    visits.forEach((visit) => {
+      if (visit.status === "cancelled") return;
+      const entityId = visit.client_id || visit.partner_id;
+      if (!entityId) return;
+      const key = `${visit.visit_date}:${visit.visit_with_type}:${entityId}`;
+      const group = groups.get(key) || [];
+      group.push(visit);
+      groups.set(key, group);
+    });
+    const byVisitId: Record<string, string[]> = {};
+    groups.forEach((group) => {
+      const plannerIds = [...new Set(group.map((visit) => visit.created_by))];
+      if (plannerIds.length < 2) return;
+      group.forEach((visit) => { byVisitId[visit.id] = plannerIds; });
+    });
+    return byVisitId;
+  }, [visits]);
 
   const { data: clients = [] } = useQuery({
     queryKey: ["clients-list", user?.id, role],
@@ -986,6 +1006,12 @@ const Visits = () => {
                                 <UserCircle className="h-3 w-3" />
                                 KAM: {creatorProfilesMap[v.created_by] || "Executive"}
                               </span>
+                              {overlappingPlans[v.id] && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-500/25" title="More than one team member planned this client/partner on the same date">
+                                  <Users className="h-3 w-3" />
+                                  Team overlap: {overlappingPlans[v.id].map((id) => creatorProfilesMap[id] || "Team member").join(", ")}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-1.5 shrink-0">

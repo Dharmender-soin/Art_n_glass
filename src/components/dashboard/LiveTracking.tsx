@@ -1066,7 +1066,7 @@ export const LiveTracking = () => {
                   <div className="p-8 text-center text-sm text-[#4b5563] flex flex-col items-center gap-2">
                     <Users className="h-8 w-8 opacity-30" />
                     <p className="font-semibold text-[#9ca3af]">No saved location found</p>
-                    <p className="text-[10px]">Present status aur GPS tracking alag signals hain.</p>
+                    <p className="text-[10px]">Attendance status and GPS tracking are separate signals.</p>
                   </div>
                 ) : [...filteredLocations].sort((a,b) => (a.is_live === b.is_live ? 0 : a.is_live ? -1 : 1)).map(loc => {
                   const freshness = locationFreshness(loc.updated_at);

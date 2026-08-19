@@ -366,14 +366,14 @@ export function SendNotificationForm() {
                 </Button>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">Automatic/scheduled templates in keys ko live report data se fill kar sakte hain; yahan preview sample values dikhata hai.</p>
+            <p className="text-xs text-muted-foreground">Automatic and scheduled templates can populate these keys with live report data; the preview uses sample values.</p>
           </div>
 
           {style === "image" && (
             <div className="space-y-2">
               <Label htmlFor="notif-image" className="flex items-center gap-1.5"><ImageIcon className="h-4 w-4" /> HTTPS image URL</Label>
               <Input id="notif-image" type="url" placeholder="https://.../report-banner.jpg" value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} />
-              <p className="text-xs text-muted-foreground">Android expanded notification mein banner dikhega; HTTPS URL required hai.</p>
+              <p className="text-xs text-muted-foreground">The banner appears in the expanded Android notification. An HTTPS URL is required.</p>
             </div>
           )}
 

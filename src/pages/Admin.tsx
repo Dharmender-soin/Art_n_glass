@@ -816,8 +816,8 @@ const Admin = () => {
                           onClick={() => openAlert(
                             u.is_active ? "Deactivate Employee" : "Activate Employee",
                             u.is_active
-                              ? `${u.full_name} ko deactivate karo? Ye Command Centre aur leaderboard se hide ho jaayega.`
-                              : `${u.full_name} ko wapas activate karo?`,
+                              ? `Deactivate ${u.full_name}? This user will be hidden from the Command Center and leaderboard.`
+                              : `Reactivate ${u.full_name}?`,
                             () => toggleUserActive.mutate({ roleId: u.role_id, is_active: u.is_active })
                           )}
                         >

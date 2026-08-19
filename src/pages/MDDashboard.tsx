@@ -4001,7 +4001,7 @@ const MDDashboard = () => {
                         <Eye className="h-4 w-4 shrink-0 text-red-500" />
                       </button>
                     ))}
-                    {reportRows.length === 0 && <div className="rounded-2xl border border-dashed p-10 text-center text-sm font-semibold text-slate-400">Selected filters mein data nahi mila.</div>}
+                    {reportRows.length === 0 && <div className="rounded-2xl border border-dashed p-10 text-center text-sm font-semibold text-slate-400">No data found for the selected filters.</div>}
                   </div>
                 </div>
               </>

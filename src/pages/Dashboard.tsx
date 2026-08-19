@@ -191,7 +191,7 @@ const DetailDrawer = ({ open, onClose, title, items, emptyMsg }: {
           <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2 pb-8">
             {items.length === 0 ? (
               <div className="py-12 text-center">
-                <p className="text-sm text-[#8E939D]">{emptyMsg || "Koi data nahi mila."}</p>
+                <p className="text-sm text-[#8E939D]">{emptyMsg || "No data found."}</p>
               </div>
             ) : (
               items.map((item, i) => (

@@ -135,7 +135,7 @@ export default function NotificationLogs() {
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">Notification operations</p>
             <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">Delivery Logs</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Campaign se phone open tak har notification ka clear audit trail.</p>
+            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">A clear audit trail for every notification, from campaign creation to opening it on a phone.</p>
           </div>
           <Button variant="outline" onClick={() => { dispatchQuery.refetch(); deliveryQuery.refetch(); }}>
             <RefreshCw className="mr-2 h-4 w-4" /> Refresh
@@ -145,7 +145,7 @@ export default function NotificationLogs() {
 
       {schemaUnavailable && (
         <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-          <strong>Basic schedule history mode.</strong> Ye numbers scheduled queue records hain—actual FCM phone delivery nahi. Exact sent/received/opened tracking notification migration aur updated push function deploy hone ke baad available hogi.
+          <strong>Basic schedule history mode.</strong> These figures represent scheduled queue records, not confirmed FCM delivery. Exact sent, received, and opened tracking will be available after deploying the notification migration and updated push function.
         </div>
       )}
 
@@ -159,7 +159,7 @@ export default function NotificationLogs() {
       </div>
 
       <div className="grid gap-3 sm:grid-cols-[1fr_150px_150px]">
-        <div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="h-10 pl-9" placeholder="Title, source ya target search karein..." value={search} onChange={(event) => setSearch(event.target.value)} /></div>
+        <div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input className="h-10 pl-9" placeholder="Search by title, source, or target..." value={search} onChange={(event) => setSearch(event.target.value)} /></div>
         <Select value={range} onValueChange={setRange}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="today">Today</SelectItem><SelectItem value="7d">Last 7 days</SelectItem><SelectItem value="all">All time</SelectItem></SelectContent></Select>
         <Select value={status} onValueChange={setStatus}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All status</SelectItem><SelectItem value="completed">Completed</SelectItem><SelectItem value="partial">Partial</SelectItem><SelectItem value="failed">Failed</SelectItem><SelectItem value="sending">Sending</SelectItem></SelectContent></Select>
       </div>
@@ -183,7 +183,7 @@ export default function NotificationLogs() {
           </CardContent></Card>
         ))}
         {!scheduledQuery.isLoading && rows.length === 0 && (
-          <div className="rounded-3xl border border-dashed p-12 text-center"><BellRing className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-3 font-semibold">Is filter mein koi dispatch nahi mila.</p></div>
+          <div className="rounded-3xl border border-dashed p-12 text-center"><BellRing className="mx-auto h-8 w-8 text-muted-foreground" /><p className="mt-3 font-semibold">No notification dispatches match this filter.</p></div>
         )}
       </div>
     </div>

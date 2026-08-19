@@ -265,14 +265,14 @@ export default function NotificationSettings() {
           <Card className="overflow-hidden border-emerald-200 shadow-sm dark:border-emerald-900/60">
             <CardHeader className="bg-gradient-to-r from-emerald-50 to-background dark:from-emerald-950/30">
               <CardTitle className="flex items-center gap-2"><MessageCircle className="h-5 w-5 text-emerald-600" /> Notification Delivery Automation</CardTitle>
-              <CardDescription>Bell aur Android Push ke liye recipients, frequency aur automation policy. External channels baad mein optional adapters rahenge.</CardDescription>
+              <CardDescription>Configure recipients, frequency, and automation policies for in-app and Android push notifications. External channels remain optional integrations.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-3 p-5 sm:grid-cols-2">
               {[
-                { key: "enabled", label: "Enable notification automations", help: "Scheduled summaries aur rule-based alerts ka master switch." },
-                { key: "staff_enabled", label: "Internal staff messages", help: "MD, Manager, TL aur executives ke operational alerts." },
-                { key: "client_enabled", label: "Client-facing notifications", help: "Default OFF—sirf client portal/app users ke liye enable karein." },
-                { key: "client_opt_in_required", label: "Client consent mandatory", help: "Consent ke bina client-facing notification generate nahi hogi." },
+                { key: "enabled", label: "Enable notification automations", help: "Master switch for scheduled summaries and rule-based alerts." },
+                { key: "staff_enabled", label: "Internal staff messages", help: "Operational alerts for MDs, Managers, Team Leaders, and Executives." },
+                { key: "client_enabled", label: "Client-facing notifications", help: "Disabled by default. Enable only for client portal or app users." },
+                { key: "client_opt_in_required", label: "Client consent mandatory", help: "Do not generate client-facing notifications without consent." },
               ].map((item) => (
                 <div key={item.key} className="flex items-start justify-between gap-4 rounded-2xl border p-4">
                   <div><p className="text-sm font-bold">{item.label}</p><p className="mt-1 text-xs text-muted-foreground">{item.help}</p></div>
@@ -283,7 +283,7 @@ export default function NotificationSettings() {
           </Card>
 
           <div className="grid gap-5 lg:grid-cols-2">
-            <Card className="shadow-sm"><CardHeader><CardTitle className="text-base">Internal automation rules</CardTitle><CardDescription>Bell aur phone par useful, consolidated notifications.</CardDescription></CardHeader><CardContent className="space-y-3">
+            <Card className="shadow-sm"><CardHeader><CardTitle className="text-base">Internal automation rules</CardTitle><CardDescription>Useful, consolidated in-app and phone notifications.</CardDescription></CardHeader><CardContent className="space-y-3">
               {[
                 { key: "md_morning_brief", label: "MD morning brief" },
                 { key: "md_evening_summary", label: "MD evening summary" },
@@ -293,7 +293,7 @@ export default function NotificationSettings() {
               ].map((item) => <div key={item.key} className="flex items-center justify-between rounded-xl border px-3 py-3"><Label className="text-xs font-semibold">{item.label}</Label><Switch checked={Boolean(whatsHub[item.key as keyof typeof whatsHub])} onCheckedChange={(checked) => setWhatsHub((current) => ({ ...current, [item.key]: checked }))} /></div>)}
             </CardContent></Card>
 
-            <Card className="shadow-sm"><CardHeader><CardTitle className="text-base">Safety & frequency</CardTitle><CardDescription>Spam, duplicates aur off-hours delivery control.</CardDescription></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2">
+            <Card className="shadow-sm"><CardHeader><CardTitle className="text-base">Safety & frequency</CardTitle><CardDescription>Control spam, duplicates, and delivery outside business hours.</CardDescription></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5 sm:col-span-2"><Label>Default delivery</Label><select value={whatsHub.default_channel} onChange={(event) => setWhatsHub((current) => ({ ...current, default_channel: event.target.value }))} className="h-10 w-full rounded-xl border bg-background px-3 text-sm"><option value="push">Android Push + Bell</option><option value="whatshub">Bell only</option><option value="both">Critical: Push + Bell</option></select></div>
               <div className="space-y-1.5"><Label>Quiet hours start</Label><Input type="time" value={whatsHub.quiet_start} onChange={(event) => setWhatsHub((current) => ({ ...current, quiet_start: event.target.value }))} /></div>
               <div className="space-y-1.5"><Label>Quiet hours end</Label><Input type="time" value={whatsHub.quiet_end} onChange={(event) => setWhatsHub((current) => ({ ...current, quiet_end: event.target.value }))} /></div>
@@ -302,7 +302,7 @@ export default function NotificationSettings() {
             </CardContent></Card>
           </div>
 
-          <div className="flex gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">Core notification policy</p><p className="mt-1 text-xs">Har generated alert Bell history mein rahega. Android Push actionable alerts ke liye use hoga; WhatsHub jaise external products baad mein optional channel adapter ke roop mein connect honge.</p></div></div>
+          <div className="flex gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200"><ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" /><div><p className="font-bold">Core notification policy</p><p className="mt-1 text-xs">Every generated alert remains available in notification history. Android push is used for actionable alerts; external products such as WhatsHub can be connected later as optional channel adapters.</p></div></div>
         </div>
       )}
 

@@ -11,6 +11,7 @@ import { toast } from "sonner";
 
 import { ReportDetailModal, NotificationRecord } from "./ReportDetailModal";
 import { recordNotificationOpened } from "@/lib/notificationDelivery";
+import { normalizeNotificationText } from "@/lib/notificationText";
 
 export default function NotificationBell() {
   const { user } = useAuth();
@@ -125,7 +126,7 @@ export default function NotificationBell() {
     // report dialog expected `message`, which produced an empty dark box.
     setSelectedNotif({
       ...notif,
-      message: notif.message || notif.body || notif.data?.body || "Notification details are unavailable.",
+      message: normalizeNotificationText(notif.message || notif.body || notif.data?.body || "Notification details are unavailable."),
       target_url: notif.target_url || notif.deep_link || notif.data?.targetUrl || "/notifications",
       data: notif.data || notif.metadata || {},
     });
@@ -240,7 +241,7 @@ export default function NotificationBell() {
                   </div>
                 ) : (
                   displayNotifications.map((notif) => {
-                    const messageText = notif.message || notif.body || "";
+                    const messageText = normalizeNotificationText(notif.message || notif.body || "");
                     const isUnread = !notif.is_read;
 
                     return (

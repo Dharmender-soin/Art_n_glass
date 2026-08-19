@@ -90,7 +90,7 @@ const AppLayoutContent = ({ children }: { children: ReactNode }) => {
 
         {/* — Main Content (Only this area scrolls!) — */}
         <main className={cn(
-          "flex-1 overflow-y-auto h-full w-full",
+          "flex-1 min-w-0 overflow-x-hidden overflow-y-auto h-full w-full",
           pathname === "/" || pathname === "/my-pipeline" || pathname === "/md-dashboard" ? "p-0 pb-28 md:pb-0 gap-0" : "gap-6 p-4 md:p-6 lg:p-8 pb-28 md:pb-8"
         )}>
           {children}

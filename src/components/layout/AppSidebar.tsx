@@ -9,7 +9,7 @@ import {
   Building2, Users, CalendarCheck, BarChart3, LayoutDashboard,
   LogOut, UserCircle, Shield, ClipboardList, ShieldCheck,
   GitBranch, PanelLeftClose, PanelLeftOpen, Map, Receipt,
-  Handshake, Eye, Bell, Settings,
+  Handshake, Eye, Bell, Settings, TrendingUp,
 } from "lucide-react";
 import logo from "@/assets/logo.png";
 import { ThemeSwitcher } from "@/components/ThemeSwitcher";
@@ -61,6 +61,7 @@ const AppSidebar = () => {
         { to: "/partners",      label: "Partners",       icon: Building2 },
         { to: "/clients",       label: "Clients",        icon: Users },
         { to: "/visits",        label: "Visits",         icon: CalendarCheck },
+        ...(role === "executive" ? [{ to: "/my-pipeline", label: "My Pipeline", icon: TrendingUp }] : []),
         ...(isAdminOnly ? [{ to: "/notification-settings", label: "Notification Settings", icon: Settings }] : []),
         ...(isManagerOrAdmin ? [
           { to: "/reports",               label: "Reports",               icon: BarChart3 },

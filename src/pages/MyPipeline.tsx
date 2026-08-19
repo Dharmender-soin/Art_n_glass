@@ -398,7 +398,7 @@ const MyPipeline = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-28">
+    <div className="min-h-full w-full min-w-0 overflow-x-hidden bg-slate-50 dark:bg-slate-950 pb-28 md:pb-8">
 
       {/* ── Compact Header ── */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-100 dark:border-slate-800 px-4 py-3">
@@ -419,7 +419,7 @@ const MyPipeline = () => {
         </div>
       </div>
 
-      <div className="px-4 pt-3 space-y-3">
+      <div className="mx-auto w-full max-w-[1440px] px-4 pt-3 space-y-3 md:px-6 md:pt-5">
 
         {/* ── Alert Banner ── */}
         <AnimatePresence>
@@ -447,7 +447,7 @@ const MyPipeline = () => {
         </AnimatePresence>
 
         {/* ── KPI Cards — forced 2×2 ── */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+        <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
           <KpiCard label="Total WOS"  value={stats.total}   grad="from-slate-600 to-slate-700"  icon={<Target    className="h-4 w-4" />} />
           <KpiCard label="Won"        value={stats.won}     grad="from-emerald-500 to-teal-600" icon={<Award     className="h-4 w-4" />} extra={`${stats.rate}%`} />
           <KpiCard label="Quotations" value={stats.sent}    grad="from-amber-500 to-orange-500" icon={<Send      className="h-4 w-4" />} />
@@ -522,7 +522,7 @@ const MyPipeline = () => {
               </button>
             </div>
           ) : (
-            <div className="space-y-2.5">
+            <div className="grid gap-2.5 xl:grid-cols-2">
               {filteredClients.map((client, i) => (
                 <motion.div
                   key={client.client_id}

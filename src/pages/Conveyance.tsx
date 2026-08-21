@@ -17,6 +17,7 @@ import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, subDays, pars
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 type DatePreset = "today" | "this_week" | "last_15" | "this_month" | "last_30" | "custom";
 type ViewMode = "summary" | "table";
@@ -148,24 +149,25 @@ const Conveyance = () => {
     enabled: targetUserIds.length > 0 || canSeeAll || isManager,
     queryFn: async () => {
       if (isManager && targetUserIds.length === 0) return [];
-      let q = supabase
-        .from("conveyance_records")
-        .select(`
-          *,
-          visits (
-            purpose,
-            clients (name),
-            partners (name)
-          )
-        `)
-        .gte("date", fromDate)
-        .lte("date", toDate)
-        .order("date", { ascending: false })
-        .order("created_at", { ascending: true })
-        .limit(10000);
-      if (targetUserIds.length > 0) q = q.in("user_id", targetUserIds);
-      const { data } = await q;
-      return (data || []) as any[];
+      return fetchAllRows<any>((from, to) => {
+        let q = supabase
+          .from("conveyance_records")
+          .select(`
+            *,
+            visits (
+              purpose,
+              clients (name),
+              partners (name)
+            )
+          `)
+          .gte("date", fromDate)
+          .lte("date", toDate);
+        if (targetUserIds.length > 0) q = q.in("user_id", targetUserIds);
+        return q
+          .order("date", { ascending: false })
+          .order("created_at", { ascending: true })
+          .range(from, to) as any;
+      });
     },
   });
 

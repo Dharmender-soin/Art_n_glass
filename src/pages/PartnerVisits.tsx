@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { escapeReportHtml, openPdfPrintDialog } from "@/lib/printPdf";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import {
   Handshake, Download, Search, Building2, User, MapPin,
   CheckCircle2, Clock, XCircle, LayoutList, LayoutGrid,
@@ -180,15 +181,14 @@ const PartnerVisits = () => {
     queryKey: ["pv3-last-visits", targetUserIds],
     enabled: targetUserIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase
+      return fetchAllRows<any>((from, to) => supabase
         .from("visits")
         .select("created_by, partner_id, visit_date")
         .eq("visit_with_type", "partner")
         .eq("status", "done")
         .in("created_by", targetUserIds)
         .order("visit_date", { ascending: false })
-        .limit(10000);
-      return data || [];
+        .range(from, to) as any);
     },
   });
 
@@ -207,16 +207,16 @@ const PartnerVisits = () => {
     queryKey: ["pv3-visits", fromDate, toDate, targetUserIds],
     enabled: targetUserIds.length > 0 || canSeeAll,
     queryFn: async () => {
-      let q = supabase
-        .from("visits")
-        .select("id, visit_date, status, created_by, partner_id, purpose, remarks, address, created_at, check_in_at, done_at, partners(name, type, city)")
-        .eq("visit_with_type", "partner")
-        .gte("visit_date", fromDate)
-        .lte("visit_date", toDate)
-        .order("visit_date", { ascending: false });
-      if (targetUserIds.length > 0) q = q.in("created_by", targetUserIds);
-      const { data } = await q;
-      return data || [];
+      return fetchAllRows<any>((from, to) => {
+        let q = supabase
+          .from("visits")
+          .select("id, visit_date, status, created_by, partner_id, purpose, remarks, address, created_at, check_in_at, done_at, partners(name, type, city)")
+          .eq("visit_with_type", "partner")
+          .gte("visit_date", fromDate)
+          .lte("visit_date", toDate);
+        if (targetUserIds.length > 0) q = q.in("created_by", targetUserIds);
+        return q.order("visit_date", { ascending: false }).range(from, to) as any;
+      });
     },
   });
 

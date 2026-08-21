@@ -13,6 +13,7 @@ import NotificationBell from "@/components/layout/NotificationBell";
 import { LiveTracking } from "@/components/dashboard/LiveTracking";
 import { ChampionBanner, HallOfFame } from "@/components/dashboard/ChampionBanner";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import {
   Building2, Users, CalendarCheck, Briefcase, Activity, TrendingUp, TrendingDown, ArrowUpRight,
   Trophy, Star, UserCheck, ShoppingCart, CheckCircle2, Clock, XCircle, BarChart3,
@@ -398,18 +399,16 @@ const AnalyticsDashboard = () => {
   const { data: clients = [] } = useQuery({
     queryKey: ["dashboard-clients", targetUserIds, dateRange, prevDateRange],
     queryFn: async () => {
-      let q = supabase.from("clients").select("id, name, created_at, created_by, status, partner_id");
-      if (targetUserIds.length > 0) {
-        q = q.in("created_by", targetUserIds);
-      }
-      if (dateRange && prevDateRange) {
-        q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
-      } else if (dateRange) {
-        q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
-      }
-      const { data, error } = await q.order("created_at", { ascending: false }).limit(10000); // bypass default 1000 row limit
-      if (error) throw error;
-      return data || [];
+      return fetchAllRows<any>((from, to) => {
+        let q = supabase.from("clients").select("id, name, created_at, created_by, status, partner_id");
+        if (targetUserIds.length > 0) q = q.in("created_by", targetUserIds);
+        if (dateRange && prevDateRange) {
+          q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        } else if (dateRange) {
+          q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        }
+        return q.order("created_at", { ascending: false }).range(from, to) as any;
+      });
     },
   });
 
@@ -417,18 +416,16 @@ const AnalyticsDashboard = () => {
   const { data: partners = [] } = useQuery({
     queryKey: ["dashboard-partners", targetUserIds, dateRange, prevDateRange],
     queryFn: async () => {
-      let q = supabase.from("partners").select("id, name, created_at, created_by, type");
-      if (targetUserIds.length > 0) {
-        q = q.in("created_by", targetUserIds);
-      }
-      if (dateRange && prevDateRange) {
-        q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
-      } else if (dateRange) {
-        q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
-      }
-      const { data, error } = await q.order("created_at", { ascending: false }).limit(10000); // bypass default 1000 row limit
-      if (error) throw error;
-      return data || [];
+      return fetchAllRows<any>((from, to) => {
+        let q = supabase.from("partners").select("id, name, created_at, created_by, type");
+        if (targetUserIds.length > 0) q = q.in("created_by", targetUserIds);
+        if (dateRange && prevDateRange) {
+          q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        } else if (dateRange) {
+          q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        }
+        return q.order("created_at", { ascending: false }).range(from, to) as any;
+      });
     },
   });
 
@@ -436,18 +433,16 @@ const AnalyticsDashboard = () => {
   const { data: workItems = [] } = useQuery({
     queryKey: ["dashboard-work-items", targetUserIds, dateRange, prevDateRange],
     queryFn: async () => {
-      let q = supabase.from("work_scope_items").select("id, work_status, amount_in_lac, created_at, created_by, is_verified, client_id");
-      if (targetUserIds.length > 0) {
-        q = q.in("created_by", targetUserIds);
-      }
-      if (dateRange && prevDateRange) {
-        q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
-      } else if (dateRange) {
-        q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
-      }
-      const { data, error } = await q.order("created_at", { ascending: false }).limit(10000); // bypass default 1000 row limit
-      if (error) throw error;
-      return data || [];
+      return fetchAllRows<any>((from, to) => {
+        let q = supabase.from("work_scope_items").select("id, work_status, amount_in_lac, created_at, created_by, is_verified, client_id");
+        if (targetUserIds.length > 0) q = q.in("created_by", targetUserIds);
+        if (dateRange && prevDateRange) {
+          q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        } else if (dateRange) {
+          q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        }
+        return q.order("created_at", { ascending: false }).range(from, to) as any;
+      });
     },
   });
 

@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const containerStyle = { width: "100%", height: "100%", borderRadius: "0.75rem" };
@@ -210,12 +211,17 @@ export const LiveTracking = () => {
       setLocationsLoading(true);
       const dayStart = new Date();
       dayStart.setHours(0, 0, 0, 0);
-      const [{ data: locData }, { data: profiles }, { data: showrooms }, { data: attendanceRows }, { data: historyRows }] = await Promise.all([
+      const [{ data: locData }, { data: profiles }, { data: showrooms }, { data: attendanceRows }, historyRows] = await Promise.all([
         supabase.from("live_locations").select("*"),
         supabase.from("profiles").select("user_id, full_name, conveyance_type"),
         supabase.from("showrooms").select("id, name"),
         supabase.from("daily_attendance").select("user_id").eq("date", format(new Date(), "yyyy-MM-dd")),
-        (supabase as any).from("location_history").select("user_id, lat, lng, timestamp, accuracy_m, speed_mps, bearing_deg").gte("timestamp", dayStart.toISOString()).order("timestamp", { ascending: false }).limit(10000),
+        fetchAllRows<any>((from, to) => (supabase as any)
+          .from("location_history")
+          .select("user_id, lat, lng, timestamp, accuracy_m, speed_mps, bearing_deg")
+          .gte("timestamp", dayStart.toISOString())
+          .order("timestamp", { ascending: false })
+          .range(from, to)),
       ]);
       const showroomMap = Object.fromEntries((showrooms || []).map(s => [s.id, s.name]));
 

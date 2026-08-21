@@ -16,6 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence } from "framer-motion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { Database } from "@/integrations/supabase/types";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 type VisitWithRelations = Database["public"]["Tables"]["visits"]["Row"] & {
   clients: { name: string; address?: string | null } | null;
@@ -126,15 +127,13 @@ const Reports = () => {
   const { data: visits = [], isLoading: isLoadingVisits } = useQuery({
     queryKey: ["report-visits", dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows<VisitWithRelations>((from, to) => supabase
         .from("visits")
         .select("*, clients(name), partners(name)")
         .gte("visit_date", dateFrom)
         .lte("visit_date", dateTo)
         .order("visit_date", { ascending: false })
-        .limit(10000);
-      if (error) throw error;
-      return (data || []) as VisitWithRelations[];
+        .range(from, to) as any);
     },
   });
 
@@ -145,15 +144,13 @@ const Reports = () => {
     queryKey: ["report-work-scope", dateFrom, dateTo],
     enabled: isManager,
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows<WorkScopeItemWithJoins>((from, to) => supabase
         .from("work_scope_items")
         .select("*, master_work_types(type_of_work, sub_work), clients(name)")
         .gte("created_at", dateFrom)
         .lte("created_at", dateTo + "T23:59:59")
         .order("created_at", { ascending: false })
-        .limit(10000);
-      if (error) throw error;
-      return (data || []) as WorkScopeItemWithJoins[];
+        .range(from, to) as any);
     },
   });
 
@@ -170,16 +167,14 @@ const Reports = () => {
     queryKey: ["report-conveyance", dateFrom, dateTo],
     enabled: isManager,
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows<any>((from, to) => supabase
         .from("conveyance_records")
         .select("*")
         .gte("date", dateFrom)
         .lte("date", dateTo)
         .order("date", { ascending: false })
         .order("created_at", { ascending: false })
-        .limit(10000);
-      if (error) throw error;
-      return data;
+        .range(from, to) as any);
     },
   });
 
@@ -225,7 +220,7 @@ const Reports = () => {
     queryKey: ["dsr-visits", dsrEmployee, dsrFrom, dsrTo],
     enabled: isManager && !!dsrEmployee,
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows<VisitWithRelations>((from, to) => supabase
         .from("visits")
         .select("*, clients(name, address), partners(name, address)")
         .eq("created_by", dsrEmployee)
@@ -233,9 +228,7 @@ const Reports = () => {
         .lte("visit_date", dsrTo)
         .order("visit_date", { ascending: true })
         .order("created_at", { ascending: true })
-        .limit(10000);
-      if (error) throw error;
-      return (data || []) as VisitWithRelations[];
+        .range(from, to) as any);
     },
   });
 

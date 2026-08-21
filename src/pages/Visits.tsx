@@ -18,6 +18,7 @@ import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import type { Database } from "@/integrations/supabase/types";
 import { sendNotification } from "@/lib/notifications";
 import { calculateDistance, calculateRouteDistance } from "@/lib/utils";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { useJsApiLoader, Autocomplete } from "@react-google-maps/api";
 import { useSearchParams } from "react-router-dom";
 
@@ -152,21 +153,18 @@ const Visits = () => {
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["visits", user?.id, role],
     queryFn: async () => {
-      let q = supabase
-        .from("visits")
-        .select("*, clients(name, address), partners(name, address)")
-        .order("visit_date", { ascending: false })
-        .limit(10000);
-
       // The Visits workspace is personal planning for every role. Team-wide
       // monitoring remains available in Daily Visits and Partner Visits.
-      if (user) q = q.eq("created_by", user.id);
-
-      const { data, error } = await q;
-      if (error) throw error;
+      const rows = await fetchAllRows<any>((from, to) => {
+        let q = supabase
+          .from("visits")
+          .select("*, clients(name, address), partners(name, address)");
+        if (user) q = q.eq("created_by", user.id);
+        return q.order("visit_date", { ascending: false }).range(from, to) as any;
+      });
 
       const visitsWithSignedUrls = await Promise.all(
-        (data || []).map(async (v) => {
+        rows.map(async (v) => {
           if (v.photo_url && !v.photo_url.startsWith("http")) {
             const { data: urlData } = await supabase.storage
               .from("visit-photos")

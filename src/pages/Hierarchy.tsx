@@ -917,6 +917,60 @@ const Hierarchy = () => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const closedPivot = useMemo(()=>buildPivot("closed"),[rawWOS,allClients,profileMap,showroomMap,fExec,fStatus,fShowroom,fSearch,allWorkTypes,viewGrouping]);
 
+  const exactStatsCreatorIds = useMemo(() => {
+    if (fExec !== "all") return [fExec];
+
+    if (fShowroom !== "all") {
+      return Object.entries(showroomMap)
+        .filter(([, showroomId]) => showroomId === fShowroom)
+        .map(([userId]) => userId);
+    }
+
+    if (role === "manager" && showroomIds.length > 0) {
+      return Object.entries(showroomMap)
+        .filter(([, showroomId]) => !!showroomId && showroomIds.includes(showroomId))
+        .map(([userId]) => userId);
+    }
+
+    if (role === "tl") {
+      const ids = new Set<string>();
+      rawWOS.forEach((item) => item.created_by && ids.add(item.created_by));
+      allClients.forEach((client: any) => client.created_by && ids.add(client.created_by));
+      if (user?.id) ids.add(user.id);
+      return Array.from(ids);
+    }
+
+    return [];
+  }, [allClients, fExec, fShowroom, rawWOS, role, showroomIds, showroomMap, user?.id]);
+
+  const canUseExactWosStats = !fSearch.trim();
+
+  const { data: exactWosStats } = useQuery({
+    queryKey: ["wos-h3-exact-stats", role, user?.id, showroomIds, fExec, fShowroom, exactStatsCreatorIds, canUseExactWosStats],
+    enabled: canAccess && !!user && canUseExactWosStats,
+    queryFn: async () => {
+      const countWos = async (status?: string) => {
+        let q = supabase.from("work_scope_items").select("id", { count: "exact", head: true });
+        if (exactStatsCreatorIds.length > 0) q = q.in("created_by", exactStatsCreatorIds);
+        if (status) q = q.eq("work_status", status);
+        const { count, error } = await q;
+        if (error) throw error;
+        return count || 0;
+      };
+
+      const [total, won, quotation, lost, pending, draft] = await Promise.all([
+        countWos(),
+        countWos("won"),
+        countWos("submitted"),
+        countWos("lost"),
+        countWos("pending"),
+        countWos("draft"),
+      ]);
+
+      return { total, won, quotation, lost, pending: pending + draft };
+    },
+  });
+
   const stats = useMemo(() => {
     let total = 0, won = 0, quotation = 0, lost = 0, pending = 0;
     rawWOS.forEach(r => {
@@ -953,16 +1007,21 @@ const Hierarchy = () => {
       const q = fSearch.toLowerCase();
       return `${client.name || ""} ${client.address || ""} ${profileMap[creatorId] || ""}`.toLowerCase().includes(q);
     }).length;
+    const finalTotal = exactWosStats?.total ?? total;
+    const finalWon = exactWosStats?.won ?? won;
+    const finalQuotation = exactWosStats?.quotation ?? quotation;
+    const finalLost = exactWosStats?.lost ?? lost;
+    const finalPending = exactWosStats?.pending ?? pending;
     return {
-      total,
-      won,
-      quotation,
-      lost,
-      pending,
+      total: finalTotal,
+      won: finalWon,
+      quotation: finalQuotation,
+      lost: finalLost,
+      pending: finalPending,
       hot,
-      rate: total > 0 ? Math.round((won / total) * 100) : 0
+      rate: finalTotal > 0 ? Math.round((finalWon / finalTotal) * 100) : 0
     };
-  }, [rawWOS, allClients, fExec, fShowroom, fSearch, showroomMap, profileMap]);
+  }, [rawWOS, allClients, fExec, fShowroom, fSearch, showroomMap, profileMap, exactWosStats]);
 
   const execList = useMemo(()=>[...new Map(rawWOS.map(r=>[r.created_by,profileMap[r.created_by]||"Unknown"])).entries()].map(([id,name])=>({id,name})).sort((a,b)=>a.name.localeCompare(b.name)),[rawWOS,profileMap]);
   const hasFilters = fShowroom!=="all"||fExec!=="all"||fStatus!=="all"||fSearch!=="";

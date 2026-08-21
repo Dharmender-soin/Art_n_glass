@@ -446,6 +446,53 @@ const AnalyticsDashboard = () => {
     },
   });
 
+  const countUserIds = useMemo(() => {
+    if (selectedExecutive !== "all") return [selectedExecutive];
+    return targetUserIds;
+  }, [selectedExecutive, targetUserIds]);
+
+  const { data: exactDashboardCounts } = useQuery({
+    queryKey: ["dashboard-exact-counts", countUserIds, dateRange],
+    queryFn: async () => {
+      const visitCount = async (status?: string) => {
+        let q = supabase.from("visits").select("id", { count: "exact", head: true });
+        if (countUserIds.length > 0) q = q.in("created_by", countUserIds);
+        if (dateRange) q = q.gte("visit_date", dateRange.from).lte("visit_date", dateRange.to);
+        if (status) q = q.eq("status", status);
+        const { count, error } = await q;
+        if (error) throw error;
+        return count || 0;
+      };
+
+      const workCount = async (status?: string) => {
+        let q = supabase.from("work_scope_items").select("id", { count: "exact", head: true });
+        if (countUserIds.length > 0) q = q.in("created_by", countUserIds);
+        if (dateRange) q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        if (status) q = q.eq("work_status", status);
+        const { count, error } = await q;
+        if (error) throw error;
+        return count || 0;
+      };
+
+      const [
+        totalVisits, completedVisits, plannedVisits, cancelledVisits,
+        totalOrders, ordersWon, ordersLost, ordersPending, ordersSubmitted,
+      ] = await Promise.all([
+        visitCount(),
+        visitCount("done"),
+        visitCount("planned"),
+        visitCount("cancelled"),
+        workCount(),
+        workCount("won"),
+        workCount("lost"),
+        workCount("pending"),
+        workCount("submitted"),
+      ]);
+
+      return { totalVisits, completedVisits, plannedVisits, cancelledVisits, totalOrders, ordersWon, ordersLost, ordersPending, ordersSubmitted };
+    },
+  });
+
 
   // ═══════════════════════════════════════════════════
   // ─── Computed Metrics ─────────────────────────────
@@ -479,10 +526,10 @@ const AnalyticsDashboard = () => {
   }, [workItems, selectedExecutive, dateRange]);
 
   const metrics = useMemo(() => {
-    const totalVisits = filteredVisits.length;
-    const completedVisits = filteredVisits.filter(v => v.status === "done").length;
-    const plannedVisits = filteredVisits.filter(v => v.status === "planned").length;
-    const cancelledVisits = filteredVisits.filter(v => v.status === "cancelled").length;
+    const totalVisits = exactDashboardCounts?.totalVisits ?? filteredVisits.length;
+    const completedVisits = exactDashboardCounts?.completedVisits ?? filteredVisits.filter(v => v.status === "done").length;
+    const plannedVisits = exactDashboardCounts?.plannedVisits ?? filteredVisits.filter(v => v.status === "planned").length;
+    const cancelledVisits = exactDashboardCounts?.cancelledVisits ?? filteredVisits.filter(v => v.status === "cancelled").length;
     const completionRate = totalVisits > 0 ? Math.round((completedVisits / totalVisits) * 100) : 0;
 
     const totalClients = filteredClients.length;
@@ -491,13 +538,13 @@ const AnalyticsDashboard = () => {
     const newClientsThisMonth = dateRange ? filteredClients.length : filteredClients.filter(c => c.created_at >= monthStart).length;
     const newPartnersThisMonth = dateRange ? filteredPartners.length : filteredPartners.filter(p => p.created_at >= monthStart).length;
 
-    const totalOrders = filteredWorkItems.length;
-    const ordersWon = filteredWorkItems.filter(w => w.work_status === "won").length;
-    const ordersLost = filteredWorkItems.filter(w => w.work_status === "lost").length;
+    const totalOrders = exactDashboardCounts?.totalOrders ?? filteredWorkItems.length;
+    const ordersWon = exactDashboardCounts?.ordersWon ?? filteredWorkItems.filter(w => w.work_status === "won").length;
+    const ordersLost = exactDashboardCounts?.ordersLost ?? filteredWorkItems.filter(w => w.work_status === "lost").length;
     // Pending = explicitly "pending" OR null/undefined status (unclassified orders)
-    const ordersPending = filteredWorkItems.filter(w => w.work_status === "pending" || !w.work_status).length;
+    const ordersPending = exactDashboardCounts?.ordersPending ?? filteredWorkItems.filter(w => w.work_status === "pending" || !w.work_status).length;
     // Submitted = orders filed/submitted but not yet actioned
-    const ordersSubmitted = filteredWorkItems.filter(w => w.work_status === "submitted").length;
+    const ordersSubmitted = exactDashboardCounts?.ordersSubmitted ?? filteredWorkItems.filter(w => w.work_status === "submitted").length;
     const totalOrderValue = filteredWorkItems.reduce((s, w) => s + (w.amount_in_lac || 0), 0);
     const wonOrderValue = filteredWorkItems.filter(w => w.work_status === "won").reduce((s, w) => s + (w.amount_in_lac || 0), 0);
     const verifiedCount = filteredWorkItems.filter(w => w.is_verified).length;
@@ -507,7 +554,7 @@ const AnalyticsDashboard = () => {
       totalClients, totalPartners, newClientsThisMonth, newPartnersThisMonth,
       totalOrders, ordersWon, ordersLost, ordersPending, ordersSubmitted, totalOrderValue, wonOrderValue, verifiedCount,
     };
-  }, [filteredVisits, filteredClients, filteredPartners, filteredWorkItems, monthStart, dateRange]);
+  }, [filteredVisits, filteredClients, filteredPartners, filteredWorkItems, monthStart, dateRange, exactDashboardCounts]);
 
 
 

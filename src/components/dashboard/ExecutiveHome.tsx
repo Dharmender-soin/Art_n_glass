@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from "react";
-import { useBackgroundTracking } from "@/hooks/useBackgroundTracking";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -410,14 +409,6 @@ export const ExecutiveHome = () => {
             setIsEndingDay(false);
         }
     };
-
-    // ── Live Location Tracking ──
-    // On Android APK: runs in background even when app is minimized/screen off
-    // On Web: runs only while tab is open (browser limitation)
-    useBackgroundTracking({
-        active: !!(todayAttendance && !endDayRecord && user),
-        userId: user?.id,
-    });
 
     // Fetch own WOS
     const { data: ownWorkScopes = [] } = useQuery({

@@ -857,6 +857,9 @@ export const ExecutiveHome = () => {
 
     const cancelVisit = async (visit: Visit) => {
         try {
+            const reason = window.prompt("Cancellation reason is mandatory:");
+            if (reason === null) return;
+            if (!reason.trim()) throw new Error("Cancellation reason is required");
             // Block if day is already ended
             const { data: dayEnded } = await supabase
                 .from("conveyance_records")
@@ -867,7 +870,7 @@ export const ExecutiveHome = () => {
                 .maybeSingle();
             if (dayEnded) throw new Error("This day has already been marked ended. Visits cannot be modified.");
 
-            const { error } = await supabase.from("visits").update({ status: "cancelled" }).eq("id", visit.id);
+            const { error } = await supabase.from("visits").update({ status: "cancelled", remarks: `Cancellation reason: ${reason.trim()}` }).eq("id", visit.id);
             if (error) throw error;
             toast.success("Visit cancelled.");
             refetchVisits();

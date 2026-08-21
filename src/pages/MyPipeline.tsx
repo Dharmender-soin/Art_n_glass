@@ -190,7 +190,7 @@ const MyPipeline = () => {
     },
   });
 
-  /* ── Fetch MY WOS records ── */
+  /* ── Fetch WOS records visible through primary/secondary ownership RLS ── */
   const { data: rawWOS = [], isLoading } = useQuery({
     queryKey: ["wos-pipeline", user?.id],
     enabled: !!user,
@@ -199,7 +199,6 @@ const MyPipeline = () => {
       const { data, error } = await supabase
         .from("work_scope_items")
         .select("id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile),master_work_types(type_of_work,sub_work)")
-        .eq("created_by", user.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data || []) as unknown as Array<{
@@ -212,13 +211,13 @@ const MyPipeline = () => {
     },
   });
 
-  /* ── Fetch MY clients (no-WOS detection) ── */
+  /* ── Fetch primary + shared clients (no-WOS detection) ── */
   const { data: myClients = [] } = useQuery({
     queryKey: ["my-clients-pipeline", user?.id],
     enabled: !!user,
     queryFn: async () => {
       if (!user) return [];
-      const { data } = await supabase.from("clients").select("id,name").eq("created_by", user.id);
+      const { data } = await supabase.from("clients").select("id,name");
       return data || [];
     },
   });

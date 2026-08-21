@@ -8,11 +8,12 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, subDays, parseISO } from "date-fns";
-import { CalendarCheck, Search, Users, CheckCircle2, Clock, AlertCircle, TrendingUp, MapPin, Sparkles, LayoutGrid, List, Download } from "lucide-react";
+import { CalendarCheck, Search, Users, CheckCircle2, Clock, AlertCircle, TrendingUp, MapPin, Sparkles, LayoutGrid, List, Download, FileText } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
 import { toast } from "sonner";
+import { escapeReportHtml, openPdfPrintDialog } from "@/lib/printPdf";
 
 const formatPlannedTimestamp = (dateStr?: string | null) => {
   if (!dateStr) return null;
@@ -27,11 +28,12 @@ const formatPlannedTimestamp = (dateStr?: string | null) => {
 
 
 const DailyVisitDashboard = () => {
-  const { role, showroomId, showroomIds } = useAuth();
+  const { user, role, showroomId, showroomIds } = useAuth();
   const isAdmin = role === "admin";
   const isManager = role === "manager";
   const isMd = role === "md";
-  const hasAccess = isAdmin || isManager || isMd;
+  const isTl = role === "tl";
+  const hasAccess = isAdmin || isManager || isMd || isTl;
 
   const [selectedDate, setSelectedDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [searchExec, setSearchExec] = useState("");
@@ -62,7 +64,8 @@ const DailyVisitDashboard = () => {
   });
 
   const { data: executives = [] } = useQuery({
-    queryKey: ["executives-for-dashboard", filterShowroom, showroomIds],
+    queryKey: ["executives-for-dashboard", filterShowroom, showroomIds, role, user?.id],
+    enabled: !!role && hasAccess,
     queryFn: async () => {
       if (isManager) {
         // Multi-showroom managers: bypass RLS by using get_showroom_leaderboard RPC
@@ -89,7 +92,26 @@ const DailyVisitDashboard = () => {
         return results.flat();
       }
 
-      // Admin / MD / TL: fallback to query user_roles + profiles
+      // A Team Leader sees only their own record and direct-report team.
+      if (isTl && user) {
+        const { data: teamRoles, error: teamError } = await supabase
+          .from("user_roles")
+          .select("user_id, role, showroom_id")
+          .or(`user_id.eq.${user.id},reports_to.eq.${user.id}`)
+          .in("role", ["executive", "tl", "backhand_executive"]);
+        if (teamError) throw teamError;
+        const teamUserIds = [...new Set((teamRoles || []).map((item) => item.user_id))];
+        if (teamUserIds.length === 0) return [];
+        const { data: teamProfiles, error: profileError } = await supabase
+          .from("profiles")
+          .select("user_id, full_name")
+          .in("user_id", teamUserIds);
+        if (profileError) throw profileError;
+        const teamProfileMap = Object.fromEntries((teamProfiles || []).map((profile) => [profile.user_id, profile]));
+        return (teamRoles || []).map((item) => ({ ...item, profiles: teamProfileMap[item.user_id] || { full_name: "Team Member" } }));
+      }
+
+      // Admin / MD: query all operational roles.
       let query = supabase
         .from("user_roles")
         .select("user_id, role, showroom_id")
@@ -135,7 +157,7 @@ const DailyVisitDashboard = () => {
       if (execIds.length === 0) return [];
       const { data, error } = await supabase
         .from("visits")
-        .select("*, clients(name), partners(name)")
+        .select("*, clients(name, address), partners(name, address)")
         .in("created_by", execIds)
         .in("visit_date", [yesterday, today])
         .order("visit_date", { ascending: true });
@@ -143,6 +165,27 @@ const DailyVisitDashboard = () => {
       return data || [];
     },
     enabled: executives.length > 0,
+  });
+
+  const { data: visitWosItems = [] } = useQuery({
+    queryKey: ["daily-visit-wos", yesterday, today, visits.map((visit) => visit.client_id).filter(Boolean).join(",")],
+    enabled: visits.some((visit) => Boolean(visit.client_id)),
+    queryFn: async () => {
+      const clientIds = [...new Set(visits.map((visit) => visit.client_id).filter(Boolean))] as string[];
+      const executiveIds = [...new Set(visits.map((visit) => visit.created_by).filter(Boolean))] as string[];
+      if (!clientIds.length || !executiveIds.length) return [];
+      const from = new Date(`${yesterday}T00:00:00+05:30`).toISOString();
+      const to = new Date(`${today}T23:59:59.999+05:30`).toISOString();
+      const { data, error } = await supabase
+        .from("work_scope_items")
+        .select("id, client_id, created_by, created_at, work_status, master_work_types(type_of_work, sub_work)")
+        .in("client_id", clientIds)
+        .in("created_by", executiveIds)
+        .gte("created_at", from)
+        .lte("created_at", to);
+      if (error) throw error;
+      return data || [];
+    },
   });
 
   const stats = useMemo(() => {
@@ -181,6 +224,12 @@ const DailyVisitDashboard = () => {
   }, [executives, visits, yesterday, today, searchExec]);
 
   const getEntityName = (v: { clients?: { name: string } | null; partners?: { name: string } | null }) => v.clients?.name || v.partners?.name || "—";
+  const getVisitWos = (visit: { client_id?: string | null; created_by: string; visit_date: string }) => {
+    if (!visit.client_id) return [];
+    return visitWosItems.filter((item) => item.client_id === visit.client_id
+      && item.created_by === visit.created_by
+      && format(new Date(item.created_at), "yyyy-MM-dd") === visit.visit_date);
+  };
 
   const handleExport = () => {
     let html = `
@@ -319,6 +368,88 @@ const DailyVisitDashboard = () => {
     toast.success("Daily Visits exported successfully ✓");
   };
 
+  const handleExportPdf = () => {
+    const showroomLabel = filterShowroom === "all" ? "All permitted showrooms" : showrooms.find((showroom) => showroom.id === filterShowroom)?.name || "Selected showroom";
+    const pdfStats = execData.reduce((total, exec) => ({
+      ydayPlanned: total.ydayPlanned + exec.ydayPlanned,
+      ydayDone: total.ydayDone + exec.ydayDone,
+      todayPlanned: total.todayPlanned + exec.todayPlanned,
+    }), { ydayPlanned: 0, ydayDone: 0, todayPlanned: 0 });
+    const pdfSuccessRate = pdfStats.ydayPlanned ? Math.round((pdfStats.ydayDone / pdfStats.ydayPlanned) * 100) : 0;
+    const renderRows = (items: typeof visits, section: "planning" | "actual") => {
+      const rows = items.map((visit) => {
+        const address = visit.address || visit.clients?.address || visit.partners?.address || "—";
+        const entityType = visit.client_id ? "Client" : visit.partner_id ? "Partner" : "Unlinked";
+        const wosItems = getVisitWos(visit);
+        const wosText = visit.client_id
+          ? wosItems.length
+            ? `Yes (${wosItems.length}) - ${wosItems.map((item: any) => item.master_work_types?.sub_work || item.master_work_types?.type_of_work || item.work_status).join(", ")}`
+            : "No WOS added on visit date"
+          : "Not applicable for Partner visit";
+        const plannedAt = visit.created_at ? format(new Date(visit.created_at), "dd MMM, hh:mm a") : "—";
+        const checkedInAt = visit.check_in_at ? format(new Date(visit.check_in_at), "hh:mm a") : "—";
+        const finishedAt = visit.done_at ? format(new Date(visit.done_at), "hh:mm a") : visit.status === "cancelled" ? format(new Date(visit.updated_at), "hh:mm a") : "—";
+        const statusLabel = String(visit.status || "planned").replaceAll("_", " ");
+        const remarks = visit.remarks || (visit.status === "cancelled" ? "Cancellation reason not recorded" : "—");
+        return `<tr>
+          <td><b>${escapeReportHtml(getEntityName(visit))}</b><span class="visit-tag ${entityType.toLowerCase()}">${entityType}</span><small>${escapeReportHtml(address)}</small></td>
+          <td><b>${escapeReportHtml(visit.purpose || "General Meeting")}</b><small>Status: <strong>${escapeReportHtml(statusLabel)}</strong></small><small>WOS: ${escapeReportHtml(wosText)}</small></td>
+          <td><small>Planned: ${escapeReportHtml(plannedAt)}</small><small>Check-in: ${escapeReportHtml(checkedInAt)}</small><small>${visit.status === "cancelled" ? "Cancelled" : "Done"}: ${escapeReportHtml(finishedAt)}</small><p>${escapeReportHtml(section === "actual" ? remarks : visit.remarks || "—")}</p></td>
+        </tr>`;
+      }).join("");
+      return rows || '<tr class="empty-data"><td colspan="3">No visits</td></tr>';
+    };
+    const executiveCards = execData.map((exec) => {
+      const showroomName = showrooms.find((showroom) => showroom.id === exec.showroomId)?.name || "—";
+      const ydayActual = exec.ydayVisits.filter((visit) => visit.status !== "planned");
+      return `<article class="executive-card">
+        <div class="executive-head"><b>${escapeReportHtml(exec.name)}</b><span>${escapeReportHtml(showroomName)} · Planned(Y): ${exec.ydayPlanned} · Actual(Y): ${exec.ydayDone} · Planned(Today): ${exec.todayPlanned}</span></div>
+        <section class="visit-section planning"><h3>Planning (Yesterday)</h3><table><thead><tr><th>Client / Partner</th><th>Purpose, Status & WOS</th><th>Timeline & Remarks</th></tr></thead><tbody>${renderRows(exec.ydayVisits, "planning")}</tbody></table></section>
+        <section class="visit-section actual"><h3>Actual (Yesterday)</h3><table><thead><tr><th>Client / Partner</th><th>Purpose, Status & WOS</th><th>Timeline & Remarks / MOM</th></tr></thead><tbody>${renderRows(ydayActual, "actual")}</tbody></table></section>
+        <section class="visit-section today"><h3>Planning (Today)</h3><table><thead><tr><th>Client / Partner</th><th>Purpose, Status & WOS</th><th>Timeline & Remarks</th></tr></thead><tbody>${renderRows(exec.todayVisits, "planning")}</tbody></table></section>
+      </article>`;
+    }).join("");
+    const body = `
+      <style>
+        .daily-report-summary { margin-bottom: 10px; text-align: left; }
+        .executive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; align-items: start; }
+        .executive-card { border: 1px solid #b8c3cf; break-inside: avoid; page-break-inside: avoid; background: #fff; }
+        .executive-head { min-height: 28px; padding: 6px 7px; background: #dff1ff; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+        .executive-head b { color: #101828; font-size: 10px; }
+        .executive-head span { color: #475467; font-size: 7px; text-align: right; }
+        .visit-section h3 { margin: 0; padding: 3px 5px; background: #fff5ce; color: #172033; font-size: 8px; }
+        .visit-section table { font-size: 7.5px; }
+        .visit-section th { padding: 3px 4px; background: #d9e1e8; color: #101828; font-size: 7px; }
+        .visit-section td { min-height: 20px; padding: 4px; line-height: 1.3; }
+        .visit-section td small { display: block; margin-top: 2px; color: #667085; font-size: 6.7px; }
+        .visit-section td p { margin: 3px 0 0; padding-top: 3px; border-top: 1px dotted #cbd5e1; color: #344054; font-size: 6.8px; }
+        .visit-tag { display: inline-block; margin-left: 4px; border-radius: 999px; padding: 1px 4px; color: #fff; font-size: 5.8px; text-transform: uppercase; }
+        .visit-tag.client { background: #2563eb; } .visit-tag.partner { background: #7c3aed; } .visit-tag.unlinked { background: #667085; }
+        .visit-section th:nth-child(1), .visit-section td:nth-child(1) { width: 30%; }
+        .visit-section th:nth-child(2), .visit-section td:nth-child(2) { width: 32%; }
+        .visit-section th:nth-child(3), .visit-section td:nth-child(3) { width: 38%; }
+        .empty-data td { height: 23px; color: #98a2b3; text-align: center; font-style: italic; }
+        .actual h3 { background: #fff0bf; }
+        .today h3 { background: #fff5ce; }
+        @media print { .executive-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+      </style>
+      <div class="meta daily-report-summary"><b>Selected date:</b> ${escapeReportHtml(format(parseISO(selectedDate), "dd MMM yyyy"))} &nbsp;·&nbsp; <b>Showroom:</b> ${escapeReportHtml(showroomLabel)} &nbsp;·&nbsp; <b>Executive search:</b> ${escapeReportHtml(searchExec || "None")}</div>
+      <div class="kpis"><div class="kpi"><b>${pdfStats.ydayPlanned}</b><span>Yesterday planned</span></div><div class="kpi"><b>${pdfStats.ydayDone}</b><span>Yesterday done</span></div><div class="kpi"><b>${pdfStats.todayPlanned}</b><span>Today planned</span></div><div class="kpi"><b>${pdfSuccessRate}%</b><span>Success rate</span></div><div class="kpi"><b>${execData.length}</b><span>Executives</span></div></div>
+      <div class="executive-grid">${executiveCards || '<p class="muted">No records match the current filters.</p>'}</div>`;
+    try {
+      openPdfPrintDialog(`Daily Visit Report · ${selectedDate}`, body, true);
+      toast.success("PDF report opened. Choose Save as PDF in the print dialog.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not open PDF report.");
+    }
+  };
+
+  // Auth session becomes available slightly before the asynchronous role query.
+  // Do not redirect during that short gap, otherwise authorized TLs/managers land
+  // on Dashboard before their role has finished loading.
+  if (!role) {
+    return <div className="min-h-[50vh] flex items-center justify-center text-sm text-muted-foreground">Loading Daily Visits…</div>;
+  }
   if (!hasAccess) return <Navigate to="/" replace />;
 
   const containerVariants = {
@@ -392,6 +523,15 @@ const DailyVisitDashboard = () => {
           >
             <Download className="h-4 w-4 text-primary" />
             <span>Export Excel</span>
+          </Button>
+          <Button
+            onClick={handleExportPdf}
+            variant="outline"
+            disabled={execData.length === 0}
+            className="bg-[#12141A] border-[#F5F5F7]/10 hover:bg-[#1A1D24] text-[#F5F5F7] h-9 gap-2 shadow-sm"
+          >
+            <FileText className="h-4 w-4 text-primary" />
+            <span>Export PDF</span>
           </Button>
 
           <div className="flex bg-[#12141A] rounded-md border border-[#F5F5F7]/5 p-1">

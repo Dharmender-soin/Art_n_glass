@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Plus, Search, Phone, MapPin, Pencil, Trash2, Building2, Users, ChevronDown, X, UserCircle, Calendar, MessageSquare, Briefcase, Loader2 } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
@@ -16,14 +17,18 @@ import VisitHistoryList from "@/components/VisitHistoryList";
 import WorkScopeSection from "@/components/WorkScopeSection";
 import { format, parseISO } from "date-fns";
 import { useMemo } from "react";
+import { SharedOwnershipFields } from "@/components/SharedOwnershipFields";
+import { useAssignableUsers, type AssignableUser } from "@/hooks/useAssignableUsers";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 type Partner = Database["public"]["Tables"]["partners"]["Row"] & {
   _creator_name?: string | null;
   _creator_role?: string | null;
+  _secondary_owner_name?: string | null;
 };
 type PartnerType = Database["public"]["Enums"]["partner_type"];
 
-const emptyForm = { type: "builder" as PartnerType, name: "", mobile: "", company_name: "", address: "", city: "" };
+const emptyForm = { type: "builder" as PartnerType, name: "", mobile: "", company_name: "", address: "", city: "", secondary_owner_id: "" };
 
 /* ─── Type Badge ───────────────────────────────────────────── */
 const TypeBadge = ({ type }: { type: string }) => {
@@ -76,9 +81,10 @@ const SkeletonCard = () => (
 );
 
 /* ─── Partner Form ─────────────────────────────────────────── */
-const PartnerForm = ({ values, onChange, onSubmit, isPending, submitLabel }: {
+const PartnerForm = ({ values, onChange, onSubmit, isPending, submitLabel, primaryOwnerId, primaryOwnerName, teamMembers }: {
   values: typeof emptyForm; onChange: (v: typeof emptyForm) => void;
   onSubmit: () => void; isPending: boolean; submitLabel: string;
+  primaryOwnerId: string | null; primaryOwnerName: string; teamMembers: AssignableUser[];
 }) => (
   <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="space-y-4 pt-1">
     {/* Type selector pills */}
@@ -135,6 +141,8 @@ const PartnerForm = ({ values, onChange, onSubmit, isPending, submitLabel }: {
       </div>
     </div>
 
+    <SharedOwnershipFields primaryOwnerId={primaryOwnerId} primaryOwnerName={primaryOwnerName} secondaryOwnerId={values.secondary_owner_id} members={teamMembers} onSecondaryChange={(secondary_owner_id) => onChange({ ...values, secondary_owner_id })} />
+
     <div className="pt-1">
       <p className="text-[10px] text-muted-foreground mb-2"><span className="text-red-500">*</span> Required fields</p>
       <Button type="submit" className="w-full h-10 font-bold" disabled={isPending}>
@@ -153,10 +161,14 @@ interface PartnerCardProps {
   wonCount: number;
   lostCount: number;
   lastVisit: { visit_date: string; remarks: string | null; exec_name: string | null } | null;
+  lastVisitLoading: boolean;
   showClientForm: string | null;
   setShowClientForm: (id: string | null) => void;
-  clientForm: { name: string; mobile: string; address: string; city: string; notes: string; status: "new" };
-  setClientForm: (form: { name: string; mobile: string; address: string; city: string; notes: string; status: "new" }) => void;
+  clientForm: { name: string; mobile: string; address: string; city: string; notes: string; status: "new"; secondary_owner_id: string };
+  setClientForm: (form: { name: string; mobile: string; address: string; city: string; notes: string; status: "new"; secondary_owner_id: string }) => void;
+  teamMembers: AssignableUser[];
+  primaryOwnerId: string | null;
+  primaryOwnerName: string;
   createClientForPartner: { mutate: (partnerId: string) => void; isPending: boolean };
   openEdit: (p: Partner, e: React.MouseEvent) => void;
   setDeletePartner: (p: Partner) => void;
@@ -174,10 +186,14 @@ const PartnerCard = ({
   wonCount,
   lostCount,
   lastVisit,
+  lastVisitLoading,
   showClientForm,
   setShowClientForm,
   clientForm,
   setClientForm,
+  teamMembers,
+  primaryOwnerId,
+  primaryOwnerName,
   createClientForPartner,
   openEdit,
   setDeletePartner,
@@ -235,11 +251,18 @@ const PartnerCard = ({
               <p className="text-xs text-gray-300 dark:text-white/20 italic mt-0.5">No firm name</p>
             )}
             {/* Type badge below name */}
-            <div className="mt-1.5">
+            <div className="mt-1.5 flex items-center gap-1.5">
               <TypeBadge type={p.type} />
+              {p.secondary_owner_id && <Badge variant="outline" className="border-purple-300 px-2 py-0.5 text-[10px] text-purple-600">Shared</Badge>}
             </div>
           </div>
         </div>
+        {p.secondary_owner_id && (
+          <div className="flex items-center gap-2 rounded-xl border border-purple-100 bg-purple-50/70 px-3 py-2 dark:border-purple-500/15 dark:bg-purple-500/8">
+            <Users className="h-4 w-4 shrink-0 text-purple-400" />
+            <div className="min-w-0"><span className="text-[10px] font-semibold uppercase tracking-wider text-purple-400">Secondary owner</span><p className="truncate text-xs font-bold text-purple-700 dark:text-purple-300">{p._secondary_owner_name || "Assigned user"}</p></div>
+          </div>
+        )}
 
         {/* ── Section 2: Assigned By ── */}
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50/70 dark:bg-blue-500/8 border border-blue-100 dark:border-blue-500/15">
@@ -291,7 +314,12 @@ const PartnerCard = ({
             <Calendar className="h-3 w-3 text-amber-500 shrink-0" />
             <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Last Visit</span>
           </div>
-          {lastVisit ? (
+          {lastVisitLoading ? (
+            <div className="px-3 py-3 bg-white dark:bg-white/[0.02] flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500 shrink-0" />
+              <p className="text-[11px] text-gray-400 italic">Checking visit history…</p>
+            </div>
+          ) : lastVisit ? (
             <div className="px-3 py-2.5 space-y-1.5 bg-white dark:bg-white/[0.02]">
               {/* Date + exec */}
               <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -360,6 +388,7 @@ const PartnerCard = ({
               <Input placeholder="Address" value={clientForm.address} onChange={(e) => setClientForm({ ...clientForm, address: e.target.value })} className="h-8 text-xs" />
               <Input placeholder="City" value={clientForm.city} onChange={(e) => setClientForm({ ...clientForm, city: e.target.value })} className="h-8 text-xs" />
             </div>
+            <SharedOwnershipFields primaryOwnerId={primaryOwnerId} primaryOwnerName={primaryOwnerName} secondaryOwnerId={clientForm.secondary_owner_id} members={teamMembers} onSecondaryChange={(secondary_owner_id) => setClientForm({ ...clientForm, secondary_owner_id })} />
             <div className="flex gap-2">
               <Button size="sm" type="submit" disabled={createClientForPartner.isPending} className="flex-1 h-8 text-xs font-bold">
                 {createClientForPartner.isPending ? "Saving..." : "Save Client"}
@@ -490,7 +519,9 @@ const Partners = () => {
   const [wosClient, setWosClient] = useState<{ id: string; name: string } | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [editForm, setEditForm] = useState({ ...emptyForm });
-  const [clientForm, setClientForm] = useState({ name: "", mobile: "", address: "", city: "", notes: "", status: "new" as const });
+  const [clientForm, setClientForm] = useState({ name: "", mobile: "", address: "", city: "", notes: "", status: "new" as const, secondary_owner_id: "" });
+  const { data: teamMembers = [], isSuccess: sharedOwnershipReady } = useAssignableUsers();
+  const currentOwnerName = teamMembers.find((member) => member.user_id === user?.id)?.full_name || user?.user_metadata?.full_name || "Current user";
 
   const { data: executivesList = [] } = useQuery({
     queryKey: ["executives-list-partners"],
@@ -501,14 +532,13 @@ const Partners = () => {
     },
   });
 
-  const { data: partners = [], isLoading } = useQuery({
+  const { data: partners = [], isLoading, error: partnersError } = useQuery({
     queryKey: ["partners", user?.id, role],
     queryFn: async () => {
-      let q = supabase.from("partners").select("*").order("created_at", { ascending: false });
+      let creatorIdsFilter: string[] | null = null;
 
       if (role === "executive" && user) {
-        const ids = [user.id, ...(reportsTo ? [reportsTo] : [])];
-        q = q.in("created_by", ids);
+        // Shared-record visibility is enforced by RLS.
 
       } else if (role === "tl" && user) {
         const { data: myExecs } = await supabase
@@ -517,7 +547,7 @@ const Partners = () => {
           .eq("reports_to", user.id)
           .eq("role", "executive");
         const execIds = (myExecs || []).map((r: { user_id: string }) => r.user_id);
-        q = q.in("created_by", [user.id, ...execIds]);
+        creatorIdsFilter = [user.id, ...execIds];
 
       } else if (role === "manager") {
         const effectiveShowrooms = [...new Set([...showroomIds, ...(showroomId ? [showroomId] : [])])];
@@ -527,16 +557,19 @@ const Partners = () => {
             .select("user_id")
             .in("showroom_id", effectiveShowrooms);
           const teamIds = (teamRoles || []).map((r: { user_id: string }) => r.user_id);
-          if (teamIds.length > 0) q = q.in("created_by", teamIds);
+          creatorIdsFilter = teamIds;
         }
       }
       // MD / Admin: no filter
 
-      const { data, error } = await q;
-      if (error) throw error;
+      const data = await fetchAllRows<any>((from, to) => {
+        let q = supabase.from("partners").select("*");
+        if (creatorIdsFilter) q = q.in("created_by", creatorIdsFilter);
+        return q.order("created_at", { ascending: false }).range(from, to) as any;
+      });
 
       // ── Fetch creator profiles + roles separately ──
-      const creatorIds = [...new Set((data || []).map(p => p.created_by).filter(Boolean))];
+      const creatorIds = [...new Set(data.flatMap(p => [p.created_by, p.secondary_owner_id]).filter(Boolean))];
       const [{ data: profilesData }, { data: rolesData }] = await Promise.all([
         creatorIds.length > 0
           ? supabase.from("profiles").select("user_id, full_name").in("user_id", creatorIds)
@@ -548,17 +581,19 @@ const Partners = () => {
       const profileMap = Object.fromEntries((profilesData || []).map(pr => [pr.user_id, pr.full_name]));
       const roleMap = Object.fromEntries((rolesData || []).map(r => [r.user_id, r.role]));
 
-      return (data || []).map(p => ({
+      return data.map(p => ({
         ...p,
         _creator_name: p.created_by ? (profileMap[p.created_by] || null) : null,
         _creator_role: p.created_by ? (roleMap[p.created_by] || null) : null,
+        _secondary_owner_name: p.secondary_owner_id ? (profileMap[p.secondary_owner_id] || null) : null,
       }));
     },
   });
 
   const createPartner = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.from("partners").insert({ ...form, created_by: user!.id }).select().single();
+      const { secondary_owner_id, ...partnerValues } = form;
+      const { data, error } = await supabase.from("partners").insert({ ...partnerValues, ...(secondary_owner_id ? { secondary_owner_id } : {}), created_by: user!.id }).select().single();
       if (error) throw error;
       return data;
     },
@@ -575,7 +610,8 @@ const Partners = () => {
   const updatePartner = useMutation({
     mutationFn: async () => {
       if (!editPartner) return;
-      const { error } = await supabase.from("partners").update(editForm).eq("id", editPartner.id);
+      const { secondary_owner_id, ...partnerValues } = editForm;
+      const { error } = await supabase.from("partners").update({ ...partnerValues, ...(sharedOwnershipReady ? { secondary_owner_id: secondary_owner_id || null } : {}) }).eq("id", editPartner.id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -603,13 +639,14 @@ const Partners = () => {
 
   const createClientForPartner = useMutation({
     mutationFn: async (partnerId: string) => {
-      const { error } = await supabase.from("clients").insert({ ...clientForm, partner_id: partnerId, created_by: user!.id });
+      const { secondary_owner_id, ...clientValues } = clientForm;
+      const { error } = await supabase.from("clients").insert({ ...clientValues, ...(secondary_owner_id ? { secondary_owner_id } : {}), partner_id: partnerId, created_by: user!.id });
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       toast.success("Client created!");
-      setClientForm({ name: "", mobile: "", address: "", city: "", notes: "", status: "new" });
+      setClientForm({ name: "", mobile: "", address: "", city: "", notes: "", status: "new", secondary_owner_id: "" });
       setShowClientForm(null);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -617,7 +654,7 @@ const Partners = () => {
 
   const openEdit = (p: Partner, ev: React.MouseEvent) => {
     ev.stopPropagation();
-    setEditForm({ type: p.type, name: p.name, mobile: p.mobile, company_name: p.company_name || "", address: p.address || "", city: p.city || "" });
+    setEditForm({ type: p.type, name: p.name, mobile: p.mobile, company_name: p.company_name || "", address: p.address || "", city: p.city || "", secondary_owner_id: p.secondary_owner_id || "" });
     setEditPartner(p);
   };
 
@@ -625,7 +662,7 @@ const Partners = () => {
     const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) || p.mobile.includes(search);
     const matchCity = !filterCity || p.city?.toLowerCase().includes(filterCity.toLowerCase());
     const matchType = !filterType || filterType === "all" || p.type === filterType;
-    const matchExec = !filterExecutive || filterExecutive === "all" || p.created_by === filterExecutive;
+    const matchExec = !filterExecutive || filterExecutive === "all" || p.created_by === filterExecutive || p.secondary_owner_id === filterExecutive;
     return matchSearch && matchCity && matchType && matchExec;
   });
 
@@ -636,11 +673,12 @@ const Partners = () => {
     queryKey: ["partner-clients-stats", partnerIds],
     enabled: partnerIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase
+      return fetchAllRows<any>((from, to) => supabase
         .from("clients")
         .select("id, partner_id, work_scope_items(work_status)")
-        .in("partner_id", partnerIds);
-      return data || [];
+        .not("partner_id", "is", null)
+        .order("id")
+        .range(from, to) as any);
     },
   });
 
@@ -659,20 +697,36 @@ const Partners = () => {
     return map;
   }, [partnerClients]);
 
+  const sortedFiltered = useMemo(() => {
+    if (!(role === "admin" || role === "md" || role === "manager")) return filtered;
+    return [...filtered].sort((a, b) => {
+      const clientDifference = (statsMap[b.id]?.clients || 0) - (statsMap[a.id]?.clients || 0);
+      if (clientDifference !== 0) return clientDifference;
+      return a.name.localeCompare(b.name);
+    });
+  }, [filtered, role, statsMap]);
+
   // ── Last visit per partner ──
-  const { data: partnerVisits = {} } = useQuery({
+  const { data: partnerVisits = {}, isLoading: partnerVisitsLoading } = useQuery({
     queryKey: ["partner-last-visits", partnerIds],
     enabled: partnerIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase
+      const chunks: string[][] = [];
+      for (let index = 0; index < partnerIds.length; index += 100) chunks.push(partnerIds.slice(index, index + 100));
+      const visitPages = await Promise.all(chunks.map((ids) => fetchAllRows<any>((from, to) => supabase
         .from("visits")
-        .select("partner_id, visit_date, remarks, created_by")
-        .in("partner_id", partnerIds)
+        .select("partner_id, visit_date, remarks, created_by, created_at")
+        .in("partner_id", ids)
         .eq("status", "done")
-        .order("visit_date", { ascending: false });
+        .order("visit_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .range(from, to) as any)));
+      const visibleVisits = visitPages.flat().sort((a, b) =>
+        b.visit_date.localeCompare(a.visit_date) || String(b.created_at || "").localeCompare(String(a.created_at || ""))
+      );
 
       // Fetch profiles separately to get exec names and avoid FK join issues
-      const creatorIds = [...new Set((data || []).map(v => v.created_by).filter(Boolean))];
+      const creatorIds = [...new Set(visibleVisits.map(v => v.created_by).filter(Boolean))];
       const { data: profilesData } = creatorIds.length > 0
         ? await supabase.from("profiles").select("user_id, full_name").in("user_id", creatorIds)
         : { data: [] };
@@ -681,7 +735,7 @@ const Partners = () => {
       // keep only most recent per partner
       const seen = new Set<string>();
       const result: Record<string, { visit_date: string; remarks: string | null; exec_name: string | null }> = {};
-      (data || []).forEach((v: { partner_id: string | null; visit_date: string; remarks: string | null; created_by: string }) => {
+      visibleVisits.forEach((v: { partner_id: string | null; visit_date: string; remarks: string | null; created_by: string }) => {
         if (!v.partner_id || seen.has(v.partner_id)) return;
         seen.add(v.partner_id);
         result[v.partner_id] = { visit_date: v.visit_date, remarks: v.remarks, exec_name: profileMap[v.created_by] || null };
@@ -711,7 +765,7 @@ const Partners = () => {
           </DialogTrigger>
           <DialogContent className="bg-popover">
             <DialogHeader><DialogTitle>New Partner</DialogTitle></DialogHeader>
-            <PartnerForm values={form} onChange={setForm} onSubmit={() => createPartner.mutate()} isPending={createPartner.isPending} submitLabel="Save Partner" />
+            <PartnerForm values={form} onChange={setForm} onSubmit={() => createPartner.mutate()} isPending={createPartner.isPending} submitLabel="Save Partner" primaryOwnerId={user?.id || null} primaryOwnerName={currentOwnerName} teamMembers={teamMembers} />
           </DialogContent>
         </Dialog>
       </div>
@@ -761,15 +815,20 @@ const Partners = () => {
       </div>
 
       {/* ── List ── */}
-      {isLoading ? (
+      {partnersError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300">
+          <p className="font-bold">Partners could not be loaded.</p>
+          <p className="mt-1 text-xs">{partnersError instanceof Error ? partnersError.message : "Please refresh and try again."}</p>
+        </div>
+      ) : isLoading ? (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map(i => <SkeletonCard key={i} />)}
         </div>
-      ) : filtered.length === 0 ? (
+      ) : sortedFiltered.length === 0 ? (
         <EmptyState isFiltered={isFiltered} onAdd={() => setCreateOpen(true)} />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((p) => {
+          {sortedFiltered.map((p) => {
             const execName = (p as { _creator_name?: string | null })._creator_name || null;
             const execRole = (p as { _creator_role?: string | null })._creator_role || null;
             const stats = statsMap[p.id] || { clients: 0, total: 0, won: 0, lost: 0 };
@@ -786,10 +845,14 @@ const Partners = () => {
                 wonCount={stats.won}
                 lostCount={stats.lost}
                 lastVisit={lastVisit}
+                lastVisitLoading={partnerVisitsLoading}
                 showClientForm={showClientForm}
                 setShowClientForm={setShowClientForm}
                 clientForm={clientForm}
                 setClientForm={setClientForm}
+                teamMembers={teamMembers}
+                primaryOwnerId={user?.id || null}
+                primaryOwnerName={currentOwnerName}
                 createClientForPartner={createClientForPartner}
                 openEdit={openEdit}
                 setDeletePartner={setDeletePartner}
@@ -805,7 +868,7 @@ const Partners = () => {
       <Dialog open={!!editPartner} onOpenChange={(open) => !open && setEditPartner(null)}>
         <DialogContent className="bg-popover">
           <DialogHeader><DialogTitle>Edit — {editPartner?.name}</DialogTitle></DialogHeader>
-          <PartnerForm values={editForm} onChange={setEditForm} onSubmit={() => updatePartner.mutate()} isPending={updatePartner.isPending} submitLabel="Save Changes" />
+          <PartnerForm values={editForm} onChange={setEditForm} onSubmit={() => updatePartner.mutate()} isPending={updatePartner.isPending} submitLabel="Save Changes" primaryOwnerId={editPartner?.created_by || null} primaryOwnerName={editPartner?._creator_name || "Primary owner"} teamMembers={teamMembers} />
         </DialogContent>
       </Dialog>
 
@@ -831,17 +894,21 @@ const Partners = () => {
       <Sheet open={!!selectedPartner} onOpenChange={() => setSelectedPartner(null)}>
         <SheetContent className="overflow-y-auto bg-background sm:max-w-lg">
           <SheetHeader><SheetTitle>Partner Details</SheetTitle></SheetHeader>
-          <div className="mt-5">
-            <div className="flex items-center justify-between mb-2 px-1">
-              <h3 className="font-semibold text-sm">Linked Clients</h3>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pipeline overview</span>
-            </div>
-            {selectedPartner && <PartnerLinkedClients partnerId={selectedPartner} onManageWos={(id, name) => setWosClient({ id, name })} />}
-          </div>
-          <div className="mt-6 border-t pt-5">
-            <h3 className="font-semibold text-sm mb-2 px-1">Visit History</h3>
-            {selectedPartner && <VisitHistoryList partnerId={selectedPartner} />}
-          </div>
+          <Tabs defaultValue="clients" className="mt-5">
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="clients">Linked Clients</TabsTrigger>
+              <TabsTrigger value="visits">Visit History</TabsTrigger>
+            </TabsList>
+            <TabsContent value="clients" className="mt-4">
+              <div className="mb-2 flex items-center justify-end px-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Pipeline overview</span>
+              </div>
+              {selectedPartner && <PartnerLinkedClients partnerId={selectedPartner} onManageWos={(id, name) => setWosClient({ id, name })} />}
+            </TabsContent>
+            <TabsContent value="visits" className="mt-4">
+              {selectedPartner && <VisitHistoryList partnerId={selectedPartner} />}
+            </TabsContent>
+          </Tabs>
         </SheetContent>
       </Sheet>
 

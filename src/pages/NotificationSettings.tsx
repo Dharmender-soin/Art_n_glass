@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { Sliders, Save, BellRing, Settings, Loader2, Clock, Smartphone, Image as ImageIcon, BarChart3, Zap, MessageCircle, ShieldCheck } from "lucide-react";
+import { Sliders, Save, BellRing, Settings, Loader2, Clock, Smartphone, Image as ImageIcon, BarChart3, Zap, MessageCircle, ShieldCheck, Plug, KeyRound, CheckCircle2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -21,11 +22,144 @@ import {
   triggerStartDayReminder,
   triggerEndDayReminder,
 } from "@/lib/scheduledReportGenerator";
+import { sendInternalShowroomMessage, sendShowroomPlanningNow } from "@/lib/whatshub";
 
 export default function NotificationSettings() {
-  const { user, role, loading } = useAuth();
+  const { user, role, loading, showroomId, showroomIds } = useAuth();
   const queryClient = useQueryClient();
-  const [activeSection, setActiveSection] = useState<"schedule" | "rules" | "modules" | "whatshub" | "preview">("schedule");
+  const [activeSection, setActiveSection] = useState<"schedule" | "rules" | "modules" | "whatshub" | "integrations" | "preview">("schedule");
+  const [whatsHubShowroom, setWhatsHubShowroom] = useState("");
+  const [internalMessage, setInternalMessage] = useState("");
+  const [planningPreview, setPlanningPreview] = useState("");
+  const [integrationForm, setIntegrationForm] = useState({
+    apiKey: "",
+    cronSecret: "",
+    projectUrl: import.meta.env.VITE_SUPABASE_URL || "",
+    anonKey: "",
+  });
+  const [showroomGroups, setShowroomGroups] = useState<Record<string, { groupId: string; planningEnabled: boolean }>>({});
+
+  const { data: whatsHubShowrooms = [] } = useQuery({
+    queryKey: ["whatshub-showrooms", role, showroomIds],
+    enabled: !!user,
+    queryFn: async () => {
+      let query = supabase.from("showrooms").select("id, name").order("name");
+      if (role !== "admin" && role !== "md") {
+        const allowed = [...new Set([...showroomIds, ...(showroomId ? [showroomId] : [])])];
+        if (!allowed.length) return [];
+        query = query.in("id", allowed);
+      }
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  useEffect(() => {
+    if (!whatsHubShowroom && whatsHubShowrooms[0]?.id) setWhatsHubShowroom(whatsHubShowrooms[0].id);
+  }, [whatsHubShowroom, whatsHubShowrooms]);
+
+  const { data: integrationStatus = { api_key_configured: false, cron_secret_configured: false, project_url_configured: false, anon_key_configured: false, setup_ready: false } } = useQuery({
+    queryKey: ["whatshub-integration-status"],
+    enabled: role === "admin",
+    retry: false,
+    queryFn: async () => {
+      const { data, error } = await (supabase.rpc as any)("get_whatshub_integration_status");
+      if (error) return { api_key_configured: false, cron_secret_configured: false, project_url_configured: false, anon_key_configured: false, setup_ready: false };
+      return { ...(data || {}), setup_ready: true };
+    },
+  });
+
+  const { data: integrationShowrooms = whatsHubShowrooms } = useQuery({
+    queryKey: ["whatshub-integration-showrooms", whatsHubShowrooms.map((showroom) => showroom.id).join(",")],
+    enabled: role === "admin" && whatsHubShowrooms.length > 0,
+    retry: false,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("showrooms").select("id, name, whatsapp_group_id, whatsapp_planning_enabled").order("name");
+      if (error) return whatsHubShowrooms.map((showroom) => ({ ...showroom, whatsapp_group_id: null, whatsapp_planning_enabled: true }));
+      return data || [];
+    },
+  });
+
+  useEffect(() => {
+    if (!integrationShowrooms.length) return;
+    setShowroomGroups((current) => {
+      const next = { ...current };
+      integrationShowrooms.forEach((showroom) => {
+        if (!next[showroom.id]) next[showroom.id] = { groupId: showroom.whatsapp_group_id || "", planningEnabled: showroom.whatsapp_planning_enabled ?? true };
+      });
+      return next;
+    });
+  }, [integrationShowrooms]);
+
+  const saveIntegrationMutation = useMutation({
+    mutationFn: async () => {
+      const groups = integrationShowrooms.map((showroom) => ({
+        showroom_id: showroom.id,
+        group_id: showroomGroups[showroom.id]?.groupId || "",
+        planning_enabled: showroomGroups[showroom.id]?.planningEnabled ?? true,
+      }));
+      const { error } = await (supabase.rpc as any)("configure_whatshub_integration", {
+        p_api_key: integrationForm.apiKey.trim() || null,
+        p_cron_secret: integrationForm.cronSecret.trim() || null,
+        p_project_url: integrationForm.projectUrl.trim() || null,
+        p_anon_key: integrationForm.anonKey.trim() || null,
+        p_showroom_groups: groups,
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setIntegrationForm((current) => ({ ...current, apiKey: "", cronSecret: "", anonKey: "" }));
+      queryClient.invalidateQueries({ queryKey: ["whatshub-integration-status"] });
+      queryClient.invalidateQueries({ queryKey: ["whatshub-integration-showrooms"] });
+      toast.success("WhatsHub integration saved securely in Supabase Vault");
+    },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const sendInternalMutation = useMutation({
+    mutationFn: () => sendInternalShowroomMessage(whatsHubShowroom, internalMessage.trim()),
+    onSuccess: (result) => { toast.success(result.deliveryMode === "whatsapp_group" ? "Message sent to the showroom WhatsApp group" : `Sent to ${result.sent}/${result.recipients} staff phones`); setInternalMessage(""); },
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const sendPlanningMutation = useMutation({
+    mutationFn: () => sendShowroomPlanningNow(whatsHubShowroom),
+    onSuccess: () => toast.success("10:30 planning summary sent"),
+    onError: (error: Error) => toast.error(error.message),
+  });
+
+  const previewPlanningMutation = useMutation({
+    mutationFn: async () => {
+      const showroom = whatsHubShowrooms.find((item) => item.id === whatsHubShowroom);
+      if (!showroom) throw new Error("Select a showroom first");
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+      const { data: roles, error: rolesError } = await supabase.from("user_roles").select("user_id").eq("showroom_id", showroom.id).eq("is_active", true);
+      if (rolesError) throw rolesError;
+      const userIds = [...new Set((roles || []).map((item) => item.user_id))];
+      const [{ data: profiles, error: profilesError }, { data: visits, error: visitsError }] = await Promise.all([
+        userIds.length ? supabase.from("profiles").select("user_id, full_name").in("user_id", userIds) : Promise.resolve({ data: [], error: null }),
+        userIds.length ? supabase.from("visits").select("created_by, status, purpose, clients(name), partners(name)").eq("visit_date", today).in("created_by", userIds).neq("status", "cancelled") : Promise.resolve({ data: [], error: null }),
+      ]);
+      if (profilesError) throw profilesError;
+      if (visitsError) throw visitsError;
+      const visitsByPerson = new Map<string, any[]>();
+      (visits || []).forEach((visit) => visitsByPerson.set(visit.created_by, [...(visitsByPerson.get(visit.created_by) || []), visit]));
+      const sections = (profiles || []).map((profile, personIndex) => {
+        const personVisits = visitsByPerson.get(profile.user_id) || [];
+        const visitLines = personVisits.length
+          ? personVisits.map((visit, visitIndex) => {
+            const targetName = visit.clients?.name || visit.partners?.name || "Unlinked visit";
+            return `${visitIndex + 1}) ${targetName} — ${visit.purpose || "Purpose not specified"}`;
+          }).join("\n")
+          : "No planned visits";
+        return `*${personIndex + 1}. ${profile.full_name || "Executive"}*\n${visitLines}`;
+      }).join("\n\n");
+      return `*DAILY PLANNED VISITS REPORT*\n*Showroom:* ${showroom.name}\n*Date:* ${today}\n\n${sections || "No active team members found."}\n\n*Total planned visits: ${(visits || []).length}*\n— Art N Glass`;
+    },
+    onSuccess: (message) => setPlanningPreview(message),
+    onError: (error: Error) => toast.error(error.message),
+  });
   const [whatsHub, setWhatsHub] = useState({
     enabled: false,
     staff_enabled: true,
@@ -203,6 +337,7 @@ export default function NotificationSettings() {
     { id: "rules" as const, label: "Alert Rules", icon: Sliders },
     { id: "modules" as const, label: "20 Modules", icon: BellRing },
     { id: "whatshub" as const, label: "Delivery", icon: MessageCircle },
+    { id: "integrations" as const, label: "Integrations", icon: Plug },
     { id: "preview" as const, label: "Preview", icon: Smartphone },
   ];
 
@@ -251,7 +386,7 @@ export default function NotificationSettings() {
       </div>
 
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur-md py-2 -mx-1 px-1">
-        <div className="grid grid-cols-5 gap-1 rounded-2xl border border-border bg-card p-1.5 shadow-sm">
+        <div className="grid grid-cols-3 gap-1 rounded-2xl border border-border bg-card p-1.5 shadow-sm lg:grid-cols-6">
           {sections.map(({ id, label, icon: Icon }) => (
             <Button key={id} type="button" variant="ghost" onClick={() => setActiveSection(id)} className={`h-11 rounded-xl gap-1.5 px-2 text-[11px] sm:text-xs ${activeSection === id ? "bg-red-600 text-white hover:bg-red-700 hover:text-white shadow-sm" : "text-muted-foreground"}`}>
               <Icon className="h-4 w-4" /><span className="hidden min-[360px]:inline">{label}</span>
@@ -259,6 +394,71 @@ export default function NotificationSettings() {
           ))}
         </div>
       </div>
+
+      {activeSection === "integrations" && role === "admin" && (
+        <div className="space-y-5">
+          <Card className="border-indigo-200 shadow-sm dark:border-indigo-900/60">
+            <CardHeader className="bg-gradient-to-r from-indigo-50 to-background dark:from-indigo-950/30">
+              <CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5 text-indigo-600" /> WhatsHub Integration</CardTitle>
+              <CardDescription>Admin-only secure configuration. Secret values are sent directly to Supabase Vault, are never saved in localStorage, and are never shown again.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5 p-5">
+              {!integrationStatus.setup_ready && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                  Deploy the admin integration migration first. Until then this form cannot save credentials.
+                </div>
+              )}
+              <div className="grid gap-4 sm:grid-cols-2">
+                {[
+                  { key: "apiKey" as const, label: "WhatsHub API Key", placeholder: "Enter a new API key", configured: integrationStatus.api_key_configured },
+                  { key: "cronSecret" as const, label: "Scheduler Secret", placeholder: "Enter or rotate cron secret", configured: integrationStatus.cron_secret_configured },
+                  { key: "projectUrl" as const, label: "Supabase Project URL", placeholder: "https://project.supabase.co", configured: integrationStatus.project_url_configured },
+                  { key: "anonKey" as const, label: "Supabase Anon Key", placeholder: "Enter anon key", configured: integrationStatus.anon_key_configured },
+                ].map((field) => (
+                  <div key={field.key} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <Label>{field.label}</Label>
+                      {field.configured && <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-600"><CheckCircle2 className="h-3 w-3" /> Configured</span>}
+                    </div>
+                    <Input
+                      type={field.key === "projectUrl" ? "url" : "password"}
+                      autoComplete="new-password"
+                      value={integrationForm[field.key]}
+                      onChange={(event) => setIntegrationForm((current) => ({ ...current, [field.key]: event.target.value }))}
+                      placeholder={field.placeholder}
+                    />
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base"><MessageCircle className="h-5 w-5 text-emerald-600" /> Showroom WhatsApp Groups</CardTitle>
+              <CardDescription>Store a separate Group JID for every showroom and control its daily 10:30 report.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {integrationShowrooms.map((showroom) => {
+                const group = showroomGroups[showroom.id] || { groupId: "", planningEnabled: true };
+                return (
+                  <div key={showroom.id} className="grid gap-3 rounded-xl border p-3 sm:grid-cols-[180px_1fr_auto] sm:items-center">
+                    <p className="text-sm font-bold">{showroom.name}</p>
+                    <Input value={group.groupId} onChange={(event) => setShowroomGroups((current) => ({ ...current, [showroom.id]: { ...group, groupId: event.target.value } }))} placeholder="WhatsApp Group JID (12345@g.us)" />
+                    <div className="flex items-center gap-2"><Label className="text-xs">10:30 report</Label><Switch checked={group.planningEnabled} onCheckedChange={(checked) => setShowroomGroups((current) => ({ ...current, [showroom.id]: { ...group, planningEnabled: checked } }))} /></div>
+                  </div>
+                );
+              })}
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+                A configured Group JID receives the message through WhatsHub's group endpoint. If a showroom has no Group JID, delivery safely falls back to its active staff phone numbers.
+              </div>
+              <Button type="button" onClick={() => saveIntegrationMutation.mutate()} disabled={saveIntegrationMutation.isPending || !integrationStatus.setup_ready} className="gap-2">
+                {saveIntegrationMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />} Save Integration Securely
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {activeSection === "whatshub" && (
         <div className="space-y-5">
@@ -279,6 +479,45 @@ export default function NotificationSettings() {
                   <Switch checked={Boolean(whatsHub[item.key as keyof typeof whatsHub])} onCheckedChange={(checked) => setWhatsHub((current) => ({ ...current, [item.key]: checked }))} />
                 </div>
               ))}
+            </CardContent>
+          </Card>
+
+          <Card className="border-emerald-200 shadow-sm dark:border-emerald-900/60">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base"><MessageCircle className="h-5 w-5 text-emerald-600" /> Showroom Internal WhatsApp</CardTitle>
+              <CardDescription>Send one operational message to the selected showroom group. If no Group JID is configured, active staff phones are used as fallback. Client and Partner numbers are never used.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-[220px_1fr]">
+                <div className="space-y-1.5">
+                  <Label>Showroom</Label>
+                  <select value={whatsHubShowroom} onChange={(event) => setWhatsHubShowroom(event.target.value)} className="h-10 w-full rounded-xl border bg-background px-3 text-sm">
+                    {whatsHubShowrooms.map((showroom) => <option key={showroom.id} value={showroom.id}>{showroom.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Internal message</Label>
+                  <Textarea value={internalMessage} onChange={(event) => setInternalMessage(event.target.value)} placeholder="Example: Team meeting at 4:00 PM. Please update all visit remarks before joining." className="min-h-20" />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" onClick={() => sendInternalMutation.mutate()} disabled={!whatsHubShowroom || !internalMessage.trim() || sendInternalMutation.isPending} className="gap-2 bg-emerald-600 hover:bg-emerald-700">
+                  {sendInternalMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />} Send Internal Message
+                </Button>
+                <Button type="button" variant="outline" onClick={() => sendPlanningMutation.mutate()} disabled={!whatsHubShowroom || sendPlanningMutation.isPending} className="gap-2">
+                  {sendPlanningMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />} Send Planning Now
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => previewPlanningMutation.mutate()} disabled={!whatsHubShowroom || previewPlanningMutation.isPending} className="gap-2">
+                  {previewPlanningMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />} Preview 10:30 Summary
+                </Button>
+              </div>
+              {planningPreview && <pre className="whitespace-pre-wrap rounded-xl border bg-slate-950 p-4 text-xs leading-5 text-slate-100">{planningPreview}</pre>}
+              <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                Automatic planning runs daily at 10:30 AM IST. A configured Group JID receives one group message; otherwise the same summary is delivered individually to showroom staff and logged centrally.
+              </p>
+              <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
+                Admin can securely configure credentials and each showroom's Group ID from the <strong>Integrations</strong> tab.
+              </p>
             </CardContent>
           </Card>
 

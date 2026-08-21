@@ -68,8 +68,11 @@ interface ExecutiveLocation {
 
 interface VisitPoint {
   id: string;
+  client_id: string | null;
+  partner_id: string | null;
   client_name: string;
   partner_name: string | null;
+  visit_type: string;
   address: string | null;
   check_in_at: string | null;
   done_at: string | null;
@@ -77,7 +80,11 @@ interface VisitPoint {
   gps_lat: number | null;
   gps_lng: number | null;
   purpose: string | null;
+  remarks: string | null;
   created_at: string;
+  updated_at: string;
+  wos_count: number;
+  wos_labels: string[];
   // enriched by Distance Matrix
   distFromPrev?: string;
   travelTimeFromPrev?: string;
@@ -201,11 +208,14 @@ export const LiveTracking = () => {
   useEffect(() => {
     const fetchLocations = async () => {
       setLocationsLoading(true);
-      const [{ data: locData }, { data: profiles }, { data: showrooms }, { data: attendanceRows }] = await Promise.all([
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      const [{ data: locData }, { data: profiles }, { data: showrooms }, { data: attendanceRows }, { data: historyRows }] = await Promise.all([
         supabase.from("live_locations").select("*"),
         supabase.from("profiles").select("user_id, full_name, conveyance_type"),
         supabase.from("showrooms").select("id, name"),
         supabase.from("daily_attendance").select("user_id").eq("date", format(new Date(), "yyyy-MM-dd")),
+        (supabase as any).from("location_history").select("user_id, lat, lng, timestamp, accuracy_m, speed_mps, bearing_deg").gte("timestamp", dayStart.toISOString()).order("timestamp", { ascending: false }).limit(10000),
       ]);
       const showroomMap = Object.fromEntries((showrooms || []).map(s => [s.id, s.name]));
 
@@ -236,7 +246,32 @@ export const LiveTracking = () => {
         }));
       }
 
-      const enriched: ExecutiveLocation[] = ((locData || []) as Array<{ user_id: string; lat: number; lng: number; updated_at: string; accuracy_m?: number | null; speed_mps?: number | null; bearing_deg?: number | null }>).map((loc) => {
+      // Some devices keep writing location_history while an older deployment or
+      // an RLS/upsert conflict leaves live_locations stale. Use whichever source
+      // has the newest timestamp so the monitor reflects the real GPS heartbeat.
+      const latestHistory = new Map<string, any>();
+      (historyRows || []).forEach((row: any) => {
+        if (!latestHistory.has(row.user_id)) latestHistory.set(row.user_id, row);
+      });
+      const currentLocations = new Map<string, any>();
+      ((locData || []) as any[]).forEach((location) => currentLocations.set(location.user_id, location));
+      latestHistory.forEach((history, userId) => {
+        const live = currentLocations.get(userId);
+        if (!live || new Date(history.timestamp).getTime() > new Date(live.updated_at).getTime()) {
+          currentLocations.set(userId, {
+            ...live,
+            user_id: userId,
+            lat: history.lat,
+            lng: history.lng,
+            updated_at: history.timestamp,
+            accuracy_m: history.accuracy_m,
+            speed_mps: history.speed_mps,
+            bearing_deg: history.bearing_deg,
+          });
+        }
+      });
+
+      const enriched: ExecutiveLocation[] = ([...currentLocations.values()] as Array<{ user_id: string; lat: number; lng: number; updated_at: string; accuracy_m?: number | null; speed_mps?: number | null; bearing_deg?: number | null }>).map((loc) => {
         const profile = profiles?.find((p) => p.user_id === loc.user_id);
         const roleData = rolesList.find((r) => r.user_id === loc.user_id);
         const minsAgo = differenceInMinutes(new Date(), new Date(loc.updated_at));
@@ -315,6 +350,7 @@ export const LiveTracking = () => {
     const channel = supabase
       .channel("live-tracking-v3")
       .on("postgres_changes", { event: "*", schema: "public", table: "live_locations" }, fetchLocations)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "location_history" }, fetchLocations)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [role, isAdminOrMd, showroomId, showroomIds, isLoaded]);
@@ -326,13 +362,24 @@ export const LiveTracking = () => {
       if (!selectedExecId) return [];
       const { data } = await supabase
         .from("visits")
-        .select("id, clients(name), partners(name), address, check_in_at, done_at, status, gps_latitude, gps_longitude, purpose, created_at")
+        .select("id, client_id, partner_id, visit_with_type, clients(name), partners(name), address, check_in_at, done_at, status, gps_latitude, gps_longitude, purpose, remarks, created_at, updated_at")
         .eq("created_by", selectedExecId)
         .eq("visit_date", selectedDate);
+      const clientIds = [...new Set((data || []).map((visit: any) => visit.client_id).filter(Boolean))];
+      const { data: wosItems } = clientIds.length ? await supabase
+        .from("work_scope_items")
+        .select("client_id, created_by, created_at, work_status, master_work_types(type_of_work, sub_work)")
+        .eq("created_by", selectedExecId)
+        .in("client_id", clientIds as string[])
+        .gte("created_at", new Date(`${selectedDate}T00:00:00+05:30`).toISOString())
+        .lte("created_at", new Date(`${selectedDate}T23:59:59.999+05:30`).toISOString()) : { data: [] as any[] };
       const visits = (data || []).map((v: any) => ({
         id: v.id,
+        client_id: v.client_id,
+        partner_id: v.partner_id,
         client_name: v.clients?.name || v.partners?.name || "Meeting",
         partner_name: v.partners?.name || null,
+        visit_type: v.client_id ? "Client" : v.partner_id ? "Partner" : v.visit_with_type || "Unlinked",
         address: v.address,
         check_in_at: v.check_in_at,
         done_at: v.done_at,
@@ -340,7 +387,11 @@ export const LiveTracking = () => {
         gps_lat: v.gps_latitude,
         gps_lng: v.gps_longitude,
         purpose: v.purpose,
+        remarks: v.remarks,
         created_at: v.created_at,
+        updated_at: v.updated_at,
+        wos_count: (wosItems || []).filter((item: any) => item.client_id === v.client_id).length,
+        wos_labels: (wosItems || []).filter((item: any) => item.client_id === v.client_id).map((item: any) => item.master_work_types?.sub_work || item.master_work_types?.type_of_work || item.work_status),
       }));
       visits.sort((a, b) => {
         const tA = new Date(a.check_in_at || a.done_at || a.created_at).getTime();
@@ -1002,6 +1053,10 @@ export const LiveTracking = () => {
                           </div>
                         </div>
                         {v.purpose && <p className="text-[9px] text-[#6b7280] mb-1">{v.purpose}</p>}
+                        <div className="mb-1.5 flex flex-wrap items-center gap-1">
+                          <span className={`rounded-full px-1.5 py-0.5 text-[7px] font-bold uppercase ${v.visit_type === "Client" ? "bg-blue-500/15 text-blue-300" : v.visit_type === "Partner" ? "bg-violet-500/15 text-violet-300" : "bg-slate-500/15 text-slate-300"}`}>{v.visit_type}</span>
+                          {v.visit_type === "Client" && <span className={`rounded-full px-1.5 py-0.5 text-[7px] font-bold ${v.wos_count ? "bg-emerald-500/15 text-emerald-300" : "bg-amber-500/10 text-amber-300"}`}>{v.wos_count ? `WOS added: ${v.wos_count}` : "No WOS added"}</span>}
+                        </div>
                         {v.address && (
                           <p className="text-[9px] text-[#4b5563] flex items-center gap-1 mb-1.5 truncate">
                             <MapPin className="h-2.5 w-2.5 shrink-0" />{v.address}
@@ -1019,7 +1074,12 @@ export const LiveTracking = () => {
                           </div>
                         )}
 
-                        <div className="grid grid-cols-3 gap-1 mt-1.5 pt-1.5 border-t border-[#2a2d3a]">
+                        {v.remarks && <p className="mb-1.5 rounded-md bg-[#1a1d27] px-2 py-1 text-[8px] leading-tight text-[#9ca3af]">{v.remarks}</p>}
+                        <div className="grid grid-cols-4 gap-1 mt-1.5 pt-1.5 border-t border-[#2a2d3a]">
+                          <div>
+                            <p className="text-[7px] text-[#4b5563] uppercase font-semibold">Planned</p>
+                            <p className="text-[9px] font-semibold text-[#9ca3af]">{format(new Date(v.created_at), "hh:mm a")}</p>
+                          </div>
                           <div>
                             <p className="text-[7px] text-[#4b5563] uppercase font-semibold">In</p>
                             <p className="text-[9px] font-semibold text-[#9ca3af]">
@@ -1029,7 +1089,7 @@ export const LiveTracking = () => {
                           <div>
                             <p className="text-[7px] text-[#4b5563] uppercase font-semibold">Out</p>
                             <p className="text-[9px] font-semibold text-[#9ca3af]">
-                              {v.done_at ? format(new Date(v.done_at), "hh:mm a") : "—"}
+                              {v.done_at ? format(new Date(v.done_at), "hh:mm a") : v.status === "cancelled" ? format(new Date(v.updated_at), "hh:mm a") : "—"}
                             </p>
                           </div>
                           <div>

@@ -9,12 +9,15 @@ import {
   GitBranch, Filter, CheckCircle2, XCircle, Clock, Send,
   Loader2, TrendingUp, Building2, Search, RotateCcw,
   Award, BarChart2, Target, Zap, ChevronRight, ChevronDown, Download,
-  FolderCheck, Archive, AlertTriangle, PauseCircle, ArrowLeft, Handshake
+  FolderCheck, Archive, AlertTriangle, PauseCircle, ArrowLeft, Handshake, Plus, History
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { motion, AnimatePresence } from "framer-motion";
 import * as XLSX from "xlsx";
 import { sendNotification } from "@/lib/notifications";
+import WorkScopeSection from "@/components/WorkScopeSection";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 type WorkStatus = "pending" | "submitted" | "won" | "lost" | "draft" | "rejected" | "hold";
 
@@ -29,13 +32,14 @@ interface RawWOS {
   work_status: string; created_at: string; submitted_at: string | null;
   verified_at: string | null; quantity: number | null;
   description: string | null; created_by: string;
-  clients: { name: string; address: string | null; mobile: string; project_status: string | null; created_by?: string | null; partners: { name: string } | null } | null;
+  clients: { name: string; address: string | null; mobile: string; status: string; project_status: string | null; architect_name?: string | null; created_by?: string | null; partners: { id?: string; name: string; type?: string; company_name?: string | null } | null } | null;
   master_work_types: { type_of_work: string; sub_work: string } | null;
 }
 interface PivotClient {
   client_id: string; client_name: string; client_address: string;
   client_mobile: string; partner_name: string | null; partner_id?: string | null;
   project_status: string;
+  client_status: string;
   created_by?: string;
   wos: Record<string, WOSRecord>;
   partners: string[];
@@ -140,7 +144,7 @@ class HierarchyErrorBoundary extends React.Component<{ children: React.ReactNode
 
 // ─── Shared Table Component ───────────────────────────────────────────────────
 const PivotTable = ({
-  pivotData, colIds, workTypeGroups, isClosed, onStatusClick, onProjectStatusClick, isManager, allWorkTypes, expandedExecs, toggleExec, isSearchActive, viewGrouping, profileMap, onPartnerClick
+  pivotData, colIds, workTypeGroups, isClosed, onStatusClick, onProjectStatusClick, onManageWos, isManager, allWorkTypes, expandedExecs, toggleExec, isSearchActive, viewGrouping, profileMap, onPartnerClick
 }: {
   pivotData: PivotExecutive[];
   colIds: string[];
@@ -148,6 +152,7 @@ const PivotTable = ({
   isClosed: boolean;
   onStatusClick: (rec: WOSRecord) => void;
   onProjectStatusClick: (clientId: string, clientName: string, currentStatus: string) => void;
+  onManageWos: (clientId: string, clientName: string) => void;
   isManager: boolean;
   allWorkTypes: any[];
   expandedExecs: Record<string, boolean>;
@@ -164,16 +169,16 @@ const PivotTable = ({
         <div className="overflow-auto" style={{ maxHeight: isClosed ? "360px" : "calc(100vh - 340px)" }}>
           <table className="w-full text-xs border-collapse table-fixed">
             <colgroup>
-              <col style={{ width: "9%" }} />  {/* Executive / SR NO */}
-              <col style={{ width: "7%" }} />  {/* Partner */}
-              <col style={{ width: "10%" }} /> {/* Client Name */}
-              <col style={{ width: "12%" }} /> {/* Address */}
-              <col style={{ width: "8%" }} />  {/* Mobile */}
+              <col style={{ width: viewGrouping === "executive" ? "46px" : "88px" }} />
+              <col style={{ width: "76px" }} />
+              <col style={{ width: "10%" }} />
+              <col style={{ width: "12%" }} />
+              <col style={{ width: "8%" }} />
               {colIds.map(wtId => (
                 <col key={wtId} style={{ width: "4%" }} /> /* Work Subtypes */
               ))}
-              <col style={{ width: "6%" }} />  {/* WOSs Summary */}
-              <col style={{ width: "8%" }} />  {/* Project Status */}
+              <col style={{ width: "6%" }} />
+              <col style={{ width: "8%" }} />
             </colgroup>
             {/* ── THEAD ── */}
             <thead className="sticky top-0 z-10">
@@ -181,7 +186,7 @@ const PivotTable = ({
                 <th rowSpan={2} className="bg-slate-900 dark:bg-slate-950 text-slate-300 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] sticky left-0 z-20 align-bottom">
                   {viewGrouping === "executive" ? "SR NO" : "EXECUTIVE"}
                 </th>
-                <th rowSpan={2} className="bg-slate-800 dark:bg-slate-800/80 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] align-bottom">Partner</th>
+                <th rowSpan={2} className="bg-slate-800 dark:bg-slate-800/80 text-slate-400 border-b-2 border-r border-slate-700 px-1.5 py-2.5 text-left font-bold uppercase tracking-wider text-[9px] align-bottom">Partner</th>
                 <th rowSpan={2} className="bg-slate-800 dark:bg-slate-900 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] align-bottom">Client Name</th>
                 <th rowSpan={2} className="bg-slate-800 dark:bg-slate-900 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-left font-bold uppercase tracking-wider text-[10px] align-bottom">Address</th>
                 <th rowSpan={2} className="bg-slate-800 dark:bg-slate-900 text-slate-400 border-b-2 border-r border-slate-700 px-3 py-2.5 text-center font-bold uppercase tracking-wider text-[10px] align-bottom">Mobile</th>
@@ -277,7 +282,7 @@ const PivotTable = ({
                           )}
                         </td>
 
-                        <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
+                        <td className="px-1 py-2 border-r border-slate-100 dark:border-slate-800 overflow-hidden">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -294,12 +299,12 @@ const PivotTable = ({
                             title="Click to change or assign partner"
                           >
                             {client.partner_name && client.partner_name.trim() ? (
-                              <span className="inline-flex items-center justify-between px-1.5 py-0.5 text-[10px] font-bold rounded-md bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-700/50 group-hover/p:border-violet-400 group-hover/p:shadow-sm transition-all w-full">
+                              <span className="inline-flex items-center justify-between px-1 py-0.5 text-[9px] font-bold rounded-md bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 border border-violet-200 dark:border-violet-700/50 group-hover/p:border-violet-400 group-hover/p:shadow-sm transition-all w-full min-w-0">
                                 <span className="truncate">{client.partner_name}</span>
                                 <span className="opacity-0 group-hover/p:opacity-100 text-[8px] ml-1">✏️</span>
                               </span>
                             ) : (
-                              <span className="inline-flex items-center justify-between px-1.5 py-0.5 text-[10px] font-medium rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/50 group-hover/p:border-indigo-400 group-hover/p:text-indigo-600 transition-all w-full">
+                              <span className="inline-flex items-center justify-between px-1 py-0.5 text-[9px] font-medium rounded-md bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/50 group-hover/p:border-indigo-400 group-hover/p:text-indigo-600 transition-all w-full min-w-0">
                                 <span>Direct</span>
                                 <span className="opacity-0 group-hover/p:opacity-100 text-[8px] ml-1">➕</span>
                               </span>
@@ -307,7 +312,10 @@ const PivotTable = ({
                           </button>
                         </td>
                         <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
-                          <p className="font-semibold text-slate-800 dark:text-slate-200 truncate" title={client.client_name}>{client.client_name}</p>
+                          <div className="flex items-center gap-1 min-w-0">
+                            <p className="font-semibold text-slate-800 dark:text-slate-200 truncate" title={client.client_name}>{client.client_name}</p>
+                            {client.client_status === "hot" && <span className="shrink-0 rounded-full bg-orange-100 px-1.5 py-0.5 text-[8px] font-extrabold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">🔥 HOT</span>}
+                          </div>
                         </td>
                         <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
                           <p className="text-slate-500 dark:text-slate-400 truncate" title={client.client_address}>{client.client_address}</p>
@@ -338,6 +346,14 @@ const PivotTable = ({
                               : <span className="text-slate-300 dark:text-slate-700 text-xs">·</span>
                             }
                           </div>
+                          <button
+                            type="button"
+                            onClick={() => onManageWos(client.client_id, client.client_name)}
+                            className="mt-1 inline-flex w-full items-center justify-center gap-0.5 rounded border border-dashed border-indigo-300 px-1 py-0.5 text-[8px] font-bold text-indigo-600 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
+                            title="Add or manage WOS for this client"
+                          >
+                            <Plus className="h-2.5 w-2.5" /> Add WOS
+                          </button>
                         </td>
 
                         {/* ── Project Status column ── */}
@@ -434,7 +450,9 @@ const PivotTable = ({
               <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                 <div>
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Client Name</p>
-                  <p className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">{client.client_name}</p>
+                  <p className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
+                    {client.client_name} {client.client_status === "hot" && <span className="ml-1 rounded-full bg-orange-100 px-1.5 py-0.5 text-[8px] font-extrabold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">🔥 HOT</span>}
+                  </p>
                 </div>
                 <div>
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Partner</p>
@@ -474,7 +492,12 @@ const PivotTable = ({
 
               {/* WOS Badges / Categories */}
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider mb-2">WOS Pipeline Items</p>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">WOS Pipeline Items</p>
+                  <button type="button" onClick={() => onManageWos(client.client_id, client.client_name)} className="inline-flex items-center gap-1 rounded-md border border-indigo-200 px-2 py-1 text-[9px] font-bold text-indigo-600">
+                    <Plus className="h-3 w-3" /> Add WOS
+                  </button>
+                </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {colIds.map(wtId => {
                     const rec = client.wos[wtId];
@@ -534,6 +557,8 @@ const Hierarchy = () => {
   const [expandedExecs, setExpandedExecs] = useState<Record<string, boolean>>({});
   const [selectedCell, setSelectedCell] = useState<WOSRecord|null>(null);
   const [updateStatus, setUpdateStatus] = useState<WorkStatus>("won");
+  const [statusReason, setStatusReason] = useState("");
+  const [wosClient, setWosClient] = useState<{ id: string; name: string } | null>(null);
   const [confirmClose, setConfirmClose] = useState<{ clientId: string; clientName: string; currentStatus: string } | null>(null);
   const [blockClose, setBlockClose] = useState<{ clientName: string; blockers: string[] } | null>(null);
   const [showClosedTable, setShowClosedTable] = useState(false);
@@ -595,8 +620,7 @@ const Hierarchy = () => {
   });
   const { data: rawWOS=[], isLoading } = useQuery({ queryKey:["wos-h3", user?.id, role, showroomIds], enabled:canAccess && !!user,
     queryFn: async()=>{
-      let q = supabase.from("work_scope_items")
-        .select(`id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile,project_status,architect_name,created_by,partner_id,partners(id,name)),master_work_types(type_of_work,sub_work)`);
+      let creatorIds: string[] | null = null;
 
       if (role === "tl" && user) {
         // TL: own WOS + all executives who report to this TL
@@ -606,28 +630,28 @@ const Hierarchy = () => {
           .eq("reports_to", user.id)
           .eq("role", "executive");
         const execIds = (myExecs || []).map((r: any) => r.user_id);
-        const ids = [user.id, ...execIds];
-        q = q.in("created_by", ids);
+        creatorIds = [user.id, ...execIds];
       } else if (role === "manager" && showroomIds.length > 0) {
         // Manager: WOS of all users in their showrooms
         const { data: teamRoles } = await supabase
           .from("user_roles")
           .select("user_id")
           .in("showroom_id", showroomIds);
-        const teamIds = (teamRoles || []).map((r: any) => r.user_id);
-        if (teamIds.length > 0) q = q.in("created_by", teamIds);
+        creatorIds = (teamRoles || []).map((r: any) => r.user_id);
       }
 
-      const {data,error} = await q.order("created_at",{ascending:false});
-      if(error) throw error;
-      return (data||[]) as unknown as RawWOS[];
+      return fetchAllRows<RawWOS>((from, to) => {
+        let q = supabase.from("work_scope_items")
+          .select(`id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile,status,project_status,architect_name,created_by,partner_id,partners(id,name,type,company_name)),master_work_types(type_of_work,sub_work)`);
+        if (creatorIds) q = q.in("created_by", creatorIds);
+        return q.order("created_at", { ascending: false }).range(from, to) as any;
+      });
     }
   });
 
   const { data: allClients=[] } = useQuery({ queryKey:["clients-h3", user?.id, role, showroomIds], enabled:canAccess && !!user,
     queryFn: async()=>{
-      let q = supabase.from("clients")
-        .select(`id, name, address, mobile, project_status, architect_name, created_by, partner_id, partners(id,name)`);
+      let creatorIds: string[] | null = null;
 
       if (role === "tl" && user) {
         const { data: myExecs } = await supabase
@@ -636,20 +660,21 @@ const Hierarchy = () => {
           .eq("reports_to", user.id)
           .eq("role", "executive");
         const execIds = (myExecs || []).map((r: any) => r.user_id);
-        const ids = [user.id, ...execIds];
-        q = q.in("created_by", ids);
+        creatorIds = [user.id, ...execIds];
       } else if (role === "manager" && showroomIds.length > 0) {
         const { data: teamRoles } = await supabase
           .from("user_roles")
           .select("user_id")
           .in("showroom_id", showroomIds);
-        const teamIds = (teamRoles || []).map((r: any) => r.user_id);
-        if (teamIds.length > 0) q = q.in("created_by", teamIds);
+        creatorIds = (teamRoles || []).map((r: any) => r.user_id);
       }
 
-      const { data, error } = await q.order("created_at", { ascending: false });
-      if (error) throw error;
-      return data || [];
+      return fetchAllRows<any>((from, to) => {
+        let q = supabase.from("clients")
+          .select(`id, name, address, mobile, status, project_status, architect_name, created_by, partner_id, partners(id,name,type,company_name)`);
+        if (creatorIds) q = q.in("created_by", creatorIds);
+        return q.order("created_at", { ascending: false }).range(from, to) as any;
+      });
     }
   });
 
@@ -696,6 +721,14 @@ const Hierarchy = () => {
       return null;
     };
 
+    const getArchitectName = (client: any): string => {
+      const typedName = typeof client?.architect_name === "string" ? client.architect_name.trim() : "";
+      if (typedName) return typedName;
+      const partner = Array.isArray(client?.partners) ? client.partners.find((p: any) => p?.type === "architect") : client?.partners;
+      if (partner?.type !== "architect") return "";
+      return String(partner.company_name || partner.name || "").trim();
+    };
+
     // 1. Populate all clients first
     allClients.forEach(c => {
       if (!c) return;
@@ -709,7 +742,7 @@ const Hierarchy = () => {
       if (fShowroom !== "all" && creatorShowroom !== fShowroom) return;
       if (fExec !== "all" && creatorId !== fExec) return;
       const builderName = getPartnerName((c as any).partners);
-      const archName = (c.architect_name && typeof c.architect_name === "string") ? c.architect_name.trim() : "";
+      const archName = getArchitectName(c);
       const groupKey = viewGrouping === "partner"
         ? (builderName && builderName.trim() ? `Partner: ${builderName.trim()}` : "Direct / No Partner")
         : viewGrouping === "architect"
@@ -739,6 +772,7 @@ const Hierarchy = () => {
           partner_name: builderName,
           partner_id: pId,
           project_status: clientProjStatus,
+          client_status: c.status || "new",
           created_by: c.created_by,
           wos: {},
           partners: []
@@ -762,7 +796,7 @@ const Hierarchy = () => {
       if (fExec !== "all" && creatorId !== fExec) return;
 
       const builderName = getPartnerName(clientObj.partners);
-      const archName = (clientObj.architect_name && typeof clientObj.architect_name === "string") ? clientObj.architect_name.trim() : "";
+      const archName = getArchitectName(clientObj);
       const groupKey = viewGrouping === "partner"
         ? (builderName && builderName.trim() ? `Partner: ${builderName.trim()}` : "Direct / No Partner")
         : viewGrouping === "architect"
@@ -794,6 +828,7 @@ const Hierarchy = () => {
           partner_name: builderName,
           partner_id: pId,
           project_status: clientProjStatus,
+          client_status: clientObj.status || "new",
           created_by: creatorId === "unassigned" ? "" : creatorId,
           wos: {},
           partners: []
@@ -824,7 +859,7 @@ const Hierarchy = () => {
     let res = Array.from(em.values()).map(item => item.exec).sort((a, b) => a.executive_name.localeCompare(b.executive_name));
     if (fShowroom !== "all" && viewGrouping === "executive") res = res.filter(e => e.showroom_id === fShowroom);
     if (fExec !== "all" && viewGrouping === "executive") res = res.filter(e => e.executive_id === fExec);
-    if (fStatus !== "all") res = res.map(e => ({ ...e, clients: e.clients.filter(c => Object.values(c.wos || {}).some(w => w && w.work_status === fStatus)) })).filter(e => e.clients.length > 0);
+    if (fStatus !== "all") res = res.map(e => ({ ...e, clients: e.clients.filter(c => fStatus === "hot" ? c.client_status === "hot" : Object.values(c.wos || {}).some(w => w && w.work_status === fStatus)) })).filter(e => e.clients.length > 0);
     if (fSearch.trim()) {
       const q = fSearch.toLowerCase();
       res = res.map(e => ({
@@ -909,27 +944,61 @@ const Hierarchy = () => {
       else if (r.work_status === "submitted") quotation++;
       else if (r.work_status === "pending" || r.work_status === "draft") pending++;
     });
+    const hot = allClients.filter((client: any) => {
+      if (client.status !== "hot") return false;
+      const creatorId = client.created_by || "";
+      if (fExec !== "all" && creatorId !== fExec) return false;
+      if (fShowroom !== "all" && showroomMap[creatorId] !== fShowroom) return false;
+      if (!fSearch.trim()) return true;
+      const q = fSearch.toLowerCase();
+      return `${client.name || ""} ${client.address || ""} ${profileMap[creatorId] || ""}`.toLowerCase().includes(q);
+    }).length;
     return {
       total,
       won,
       quotation,
       lost,
       pending,
+      hot,
       rate: total > 0 ? Math.round((won / total) * 100) : 0
     };
-  }, [rawWOS, fExec, fShowroom, fSearch, showroomMap, profileMap]);
+  }, [rawWOS, allClients, fExec, fShowroom, fSearch, showroomMap, profileMap]);
 
   const execList = useMemo(()=>[...new Map(rawWOS.map(r=>[r.created_by,profileMap[r.created_by]||"Unknown"])).entries()].map(([id,name])=>({id,name})).sort((a,b)=>a.name.localeCompare(b.name)),[rawWOS,profileMap]);
   const hasFilters = fShowroom!=="all"||fExec!=="all"||fStatus!=="all"||fSearch!=="";
   const activeRows = activePivot.reduce((s,e)=>s+e.clients.length,0);
   const closedRows = closedPivot.reduce((s,e)=>s+e.clients.length,0);
 
+  const { data: statusHistory = [], isLoading: isHistoryLoading } = useQuery({
+    queryKey: ["wos-status-history", selectedCell?.id],
+    enabled: !!selectedCell?.id,
+    retry: false,
+    queryFn: async () => {
+      const { data, error } = await (supabase.rpc as any)("get_wos_status_history", {
+        p_work_scope_item_id: selectedCell!.id,
+      });
+      if (error) {
+        // The dialog stays usable until the new database migration is deployed.
+        if (error.code === "PGRST202" || error.code === "42883") return [];
+        throw error;
+      }
+      return (data || []) as Array<{
+        id: string;
+        old_status: string | null;
+        new_status: string;
+        reason: string | null;
+        changed_at: string;
+        changed_by_name: string | null;
+      }>;
+    },
+  });
+
   const updateMutation = useMutation({
-    mutationFn: async({id,status}:{id:string;status:WorkStatus})=>{
-      const upd:Record<string,unknown>={work_status:status};
+    mutationFn: async({id,status,reason}:{id:string;status:WorkStatus;reason:string})=>{
+      const upd:Record<string,unknown>={work_status:status,last_status_change_reason:reason.trim()};
       if(status==="won"||status==="lost"||status==="rejected"){ upd.verified_at=new Date().toISOString(); upd.is_verified=status==="won"; }
       else if(status==="submitted"){ upd.submitted_at=new Date().toISOString(); }
-      const{error}=await supabase.from("work_scope_items").update(upd).eq("id",id);
+      const{error}=await supabase.from("work_scope_items").update(upd as any).eq("id",id);
       if(error) throw error;
 
       if (status === "won" || status === "lost" || status === "submitted") {
@@ -991,7 +1060,7 @@ const Hierarchy = () => {
         }
       }
     },
-    onSuccess:()=>{ toast.success("Status updated!"); setSelectedCell(null); queryClient.invalidateQueries({queryKey:["wos-h3"]}); },
+    onSuccess:(_, variables)=>{ toast.success("Status updated!"); setStatusReason(""); setSelectedCell(null); queryClient.invalidateQueries({queryKey:["wos-h3"]}); queryClient.invalidateQueries({queryKey:["wos-status-history", variables.id]}); },
     onError:()=>toast.error("Update failed"),
   });
 
@@ -1167,6 +1236,7 @@ const Hierarchy = () => {
             <option value="submitted">🟡 Quotation</option>
             <option value="won">🟢 Won</option>
             <option value="lost">🔴 Lost</option>
+            <option value="hot">🔥 Hot Clients</option>
           </select>
           <AnimatePresence>
             {hasFilters && (
@@ -1181,13 +1251,14 @@ const Hierarchy = () => {
       </div>
 
       <div className="px-4 sm:px-5 pt-3 pb-0">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2.5 mb-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2.5 mb-3">
           {[
             { id: "all", label: "Total WOS", value: stats.total, icon: <Target className="h-4 w-4" />, grad: "from-slate-600 to-slate-700", extra: null },
             { id: "submitted", label: "Quotation", value: stats.quotation, icon: <Send className="h-4 w-4" />, grad: "from-amber-500 to-orange-500", extra: null },
             { id: "won", label: "Won", value: stats.won, icon: <Award className="h-4 w-4" />, grad: "from-emerald-500 to-teal-600", extra: `${stats.rate}%` },
             { id: "lost", label: "Lost", value: stats.lost, icon: <XCircle className="h-4 w-4" />, grad: "from-rose-500 to-red-600", extra: null },
             { id: "pending", label: "Pending", value: stats.pending, icon: <BarChart2 className="h-4 w-4" />, grad: "from-sky-500 to-indigo-500", extra: null },
+            { id: "hot", label: "Hot Clients", value: stats.hot, icon: <Zap className="h-4 w-4" />, grad: "from-orange-500 to-red-500", extra: null },
           ].map((c, i) => {
             const isActive = fStatus === c.id;
             return (
@@ -1279,8 +1350,9 @@ const Hierarchy = () => {
               colIds={colIds}
               workTypeGroups={workTypeGroups}
               isClosed={false}
-              onStatusClick={rec=>{ setSelectedCell(rec); setUpdateStatus(rec.work_status); }}
+              onStatusClick={rec=>{ setSelectedCell(rec); setUpdateStatus(rec.work_status); setStatusReason(""); }}
               onProjectStatusClick={handleProjectStatusClick}
+              onManageWos={(clientId, clientName) => setWosClient({ id: clientId, name: clientName })}
               isManager={isManager}
               allWorkTypes={allWorkTypes}
               expandedExecs={expandedExecs}
@@ -1345,8 +1417,9 @@ const Hierarchy = () => {
                     colIds={colIds}
                     workTypeGroups={workTypeGroups}
                     isClosed={true}
-                    onStatusClick={rec=>{ setSelectedCell(rec); setUpdateStatus(rec.work_status); }}
+                    onStatusClick={rec=>{ setSelectedCell(rec); setUpdateStatus(rec.work_status); setStatusReason(""); }}
                     onProjectStatusClick={handleProjectStatusClick}
+                    onManageWos={(clientId, clientName) => setWosClient({ id: clientId, name: clientName })}
                     isManager={isManager}
                     allWorkTypes={allWorkTypes}
                     expandedExecs={expandedExecs}
@@ -1375,8 +1448,8 @@ const Hierarchy = () => {
       </div>
 
       {/* ══ WOS STATUS UPDATE DIALOG ═══════════════════════════════════════ */}
-      <Dialog open={!!selectedCell} onOpenChange={o=>{if(!o) setSelectedCell(null);}}>
-        <DialogContent className="max-w-sm mx-4">
+      <Dialog open={!!selectedCell} onOpenChange={o=>{if(!o){setSelectedCell(null);setStatusReason("");}}}>
+        <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto mx-4">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-sm font-bold text-slate-900 dark:text-white">
               <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 flex items-center justify-center">
@@ -1409,6 +1482,31 @@ const Hierarchy = () => {
                   </div>
                 </div>
               </div>
+              <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+                <div className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <History className="h-3.5 w-3.5" /> Status change log
+                </div>
+                {isHistoryLoading ? (
+                  <div className="flex items-center gap-2 py-2 text-xs text-slate-400"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading log…</div>
+                ) : statusHistory.length ? (
+                  <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+                    {statusHistory.map((entry) => (
+                      <div key={entry.id} className="rounded-lg bg-slate-50 p-2 text-[10px] dark:bg-slate-800">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-bold text-slate-700 dark:text-slate-200">
+                            {(entry.old_status || "created").toUpperCase()} → {entry.new_status.toUpperCase()}
+                          </span>
+                          <span className="shrink-0 text-slate-400">{safeFormatDate(entry.changed_at, "d MMM yyyy, h:mm a")}</span>
+                        </div>
+                        <p className="mt-1 text-slate-500">By {entry.changed_by_name || "User"}</p>
+                        {entry.reason && <p className="mt-1 font-medium text-slate-600 dark:text-slate-300">Reason: {entry.reason}</p>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-400">No status changes recorded yet. New changes will appear after the audit migration is deployed.</p>
+                )}
+              </div>
               <div>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Change Pipeline Stage</p>
                 <div className="grid grid-cols-2 gap-2">
@@ -1423,14 +1521,25 @@ const Hierarchy = () => {
                   })}
                 </div>
               </div>
-              <button onClick={()=>updateMutation.mutate({id:selectedCell.id,status:updateStatus})}
-                disabled={updateMutation.isPending||updateStatus===selectedCell.work_status}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Reason (required)</label>
+                <Textarea value={statusReason} onChange={(event) => setStatusReason(event.target.value)} placeholder="Why is this status changing?" className="min-h-20 text-xs" />
+              </div>
+              <button onClick={()=>updateMutation.mutate({id:selectedCell.id,status:updateStatus,reason:statusReason})}
+                disabled={updateMutation.isPending||updateStatus===selectedCell.work_status||!statusReason.trim()}
                 className="w-full bg-gradient-to-r from-indigo-600 to-violet-600 hover:opacity-90 disabled:opacity-50 text-white font-bold py-2.5 rounded-xl text-sm transition-all flex items-center justify-center gap-2 shadow-md shadow-indigo-500/20">
                 {updateMutation.isPending?<Loader2 className="h-4 w-4 animate-spin"/>:<TrendingUp className="h-4 w-4"/>}
                 {updateMutation.isPending?"Saving...":"Update Status"}
               </button>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!wosClient} onOpenChange={(open) => !open && setWosClient(null)}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
+          <DialogHeader><DialogTitle>Add / Manage WOS — {wosClient?.name}</DialogTitle></DialogHeader>
+          {wosClient && <WorkScopeSection clientId={wosClient.id} />}
         </DialogContent>
       </Dialog>
 

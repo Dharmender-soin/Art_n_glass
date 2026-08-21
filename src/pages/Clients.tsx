@@ -14,23 +14,27 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { toast } from "sonner";
-import { Plus, Search, Phone, MapPin, Briefcase, Pencil, Trash2, UserCircle, Calendar, HardHat, ClipboardList, MessageSquare, ChevronDown } from "lucide-react";
+import { Plus, Search, Phone, MapPin, Briefcase, Pencil, Trash2, UserCircle, Users, Calendar, HardHat, ClipboardList, MessageSquare, ChevronDown, Loader2 } from "lucide-react";
 import type { Database } from "@/integrations/supabase/types";
 import WorkScopeSection from "@/components/WorkScopeSection";
 import VisitHistoryList from "@/components/VisitHistoryList";
 import { format, parseISO } from "date-fns";
 import { useMemo } from "react";
 import { sendNotification } from "@/lib/notifications";
+import { SharedOwnershipFields } from "@/components/SharedOwnershipFields";
+import { useAssignableUsers, type AssignableUser } from "@/hooks/useAssignableUsers";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 type ClientStatus = Database["public"]["Enums"]["client_status"];
 type Client = Database["public"]["Tables"]["clients"]["Row"] & {
   partners?: { name: string; type: string } | null;
   _creator_name?: string | null;
   _creator_role?: string | null;
+  _secondary_owner_name?: string | null;
   architect_name?: string | null;
 };
 
-const emptyForm = { name: "", mobile: "", address: "", city: "", architect_name: "", partner_id: "", notes: "", status: "new" as ClientStatus };
+const emptyForm = { name: "", mobile: "", address: "", city: "", architect_name: "", partner_id: "", notes: "", status: "new" as ClientStatus, secondary_owner_id: "" };
 
 const statusColors: Record<ClientStatus, string> = {
   new: "bg-[hsl(var(--status-new))] text-white",
@@ -47,9 +51,12 @@ interface ClientFormProps {
   isPending: boolean;
   submitLabel: string;
   partners: { id: string; name: string; type: string }[];
+  primaryOwnerId: string | null;
+  primaryOwnerName: string;
+  teamMembers: AssignableUser[];
 }
 
-const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partners }: ClientFormProps) => (
+const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partners, primaryOwnerId, primaryOwnerName, teamMembers }: ClientFormProps) => (
   <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="space-y-4 pt-1">
 
     {/* ── Mandatory Fields ── */}
@@ -80,6 +87,14 @@ const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partne
         />
       </div>
     </div>
+
+    <SharedOwnershipFields
+      primaryOwnerId={primaryOwnerId}
+      primaryOwnerName={primaryOwnerName}
+      secondaryOwnerId={values.secondary_owner_id}
+      members={teamMembers}
+      onSecondaryChange={(secondary_owner_id) => onChange({ ...values, secondary_owner_id })}
+    />
 
     <div className="grid grid-cols-2 gap-3">
       <div className="space-y-1.5">
@@ -210,6 +225,7 @@ const ClientCard = ({
   creatorRole,
   architectName,
   lastVisit,
+  lastVisitLoading,
   wosItems,
   hasWos,
   openEdit,
@@ -222,6 +238,7 @@ const ClientCard = ({
   creatorRole: string | null;
   architectName: string | null;
   lastVisit: { visit_date: string; remarks: string | null; exec_name: string | null } | null;
+  lastVisitLoading: boolean;
   wosItems: { name: string; status: string }[];
   hasWos: boolean;
   openEdit: (c: Client, e: React.MouseEvent) => void;
@@ -272,9 +289,16 @@ const ClientCard = ({
             {/* Status badge */}
             <div className="mt-1.5">
               <Badge className={`${statusColors[c.status as ClientStatus]} capitalize text-[10px] border-0 px-2 py-0.5`}>{c.status}</Badge>
+              {c.secondary_owner_id && <Badge variant="outline" className="ml-1 border-indigo-300 px-2 py-0.5 text-[10px] text-indigo-600">Shared</Badge>}
             </div>
           </div>
         </div>
+        {c.secondary_owner_id && (
+          <div className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50/60 px-3 py-2 dark:border-indigo-500/15 dark:bg-indigo-500/8">
+            <Users className="h-4 w-4 shrink-0 text-indigo-400" />
+            <div className="min-w-0"><span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-400">Secondary owner</span><p className="truncate text-xs font-bold text-indigo-700 dark:text-indigo-300">{c._secondary_owner_name || "Assigned user"}</p></div>
+          </div>
+        )}
 
         {/* ── Section 2: Creator row ── */}
         <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50/70 dark:bg-blue-500/8 border border-blue-100 dark:border-blue-500/15">
@@ -349,7 +373,12 @@ const ClientCard = ({
             <Calendar className="h-3 w-3 text-amber-500 shrink-0" />
             <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Last Visit</span>
           </div>
-          {lastVisit ? (
+          {lastVisitLoading ? (
+            <div className="px-3 py-3 bg-white dark:bg-white/[0.02] flex items-center gap-2">
+              <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500 shrink-0" />
+              <p className="text-[11px] text-gray-400 italic">Checking visit history…</p>
+            </div>
+          ) : lastVisit ? (
             <div className="px-3 py-2.5 space-y-1.5 bg-white dark:bg-white/[0.02]">
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-xs font-bold text-gray-800 dark:text-white/80">{format(parseISO(lastVisit.visit_date), "dd MMM yyyy")}</span>
@@ -422,6 +451,8 @@ const Clients = () => {
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [editForm, setEditForm] = useState({ ...emptyForm });
+  const { data: teamMembers = [], isSuccess: sharedOwnershipReady } = useAssignableUsers();
+  const currentOwnerName = teamMembers.find((member) => member.user_id === user?.id)?.full_name || user?.user_metadata?.full_name || "Current user";
 
   const { data: executivesList = [] } = useQuery({
     queryKey: ["executives-list-clients"],
@@ -435,13 +466,10 @@ const Clients = () => {
   const { data: clients = [], isLoading } = useQuery({
     queryKey: ["clients", user?.id, role],
     queryFn: async () => {
-      let q = supabase.from("clients")
-        .select("*, partners(name, type)")
-        .order("created_at", { ascending: false });
+      let creatorIdsFilter: string[] | null = null;
 
       if (role === "executive" && user) {
-        const ids = [user.id, ...(reportsTo ? [reportsTo] : [])];
-        q = q.in("created_by", ids);
+        // RLS includes both records created by this user and records shared with them.
 
       } else if (role === "tl" && user) {
         const { data: myExecs } = await supabase
@@ -450,8 +478,7 @@ const Clients = () => {
           .eq("reports_to", user.id)
           .eq("role", "executive");
         const execIds = (myExecs || []).map((r: { user_id: string }) => r.user_id);
-        const ids = [user.id, ...execIds];
-        q = q.in("created_by", ids);
+        creatorIdsFilter = [user.id, ...execIds];
 
       } else if (role === "manager") {
         const effectiveShowrooms = [...new Set([...showroomIds, ...(showroomId ? [showroomId] : [])])];
@@ -462,7 +489,7 @@ const Clients = () => {
             .in("showroom_id", effectiveShowrooms);
           const teamIds = (teamRoles || []).map((r: { user_id: string }) => r.user_id);
           if (teamIds.length > 0) {
-            q = q.in("created_by", teamIds);
+            creatorIdsFilter = teamIds;
           } else {
             return [] as Client[];
           }
@@ -470,11 +497,14 @@ const Clients = () => {
       }
       // MD / Admin: no filter
 
-      const { data, error } = await q;
-      if (error) throw error;
+      const data = await fetchAllRows<any>((from, to) => {
+        let q = supabase.from("clients").select("*, partners(name, type)");
+        if (creatorIdsFilter) q = q.in("created_by", creatorIdsFilter);
+        return q.order("created_at", { ascending: false }).range(from, to) as any;
+      });
 
       // ── Fetch creator profiles + roles separately ──
-      const creatorIds = [...new Set((data || []).map(c => c.created_by).filter(Boolean))];
+      const creatorIds = [...new Set(data.flatMap(c => [c.created_by, c.secondary_owner_id]).filter(Boolean))];
       const [{ data: profilesData }, { data: rolesData }] = await Promise.all([
         creatorIds.length > 0
           ? supabase.from("profiles").select("user_id, full_name").in("user_id", creatorIds)
@@ -486,10 +516,11 @@ const Clients = () => {
       const profileMap = Object.fromEntries((profilesData || []).map(p => [p.user_id, p.full_name]));
       const roleMap = Object.fromEntries((rolesData || []).map(r => [r.user_id, r.role]));
 
-      return (data || []).map(c => ({
+      return data.map(c => ({
         ...c,
         _creator_name: c.created_by ? (profileMap[c.created_by] || null) : null,
         _creator_role: c.created_by ? (roleMap[c.created_by] || null) : null,
+        _secondary_owner_name: c.secondary_owner_id ? (profileMap[c.secondary_owner_id] || null) : null,
       })) as Client[];
     },
   });
@@ -497,18 +528,25 @@ const Clients = () => {
   const clientIds = useMemo(() => clients.map(c => c.id), [clients]);
 
   // ── Last visit per client (profiles fetched separately) ──
-  const { data: clientLastVisitsMap = {} } = useQuery({
+  const { data: clientLastVisitsMap = {}, isLoading: clientLastVisitsLoading } = useQuery({
     queryKey: ["client-last-visits", clientIds],
     enabled: clientIds.length > 0,
     queryFn: async () => {
-      const { data } = await supabase
+      const chunks: string[][] = [];
+      for (let index = 0; index < clientIds.length; index += 100) chunks.push(clientIds.slice(index, index + 100));
+      const visitPages = await Promise.all(chunks.map((ids) => fetchAllRows<any>((from, to) => supabase
         .from("visits")
-        .select("client_id, visit_date, remarks, created_by")
-        .in("client_id", clientIds)
+        .select("client_id, visit_date, remarks, created_by, created_at")
+        .in("client_id", ids)
         .eq("status", "done")
-        .order("visit_date", { ascending: false });
+        .order("visit_date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .range(from, to) as any)));
+      const visibleVisits = visitPages.flat().sort((a, b) =>
+        b.visit_date.localeCompare(a.visit_date) || String(b.created_at || "").localeCompare(String(a.created_at || ""))
+      );
 
-      const creatorIds = [...new Set((data || []).map(v => v.created_by).filter(Boolean))];
+      const creatorIds = [...new Set(visibleVisits.map(v => v.created_by).filter(Boolean))];
       const { data: profilesData } = creatorIds.length > 0
         ? await supabase.from("profiles").select("user_id, full_name").in("user_id", creatorIds)
         : { data: [] };
@@ -516,7 +554,7 @@ const Clients = () => {
 
       const seen = new Set<string>();
       const result: Record<string, { visit_date: string; remarks: string | null; exec_name: string | null }> = {};
-      (data || []).forEach((v: { client_id: string | null; visit_date: string; remarks: string | null; created_by: string }) => {
+      visibleVisits.forEach((v: { client_id: string | null; visit_date: string; remarks: string | null; created_by: string }) => {
         if (!v.client_id || seen.has(v.client_id)) return;
         seen.add(v.client_id);
         result[v.client_id] = { visit_date: v.visit_date, remarks: v.remarks, exec_name: profileMap[v.created_by] || null };
@@ -531,8 +569,7 @@ const Clients = () => {
       let q = supabase.from("partners").select("id, name, type");
 
       if (role === "executive" && user) {
-        const ids = [user.id, ...(reportsTo ? [reportsTo] : [])];
-        q = q.in("created_by", ids);
+        // RLS includes both records created by this user and records shared with them.
       } else if (role === "tl" && user) {
         const { data: myExecs } = await supabase
           .from("user_roles")
@@ -598,6 +635,7 @@ const Clients = () => {
         partner_id: rawData.partner_id,
         notes: rawData.notes || null,
         status: rawData.status,
+        ...(rawData.secondary_owner_id ? { secondary_owner_id: rawData.secondary_owner_id } : {}),
         created_by: rawData.created_by,
       };
       const { error } = await supabase.from("clients").insert(insertData);
@@ -657,6 +695,7 @@ const Clients = () => {
         partner_id: rawData.partner_id,
         notes: rawData.notes || null,
         status: rawData.status,
+        ...(sharedOwnershipReady ? { secondary_owner_id: rawData.secondary_owner_id || null } : {}),
       };
       const { error } = await supabase.from("clients").update(updateData).eq("id", editClient.id);
       if (error) throw error;
@@ -745,6 +784,7 @@ const Clients = () => {
       partner_id: (c as Client & { partner_id?: string | null }).partner_id || "",
       notes: c.notes || "",
       status: c.status,
+      secondary_owner_id: c.secondary_owner_id || "",
     });
     setEditClient(c);
   };
@@ -767,7 +807,7 @@ const Clients = () => {
   const filtered = clients.filter((c) => {
     const matchSearch = c.name.toLowerCase().includes(search.toLowerCase()) || c.mobile.includes(search);
     const matchStatus = !filterStatus || filterStatus === "all" || c.status === filterStatus;
-    const matchExec = !filterExecutive || filterExecutive === "all" || c.created_by === filterExecutive;
+    const matchExec = !filterExecutive || filterExecutive === "all" || c.created_by === filterExecutive || c.secondary_owner_id === filterExecutive;
     const matchArchitect = !filterArchitect || filterArchitect === "all" || c.architect_name === filterArchitect;
     return matchSearch && matchStatus && matchExec && matchArchitect;
   });
@@ -782,7 +822,7 @@ const Clients = () => {
           </DialogTrigger>
           <DialogContent className="bg-popover max-h-[85vh] overflow-y-auto">
             <DialogHeader><DialogTitle>New Client</DialogTitle></DialogHeader>
-            <ClientForm values={form} onChange={setForm} onSubmit={() => createClientMutation.mutate()} isPending={createClientMutation.isPending} submitLabel="Save Client" partners={partners} />
+            <ClientForm values={form} onChange={setForm} onSubmit={() => createClientMutation.mutate()} isPending={createClientMutation.isPending} submitLabel="Save Client" partners={partners} primaryOwnerId={user?.id || null} primaryOwnerName={currentOwnerName} teamMembers={teamMembers} />
           </DialogContent>
         </Dialog>
       </div>
@@ -847,6 +887,7 @@ const Clients = () => {
                 creatorRole={creatorRole}
                 architectName={architectName}
                 lastVisit={lastVisit}
+                lastVisitLoading={clientLastVisitsLoading}
                 wosItems={wosItems}
                 hasWos={hasWos}
                 openEdit={openEdit}
@@ -863,7 +904,7 @@ const Clients = () => {
       <Dialog open={!!editClient} onOpenChange={(open) => !open && setEditClient(null)}>
         <DialogContent className="bg-popover max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Edit Client — {editClient?.name}</DialogTitle></DialogHeader>
-          <ClientForm values={editForm} onChange={setEditForm} onSubmit={() => updateClientMutation.mutate()} isPending={updateClientMutation.isPending} submitLabel="Save Changes" partners={partners} />
+          <ClientForm values={editForm} onChange={setEditForm} onSubmit={() => updateClientMutation.mutate()} isPending={updateClientMutation.isPending} submitLabel="Save Changes" partners={partners} primaryOwnerId={editClient?.created_by || null} primaryOwnerName={editClient?._creator_name || "Primary owner"} teamMembers={teamMembers} />
         </DialogContent>
       </Dialog>
 

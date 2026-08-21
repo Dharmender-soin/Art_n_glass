@@ -7,10 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { escapeReportHtml, openPdfPrintDialog } from "@/lib/printPdf";
 import {
   Handshake, Download, Search, Building2, User, MapPin,
   CheckCircle2, Clock, XCircle, LayoutList, LayoutGrid,
-  ChevronDown, ChevronRight, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown,
+  ChevronDown, ChevronRight, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, FileText,
 } from "lucide-react";
 import {
   format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, addDays, subDays, parseISO, differenceInDays,
@@ -52,6 +54,7 @@ const PartnerVisits = () => {
   const PAGE_SIZE = 50;
   const [expandedExecs, setExpandedExecs] = useState<Set<string>>(new Set());
   const [sortDir, setSortDir] = useState<SortDir>(null);
+  const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const todayStr = format(new Date(), "yyyy-MM-dd");
 
   // ── Date range ─────────────────────────────────────────────────────────────
@@ -206,7 +209,7 @@ const PartnerVisits = () => {
     queryFn: async () => {
       let q = supabase
         .from("visits")
-        .select("id, visit_date, status, created_by, partner_id, purpose, partners(name, type, city)")
+        .select("id, visit_date, status, created_by, partner_id, purpose, remarks, address, created_at, check_in_at, done_at, partners(name, type, city)")
         .eq("visit_with_type", "partner")
         .gte("visit_date", fromDate)
         .lte("visit_date", toDate)
@@ -348,12 +351,26 @@ const PartnerVisits = () => {
 
   // ── Sort matrixRows within each group ─────────────────────────────────────
   const sortedGroups = useMemo(() => {
-    if (!sortDir) return execGroups;
     return execGroups.map((g) => ({
       ...g,
-      rows: [...g.rows].sort((a, b) => sortDir === "desc" ? b.total - a.total : a.total - b.total),
+      rows: [...g.rows].sort((a, b) => {
+        if (sortDir) {
+          const countSort = sortDir === "desc" ? b.total - a.total : a.total - b.total;
+          if (countSort !== 0) return countSort;
+        }
+        return a.partnerName.localeCompare(b.partnerName, undefined, { sensitivity: "base" });
+      }),
     }));
   }, [execGroups, sortDir]);
+
+  const selectedPartnerVisits = useMemo(
+    () => filtered
+      .filter((visit) => visit.partner_id === selectedPartnerId)
+      .sort((a, b) => b.visit_date.localeCompare(a.visit_date)),
+    [filtered, selectedPartnerId],
+  );
+
+  const selectedPartner = (selectedPartnerVisits[0]?.partners || execPartnersList.find((partner) => partner.id === selectedPartnerId)) as any;
 
   // ── Pagination (card view) ─────────────────────────────────────────────────
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
@@ -402,6 +419,33 @@ const PartnerVisits = () => {
     URL.revokeObjectURL(url);
   };
 
+  const exportPDF = () => {
+    const rows = sortedGroups.flatMap((group) => group.rows.map((row) => `
+      <tr>
+        <td>${escapeReportHtml(profileMap[group.execId] || "Unknown")}</td>
+        ${showTlColumn ? `<td>${escapeReportHtml(getTlName(group.execId) || "—")}</td>` : ""}
+        <td>${escapeReportHtml(showroomMap[execShowroomMap[group.execId]] || "—")}</td>
+        <td><b>${escapeReportHtml(row.partnerName)}</b><br><span class="muted">${escapeReportHtml(row.partnerType || "—")}</span></td>
+        <td>${escapeReportHtml(row.lastVisit ? format(parseISO(row.lastVisit), "dd MMM yyyy") : "Never")}</td>
+        <td>${row.total}</td>
+      </tr>`)).join("");
+    const showroomLabel = selectedShowroom === "all" ? "All permitted showrooms" : showroomMap[selectedShowroom] || "Selected showroom";
+    const executiveLabel = selectedExec === "all" ? "All executives" : profileMap[selectedExec] || "Selected executive";
+    const body = `
+      <div class="meta" style="text-align:left;margin-bottom:10px"><b>Period:</b> ${escapeReportHtml(format(parseISO(fromDate), "dd MMM yyyy"))} – ${escapeReportHtml(format(parseISO(toDate), "dd MMM yyyy"))} &nbsp;·&nbsp; <b>Showroom:</b> ${escapeReportHtml(showroomLabel)} &nbsp;·&nbsp; <b>Executive:</b> ${escapeReportHtml(executiveLabel)} &nbsp;·&nbsp; <b>Search:</b> ${escapeReportHtml(search || "None")}</div>
+      <div class="kpis">
+        <div class="kpi"><b>${summary.doneVisits}</b><span>Done visits</span></div><div class="kpi"><b>${summary.assigned}</b><span>Assigned</span></div>
+        <div class="kpi"><b>${summary.visited}</b><span>Visited</span></div><div class="kpi"><b>${summary.unvisited}</b><span>Unvisited</span></div>
+        <div class="kpi"><b>${summary.executives}</b><span>Executives</span></div><div class="kpi"><b>${summary.coveragePct}%</b><span>Coverage</span></div>
+      </div>
+      <table><thead><tr><th>Executive</th>${showTlColumn ? "<th>TL</th>" : ""}<th>Showroom</th><th>Partner</th><th>Last visit</th><th>Total done</th></tr></thead><tbody>${rows || `<tr><td colspan="${showTlColumn ? 6 : 5}">No records match the current filters.</td></tr>`}</tbody></table>`;
+    try {
+      openPdfPrintDialog(`Partner Visit Report · ${fromDate} to ${toDate}`, body, true);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Could not open PDF report.");
+    }
+  };
+
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
@@ -434,6 +478,9 @@ const PartnerVisits = () => {
           </div>
           <Button onClick={exportCSV} size="sm" variant="outline" className="gap-1.5">
             <Download className="h-4 w-4" /> Export CSV
+          </Button>
+          <Button onClick={exportPDF} size="sm" variant="outline" className="gap-1.5">
+            <FileText className="h-4 w-4" /> Export PDF
           </Button>
         </div>
       </div>
@@ -697,7 +744,8 @@ const PartnerVisits = () => {
                               initial={{ opacity: 0 }}
                               animate={{ opacity: 1 }}
                               transition={{ delay: idx * 0.01 }}
-                              className={`border-b border-border/30 transition-colors ${rowBg} ${leftBorder}`}
+                              className={`border-b border-border/30 transition-colors cursor-pointer ${rowBg} ${leftBorder}`}
+                              onClick={() => setSelectedPartnerId(row.partnerId)}
                             >
                               {/* Executive (blank — shown in group header) */}
                               <td className="sticky left-0 z-10 bg-background border-r border-border px-3 py-1.5 min-w-[130px]">
@@ -840,7 +888,7 @@ const PartnerVisits = () => {
                 const StatusIcon = sc.icon;
                 return (
                   <motion.div key={v.id} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: idx * 0.02 }}>
-                    <Card className="hover:shadow-md transition-shadow">
+                    <Card className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => v.partner_id && setSelectedPartnerId(v.partner_id)}>
                       <CardContent className="p-3">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-start gap-3 min-w-0 flex-1">
@@ -891,6 +939,39 @@ const PartnerVisits = () => {
           </div>
         )
       )}
+
+      <Dialog open={!!selectedPartnerId} onOpenChange={(open) => !open && setSelectedPartnerId(null)}>
+        <DialogContent className="bg-popover sm:max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><Handshake className="h-5 w-5 text-primary" /> {selectedPartner?.name || "Partner Visit Details"}</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="rounded-lg border p-3"><p className="text-[10px] uppercase text-muted-foreground">Visits in range</p><p className="text-xl font-bold">{selectedPartnerVisits.length}</p></div>
+            <div className="rounded-lg border p-3"><p className="text-[10px] uppercase text-muted-foreground">Completed</p><p className="text-xl font-bold text-green-600">{selectedPartnerVisits.filter((visit) => visit.status === "done").length}</p></div>
+            <div className="rounded-lg border p-3"><p className="text-[10px] uppercase text-muted-foreground">Executives</p><p className="text-xl font-bold">{new Set(selectedPartnerVisits.map((visit) => visit.created_by)).size}</p></div>
+          </div>
+          <div className="space-y-2">
+            {selectedPartnerVisits.length === 0 ? <p className="text-center text-muted-foreground py-6">No visits in the selected range.</p> : selectedPartnerVisits.map((visit) => {
+              const config = statusConfig[visit.status] || statusConfig.planned;
+              return (
+                <div key={visit.id} className="rounded-xl border p-3 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div><p className="font-semibold">{format(parseISO(visit.visit_date), "dd MMM yyyy, EEEE")}</p><p className="text-xs text-muted-foreground">{profileMap[visit.created_by] || "Executive"} · {showroomMap[execShowroomMap[visit.created_by]] || "—"}</p></div>
+                    <Badge variant="outline" className={`capitalize ${config.badge}`}>{visit.status}</Badge>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-2 text-xs">
+                    <p><b>Purpose:</b> {visit.purpose || "General Meeting"}</p>
+                    <p><b>Address:</b> {visit.address || "—"}</p>
+                    <p><b>Planned:</b> {visit.created_at ? format(parseISO(visit.created_at), "dd MMM, p") : "—"}</p>
+                    <p><b>Completed:</b> {visit.done_at ? format(parseISO(visit.done_at), "dd MMM, p") : "—"}</p>
+                  </div>
+                  <div className="rounded-md bg-muted/40 p-2 text-xs whitespace-pre-wrap"><b>Remark / MOM:</b> {visit.remarks || "No remark added."}</div>
+                </div>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

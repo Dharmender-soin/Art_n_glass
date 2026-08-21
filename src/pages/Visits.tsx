@@ -158,29 +158,9 @@ const Visits = () => {
         .order("visit_date", { ascending: false })
         .limit(10000);
 
-      if (role === "executive" && user) {
-        // Exec sees own visits only
-        q = q.eq("created_by", user.id);
-
-      } else if (role === "tl" && user) {
-        // TL sees own + all exec visits under them
-        const { data: myExecs } = await supabase
-          .from("user_roles")
-          .select("user_id")
-          .eq("reports_to", user.id)
-          .eq("role", "executive");
-        const execIds = (myExecs || []).map((r: UserIdRow) => r.user_id);
-        q = q.in("created_by", [user.id, ...execIds]);
-
-      } else if (role === "manager" && showroomIds.length > 0) {
-        const { data: teamRoles } = await supabase
-          .from("user_roles")
-          .select("user_id")
-          .in("showroom_id", showroomIds);  // multi-showroom
-        const teamIds = (teamRoles || []).map((r: UserIdRow) => r.user_id);
-        if (teamIds.length > 0) q = q.in("created_by", teamIds);
-      }
-      // MD / Admin: no filter
+      // The Visits workspace is personal planning for every role. Team-wide
+      // monitoring remains available in Daily Visits and Partner Visits.
+      if (user) q = q.eq("created_by", user.id);
 
       const { data, error } = await q;
       if (error) throw error;
@@ -580,7 +560,7 @@ const Visits = () => {
   });
 
   const cancelVisit = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
       const { data: visit } = await supabase.from("visits").select("visit_date").eq("id", id).single();
       if (!visit) throw new Error("Visit not found");
       const isDayEnded = await checkIfDayEnded(visit.visit_date);
@@ -588,7 +568,7 @@ const Visits = () => {
         throw new Error("This day has already been marked ended. Visits cannot be modified.");
       }
 
-      const { error } = await supabase.from("visits").update({ status: "cancelled" as VisitStatus }).eq("id", id);
+      const { error } = await supabase.from("visits").update({ status: "cancelled" as VisitStatus, remarks: `Cancellation reason: ${reason.trim()}` }).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -989,7 +969,18 @@ const Visits = () => {
                   {isDateOpen(dateKey) ? <ChevronDown className="h-4 w-4 text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                   <CalendarCheck className={`h-4 w-4 ${isDateOpen(dateKey) ? 'text-primary' : 'text-muted-foreground'}`} />
                   <h2 className={`text-sm font-semibold ${isDateOpen(dateKey) ? 'text-primary' : 'text-foreground'}`}>{getDateLabel(dateKey)}</h2>
-                  <Badge variant="outline" className="text-[10px] ml-auto font-medium">{groupedByDate[dateKey].length} visits</Badge>
+                  <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
+                    <Badge variant="outline" className="text-[10px] font-medium">{groupedByDate[dateKey].length} visits</Badge>
+                    {(["planned", "in_progress", "done", "cancelled"] as const).map((status) => {
+                      const count = groupedByDate[dateKey].filter((visit) => visit.status === status).length;
+                      if (!count) return null;
+                      return (
+                        <Badge key={status} className={`${visitStatusColors[status]} capitalize text-[9px] border-0 px-1.5 py-0`}>
+                          {status.replace("_", " ")}: {count}
+                        </Badge>
+                      );
+                    })}
+                  </div>
                 </div>
               </CollapsibleTrigger>
               <CollapsibleContent>
@@ -1053,7 +1044,11 @@ const Visits = () => {
                             {(v.status as string) === "planned" && (
                               <>
                                 <Button size="sm" variant="outline" onClick={() => { setEditVisitId(v.id); setEditVisitDate(v.visit_date); }}>Reschedule</Button>
-                                <Button size="sm" variant="outline" onClick={() => cancelVisit.mutate(v.id)}>Cancel</Button>
+                                <Button size="sm" variant="outline" onClick={() => {
+                                  const reason = window.prompt("Cancellation reason is mandatory:");
+                                  if (reason?.trim()) cancelVisit.mutate({ id: v.id, reason });
+                                  else if (reason !== null) toast.error("Cancellation reason is required");
+                                }}>Cancel</Button>
                               </>
                             )}
                           </div>

@@ -1,34 +1,39 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/layout/AppLayout";
 import Auth from "./pages/Auth";
-import Dashboard from "./pages/Dashboard";
-import Partners from "./pages/Partners";
-import Clients from "./pages/Clients";
-import Visits from "./pages/Visits";
-import Reports from "./pages/Reports";
-import Profile from "./pages/Profile";
-import Admin from "./pages/Admin";
-import DailyVisitDashboard from "./pages/DailyVisitDashboard";
-import Verification from "./pages/Verification";
-import Hierarchy from "./pages/Hierarchy";
-import LiveMapPage from "./pages/LiveMap";
-import Conveyance from "./pages/Conveyance";
-import PartnerVisits from "./pages/PartnerVisits";
-import NotFound from "./pages/NotFound";
-import MyPipeline from "./pages/MyPipeline";
-import MDDashboard from "./pages/MDDashboard";
-import NotificationsCenter from "./pages/NotificationsCenter";
-import NotificationSettings from "./pages/NotificationSettings";
+import { lazy, Suspense } from "react";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AnimatePresence } from "framer-motion";
 import PageTransition from "@/components/PageTransition";
 import { AIAssistant } from "@/components/AIAssistant";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
+import { useBackgroundTracking } from "@/hooks/useBackgroundTracking";
+import { supabase } from "@/integrations/supabase/client";
+
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Partners = lazy(() => import("./pages/Partners"));
+const Clients = lazy(() => import("./pages/Clients"));
+const Visits = lazy(() => import("./pages/Visits"));
+const Reports = lazy(() => import("./pages/Reports"));
+const Profile = lazy(() => import("./pages/Profile"));
+const Admin = lazy(() => import("./pages/Admin"));
+const DailyVisitDashboard = lazy(() => import("./pages/DailyVisitDashboard"));
+const Verification = lazy(() => import("./pages/Verification"));
+const Hierarchy = lazy(() => import("./pages/Hierarchy"));
+const LiveMapPage = lazy(() => import("./pages/LiveMap"));
+const Conveyance = lazy(() => import("./pages/Conveyance"));
+const PartnerVisits = lazy(() => import("./pages/PartnerVisits"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const MyPipeline = lazy(() => import("./pages/MyPipeline"));
+const MDDashboard = lazy(() => import("./pages/MDDashboard"));
+const NotificationsCenter = lazy(() => import("./pages/NotificationsCenter"));
+const NotificationSettings = lazy(() => import("./pages/NotificationSettings"));
+const NotificationLogs = lazy(() => import("./pages/NotificationLogs"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -90,6 +95,64 @@ const RoleBasedHome = () => {
   return <Dashboard />;
 };
 
+const todayKey = () => {
+  const date = new Date();
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, "0");
+  const dd = String(date.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const GlobalLocationTracker = () => {
+  const { user, role } = useAuth();
+  const dateStr = todayKey();
+  const canTrack =
+    role === "executive" ||
+    role === "backhand_executive" ||
+    role === "tl" ||
+    role === "manager";
+
+  const { data: todayAttendance } = useQuery({
+    queryKey: ["global-daily-attendance", user?.id, dateStr],
+    enabled: !!user?.id && canTrack,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("daily_attendance")
+        .select("id")
+        .eq("user_id", user!.id)
+        .eq("date", dateStr)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    refetchInterval: 60_000,
+  });
+
+  const { data: endDayRecord } = useQuery({
+    queryKey: ["global-end-day-record", user?.id, dateStr],
+    enabled: !!user?.id && canTrack,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("conveyance_records")
+        .select("id")
+        .eq("user_id", user!.id)
+        .eq("date", dateStr)
+        .is("visit_id", null)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    refetchInterval: 60_000,
+  });
+
+  useBackgroundTracking({
+    active: !!(user?.id && canTrack && todayAttendance && !endDayRecord),
+    userId: user?.id,
+  });
+
+  return null;
+};
+
 const AnimatedRoutes = () => {
   const { user } = useAuth();
   usePushNotifications(user?.id);
@@ -97,6 +160,9 @@ const AnimatedRoutes = () => {
   const location = useLocation();
 
   return (
+    <>
+    <GlobalLocationTracker />
+    <Suspense fallback={<div className="flex min-h-[50vh] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" /></div>}>
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
         <Route path="/auth" element={<AuthRoute />} />
@@ -122,9 +188,12 @@ const AnimatedRoutes = () => {
         <Route path="/md-dashboard" element={<ProtectedRoute><MDDashboard /></ProtectedRoute>} />
         <Route path="/notifications" element={<ProtectedRoute><NotificationsCenter /></ProtectedRoute>} />
         <Route path="/notification-settings" element={<ProtectedRoute><NotificationSettings /></ProtectedRoute>} />
+        <Route path="/notification-logs" element={<ProtectedRoute><NotificationLogs /></ProtectedRoute>} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AnimatePresence>
+    </Suspense>
+    </>
   );
 };
 

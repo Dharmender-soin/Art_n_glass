@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,6 +16,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { motion, AnimatePresence } from "framer-motion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import type { Database } from "@/integrations/supabase/types";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 type VisitWithRelations = Database["public"]["Tables"]["visits"]["Row"] & {
   clients: { name: string; address?: string | null } | null;
@@ -79,11 +80,24 @@ class ReportsErrorBoundary extends React.Component<{ children: React.ReactNode }
 }
 
 const Reports = () => {
-  const { role } = useAuth();
+  const { role, user } = useAuth();
   const [activeTab, setActiveTab] = useState<"overview" | "dsr">("overview");
   const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [dateTo, setDateTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [filterExecutive, setFilterExecutive] = useState<string>("all");
+  const initialEvrExecutive = new URLSearchParams(window.location.search).get("executive") || (role === "executive" ? user?.id || "all" : "all");
+  const [evrExecutive, setEvrExecutive] = useState<string>(initialEvrExecutive);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const period = params.get("period");
+    if (params.get("report") !== "evr") return;
+    const today = new Date();
+    if (period === "weekly") setDateFrom(format(subDays(today, 6), "yyyy-MM-dd"));
+    if (period === "15_days") setDateFrom(format(subDays(today, 14), "yyyy-MM-dd"));
+    if (period === "monthly") setDateFrom(format(startOfMonth(today), "yyyy-MM-dd"));
+    setDateTo(format(today, "yyyy-MM-dd"));
+  }, []);
 
   // DSR Tab state
   const [dsrEmployee, setDsrEmployee] = useState<string>("");
@@ -113,15 +127,13 @@ const Reports = () => {
   const { data: visits = [], isLoading: isLoadingVisits } = useQuery({
     queryKey: ["report-visits", dateFrom, dateTo],
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows<VisitWithRelations>((from, to) => supabase
         .from("visits")
         .select("*, clients(name), partners(name)")
         .gte("visit_date", dateFrom)
         .lte("visit_date", dateTo)
         .order("visit_date", { ascending: false })
-        .limit(10000);
-      if (error) throw error;
-      return (data || []) as VisitWithRelations[];
+        .range(from, to) as any);
     },
   });
 
@@ -132,15 +144,13 @@ const Reports = () => {
     queryKey: ["report-work-scope", dateFrom, dateTo],
     enabled: isManager,
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows<WorkScopeItemWithJoins>((from, to) => supabase
         .from("work_scope_items")
         .select("*, master_work_types(type_of_work, sub_work), clients(name)")
         .gte("created_at", dateFrom)
         .lte("created_at", dateTo + "T23:59:59")
         .order("created_at", { ascending: false })
-        .limit(10000);
-      if (error) throw error;
-      return (data || []) as WorkScopeItemWithJoins[];
+        .range(from, to) as any);
     },
   });
 
@@ -157,16 +167,14 @@ const Reports = () => {
     queryKey: ["report-conveyance", dateFrom, dateTo],
     enabled: isManager,
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows<any>((from, to) => supabase
         .from("conveyance_records")
         .select("*")
         .gte("date", dateFrom)
         .lte("date", dateTo)
         .order("date", { ascending: false })
         .order("created_at", { ascending: false })
-        .limit(10000);
-      if (error) throw error;
-      return data;
+        .range(from, to) as any);
     },
   });
 
@@ -212,7 +220,7 @@ const Reports = () => {
     queryKey: ["dsr-visits", dsrEmployee, dsrFrom, dsrTo],
     enabled: isManager && !!dsrEmployee,
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows<VisitWithRelations>((from, to) => supabase
         .from("visits")
         .select("*, clients(name, address), partners(name, address)")
         .eq("created_by", dsrEmployee)
@@ -220,9 +228,7 @@ const Reports = () => {
         .lte("visit_date", dsrTo)
         .order("visit_date", { ascending: true })
         .order("created_at", { ascending: true })
-        .limit(10000);
-      if (error) throw error;
-      return (data || []) as VisitWithRelations[];
+        .range(from, to) as any);
     },
   });
 
@@ -368,9 +374,10 @@ const Reports = () => {
   const execSummaryList = Array.from(execSummaryMap.values()).sort((a, b) => b.amount - a.amount);
 
   // EVR Reports Processing
+  const evrVisits = evrExecutive === "all" ? visits : visits.filter((visit) => visit.created_by === evrExecutive);
   const processVisits = (type: 'partner' | 'client') => {
     const map = new Map<string, { name: string; address: string; count: number }>();
-    visits.filter((v) => type === 'partner' ? v.partner_id : v.client_id).forEach((v) => {
+    evrVisits.filter((v) => type === 'partner' ? v.partner_id : v.client_id).forEach((v) => {
       const id = type === 'partner' ? v.partner_id : v.client_id;
       const split = type === 'partner' ? v.partners : v.clients;
       if (!id || !split) return;
@@ -391,6 +398,36 @@ const Reports = () => {
 
   const partnerVisitList = processVisits('partner');
   const clientVisitList = processVisits('client');
+  const evrExecutiveName = evrExecutive === "all"
+    ? "All Executives"
+    : executivesList.find((item) => item.user_id === evrExecutive)?.full_name || (role === "executive" ? "My" : "Executive");
+
+  const applyEvrRange = (range: "weekly" | "15_days" | "monthly") => {
+    const today = new Date();
+    setDateTo(format(today, "yyyy-MM-dd"));
+    setDateFrom(range === "weekly"
+      ? format(subDays(today, 6), "yyyy-MM-dd")
+      : range === "15_days"
+        ? format(subDays(today, 14), "yyyy-MM-dd")
+        : format(startOfMonth(today), "yyyy-MM-dd"));
+  };
+
+  const printEVR = () => {
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) return;
+    const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char] || char));
+    const rows = (title: string, data: { name: string; address: string; count: number }[]) => `
+      <h2>${title}</h2>
+      <table><thead><tr><th>#</th><th>Name</th><th>Address</th><th>Visits</th></tr></thead><tbody>
+      ${data.map((item, index) => `<tr><td>${index + 1}</td><td>${escapeHtml(item.name)}</td><td>${escapeHtml(item.address || "—")}</td><td>${item.count}</td></tr>`).join("") || '<tr><td colspan="4">No visits found</td></tr>'}
+      </tbody></table>`;
+    win.document.write(`<!doctype html><html><head><title>EVR - ${evrExecutiveName}</title><style>
+      body{font-family:Arial,sans-serif;color:#111;padding:18px}h1{text-align:center;font-size:20px;margin:0}p{text-align:center;color:#555;font-size:11px;margin:6px 0 18px}h2{font-size:14px;margin:18px 0 6px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #d1d5db;padding:6px;text-align:left}th{background:#f3f4f6}@page{margin:10mm}
+    </style></head><body><h1>EXECUTIVE VISIT REPORT</h1><p><strong>${escapeHtml(evrExecutiveName)}</strong> | ${escapeHtml(dateFrom)} to ${escapeHtml(dateTo)} | ${evrVisits.length} total visits</p>${rows("Partner Visits", partnerVisitList)}${rows("Client Visits", clientVisitList)}</body></html>`);
+    win.document.close();
+    win.focus();
+    setTimeout(() => win.print(), 350);
+  };
 
   const exportToCSV = (data: { name: string; address: string; count: number }[], filename: string, isPartner: boolean) => {
     const headers = [isPartner ? "Partner Name" : "Client Name", "Address", "Visit Count"];
@@ -893,6 +930,30 @@ const Reports = () => {
       )}
 
       <Separator className="my-8 opacity-50" />
+
+      <div className="rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-lg font-bold">Executive Visit Report (EVR)</h2>
+            <p className="text-xs text-muted-foreground">Executive-wise report for {dateFrom} to {dateTo}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {isManager && (
+              <Select value={evrExecutive} onValueChange={setEvrExecutive}>
+                <SelectTrigger className="h-9 w-[180px]"><SelectValue placeholder="All Executives" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Executives</SelectItem>
+                  {executivesList.map((executive) => <SelectItem key={executive.user_id} value={executive.user_id}>{executive.full_name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            )}
+            <Button size="sm" variant="outline" onClick={() => applyEvrRange("weekly")}>Weekly</Button>
+            <Button size="sm" variant="outline" onClick={() => applyEvrRange("15_days")}>15 Days</Button>
+            <Button size="sm" variant="outline" onClick={() => applyEvrRange("monthly")}>Monthly</Button>
+            <Button size="sm" onClick={printEVR} className="gap-2"><Printer className="h-4 w-4" />Print / Save PDF</Button>
+          </div>
+        </div>
+      </div>
 
       <motion.div variants={containerVariants} className="grid gap-6 md:grid-cols-2">
         {/* EVR Report — Partner Visits */}

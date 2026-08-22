@@ -1,5 +1,4 @@
 import { useState, useMemo, useEffect } from "react";
-import { useBackgroundTracking } from "@/hooks/useBackgroundTracking";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -410,14 +409,6 @@ export const ExecutiveHome = () => {
             setIsEndingDay(false);
         }
     };
-
-    // ── Live Location Tracking ──
-    // On Android APK: runs in background even when app is minimized/screen off
-    // On Web: runs only while tab is open (browser limitation)
-    useBackgroundTracking({
-        active: !!(todayAttendance && !endDayRecord && user),
-        userId: user?.id,
-    });
 
     // Fetch own WOS
     const { data: ownWorkScopes = [] } = useQuery({
@@ -857,6 +848,9 @@ export const ExecutiveHome = () => {
 
     const cancelVisit = async (visit: Visit) => {
         try {
+            const reason = window.prompt("Cancellation reason is mandatory:");
+            if (reason === null) return;
+            if (!reason.trim()) throw new Error("Cancellation reason is required");
             // Block if day is already ended
             const { data: dayEnded } = await supabase
                 .from("conveyance_records")
@@ -867,7 +861,7 @@ export const ExecutiveHome = () => {
                 .maybeSingle();
             if (dayEnded) throw new Error("This day has already been marked ended. Visits cannot be modified.");
 
-            const { error } = await supabase.from("visits").update({ status: "cancelled" }).eq("id", visit.id);
+            const { error } = await supabase.from("visits").update({ status: "cancelled", remarks: `Cancellation reason: ${reason.trim()}` }).eq("id", visit.id);
             if (error) throw error;
             toast.success("Visit cancelled.");
             refetchVisits();

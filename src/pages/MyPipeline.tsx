@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
-import { sendNotification } from "@/lib/notifications";
+import { notifyAllMDs } from "@/lib/notifications";
 
 /* ─── Types ────────────────────────────────────────────────── */
 type WorkStatus = "pending" | "submitted" | "won" | "lost" | "draft" | "rejected" | "hold";
@@ -190,7 +190,7 @@ const MyPipeline = () => {
     },
   });
 
-  /* ── Fetch MY WOS records ── */
+  /* ── Fetch WOS records visible through primary/secondary ownership RLS ── */
   const { data: rawWOS = [], isLoading } = useQuery({
     queryKey: ["wos-pipeline", user?.id],
     enabled: !!user,
@@ -199,7 +199,6 @@ const MyPipeline = () => {
       const { data, error } = await supabase
         .from("work_scope_items")
         .select("id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile),master_work_types(type_of_work,sub_work)")
-        .eq("created_by", user.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data || []) as unknown as Array<{
@@ -212,13 +211,13 @@ const MyPipeline = () => {
     },
   });
 
-  /* ── Fetch MY clients (no-WOS detection) ── */
+  /* ── Fetch primary + shared clients (no-WOS detection) ── */
   const { data: myClients = [] } = useQuery({
     queryKey: ["my-clients-pipeline", user?.id],
     enabled: !!user,
     queryFn: async () => {
       if (!user) return [];
-      const { data } = await supabase.from("clients").select("id,name").eq("created_by", user.id);
+      const { data } = await supabase.from("clients").select("id,name");
       return data || [];
     },
   });
@@ -302,7 +301,7 @@ const MyPipeline = () => {
       const { error } = await supabase.from("work_scope_items").update(upd).eq("id", id);
       if (error) throw error;
 
-      if (status === "won" || status === "lost" || status === "submitted") {
+      if (status === "won" || status === "lost" || status === "submitted" || status === "hold") {
         try {
           const { data: wosItem } = await supabase
             .from("work_scope_items")
@@ -316,45 +315,17 @@ const MyPipeline = () => {
             const title = `WOS ${status === "won" ? "Won ✅" : status === "lost" ? "Lost ❌" : "Quoted 🟡"}`;
             const message = `WOS Item "${subWork}" for ${clientName} was updated to ${status.toUpperCase()}`;
 
-            // 1. Fetch MDs & Admins
-            const { data: mdAdmins } = await supabase
-              .from("user_roles")
-              .select("user_id")
-              .in("role", ["md", "admin"]);
-            const targetIds = (mdAdmins || []).map((m) => m.user_id);
-
-            // 2. Fetch Creator's Showroom Manager & TL
-            if (wosItem.created_by) {
-              const { data: creatorRole } = await supabase
-                .from("user_roles")
-                .select("showroom_id, reports_to")
-                .eq("user_id", wosItem.created_by)
-                .maybeSingle();
-
-              if (creatorRole?.showroom_id) {
-                const { data: managers } = await supabase
-                  .from("user_roles")
-                  .select("user_id")
-                  .eq("showroom_id", creatorRole.showroom_id)
-                  .eq("role", "manager");
-                (managers || []).forEach((m) => targetIds.push(m.user_id));
-              }
-              if (creatorRole?.reports_to) {
-                targetIds.push(creatorRole.reports_to);
-              }
-            }
-
-            const uniqueTargetIds = [...new Set(targetIds)];
-            await Promise.all(
-              uniqueTargetIds.map((uid) =>
-                sendNotification({
-                  userId: uid,
-                  title,
-                  message,
-                  targetUrl: "/hierarchy",
-                })
-              )
-            );
+            await notifyAllMDs({
+              title,
+              message,
+              category: status === "lost" ? "critical" : status === "won" ? "important" : "informational",
+              priority: status === "lost" || status === "won" ? "high" : "normal",
+              notificationType: status === "won" ? "deal_won" : status === "lost" ? "deal_lost" : "wos_update",
+              targetUrl: "/my-pipeline",
+              entityType: "work_scope_item",
+              entityId: id,
+              metadata: { client_id: wosItem.client_id, status },
+            });
           }
         } catch (e) {
           console.error("Failed to notify WOS update:", e);
@@ -601,13 +572,16 @@ const MyPipeline = () => {
             </div>
           </div>
 
-          {/* Stage selector — executive: WOS and Quotation only */}
+          {/* Stage selector — executive controls the complete WOS lifecycle */}
           <div>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Change Stage</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
               {([
                 { s: "pending",   label: "WOS",      icon: <Clock className="h-3.5 w-3.5" /> },
                 { s: "submitted", label: "Quotation", icon: <Send  className="h-3.5 w-3.5" /> },
+                { s: "won",       label: "Won",       icon: <CheckCircle2 className="h-3.5 w-3.5" /> },
+                { s: "lost",      label: "Lost",      icon: <XCircle className="h-3.5 w-3.5" /> },
+                { s: "hold",      label: "Hold",      icon: <PauseCircle className="h-3.5 w-3.5" /> },
               ] as { s: WorkStatus; label: string; icon: React.ReactNode }[]).map(({ s, label, icon }) => {
                 const cfg = STATUS_CFG[s];
                 const sel = updateStatus === s;
@@ -617,8 +591,10 @@ const MyPipeline = () => {
                     onClick={() => setUpdateStatus(s)}
                     className={`flex items-center justify-center gap-1.5 px-3 py-3 rounded-xl border text-sm font-bold transition-all active:scale-95
                       ${sel
-                        ? s === "submitted"
-                          ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                        ? s === "submitted" ? "bg-amber-500 text-white border-amber-500 shadow-sm"
+                          : s === "won" ? "bg-emerald-600 text-white border-emerald-600 shadow-sm"
+                          : s === "lost" ? "bg-rose-600 text-white border-rose-600 shadow-sm"
+                          : s === "hold" ? "bg-violet-600 text-white border-violet-600 shadow-sm"
                           : "bg-sky-500 text-white border-sky-500 shadow-sm"
                         : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"}`}
                   >
@@ -636,8 +612,10 @@ const MyPipeline = () => {
             className={`w-full h-11 rounded-xl text-white text-sm font-bold shadow-lg
                        disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]
                        ${
-                         updateStatus === "submitted"
-                           ? "bg-gradient-to-r from-amber-500 to-orange-500 shadow-amber-200 dark:shadow-amber-900/30"
+                         updateStatus === "submitted" ? "bg-gradient-to-r from-amber-500 to-orange-500 shadow-amber-200 dark:shadow-amber-900/30"
+                           : updateStatus === "won" ? "bg-gradient-to-r from-emerald-500 to-teal-600 shadow-emerald-200"
+                           : updateStatus === "lost" ? "bg-gradient-to-r from-rose-500 to-red-700 shadow-rose-200"
+                           : updateStatus === "hold" ? "bg-gradient-to-r from-violet-500 to-purple-700 shadow-violet-200"
                            : "bg-gradient-to-r from-sky-500 to-indigo-500 shadow-sky-200 dark:shadow-sky-900/30"
                        }`}
           >

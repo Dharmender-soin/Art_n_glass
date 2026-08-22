@@ -78,6 +78,7 @@ type AlertSeverity = "critical" | "warning" | "positive";
 type EmpFilter = "all" | "active" | "at_risk" | "inactive" | "never_visited" | "zero_visits" | "top" | "tl" | "manager";
 type SortKey = "score" | "visits" | "wos" | "won" | "last_active" | "name";
 type PFilter = "all" | "top" | "neglected" | "new" | "low" | "top_leads" | "active";
+type BusinessReportKind = "business" | "visits" | "wos" | "active" | "inactive" | "partners" | "no_wos" | "new_clients" | "red_alert" | "at_risk_partners" | "coverage_cycle";
 
 interface ShowroomRow { id: string; name: string; }
 interface ProfileRow { user_id: string; full_name: string | null; email?: string | null; }
@@ -464,7 +465,13 @@ const InsightCard = ({ icon, title, name, detail, color, route, onClick }: {
 const AlertCard = ({ a }: { a: AlertItem }) => {
   const c = ALERT_CFG[a.severity];
   return (
-    <div className={`flex items-start gap-2.5 rounded-xl border px-3 py-2.5 ${c.bg} ${c.border}`}>
+    <div
+      onClick={a.onClick}
+      role={a.onClick ? "button" : undefined}
+      tabIndex={a.onClick ? 0 : undefined}
+      onKeyDown={(event) => { if (a.onClick && (event.key === "Enter" || event.key === " ")) a.onClick(); }}
+      className={`flex items-start gap-2.5 rounded-xl border px-3 py-2.5 ${c.bg} ${c.border} ${a.onClick ? "cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md" : ""}`}
+    >
       {c.icon}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5 flex-wrap">
@@ -480,7 +487,7 @@ const AlertCard = ({ a }: { a: AlertItem }) => {
       </div>
       {a.action && (a.route || a.onClick) && (
         a.onClick ? (
-          <button onClick={a.onClick}
+          <button onClick={(event) => { event.stopPropagation(); a.onClick?.(); }}
             className="shrink-0 text-[10px] font-bold text-red-600 hover:text-red-700 bg-white dark:bg-slate-800 border border-red-200 dark:border-red-800 rounded-lg px-2.5 py-1.5 whitespace-nowrap transition-colors">
             {a.action}
           </button>
@@ -1167,7 +1174,7 @@ const ShowroomFunnelBlock = ({ fd, onSelectPartner }: { fd: SRFunnelData; onSele
                     display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                     gap: "10px", paddingRight: "6px",
                   }}>
-                    {needAttention.map(p => (
+                    {needAttention.slice(0, 12).map(p => (
                       <div key={p.id} className={`flex items-start gap-2.5 rounded-xl p-3 border ${
                         p.covStatus === "overdue" || p.covStatus === "never"
                           ? "bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800/40"
@@ -1198,6 +1205,9 @@ const ShowroomFunnelBlock = ({ fd, onSelectPartner }: { fd: SRFunnelData; onSele
                       </div>
                     ))}
                   </div>
+                  {needAttention.length > 12 && (
+                    <p className="mt-3 text-center text-[10px] font-bold text-slate-500">Top 12 urgent partners shown · {needAttention.length - 12} more available in Partner Utilization action list</p>
+                  )}
                 </div>
               )}
 
@@ -1785,10 +1795,12 @@ const MDDashboard = () => {
   const [showAllGlance, setShowAllGlance] = useState(false);
   const [showFunnelHealth, setShowFunnelHealth] = useState(true);
   const [leaderTab, setLeaderTab] = useState<"visits" | "wos" | "won">("visits");
+  const [mobileSection, setMobileSection] = useState<"overview" | "actions" | "showrooms" | "team" | "partners">("overview");
   const [showComp, setShowComp] = useState(false);
   const [visibleEmpCount, setVisibleEmpCount] = useState(20);
   const [visiblePartnerCount, setVisiblePartnerCount] = useState(12);
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [businessReport, setBusinessReport] = useState<BusinessReportKind | null>(null);
 
   const dateFrom = getDateFrom(dateRange);
   const DR_LABELS: Record<DateRange, string> = { today: "Today", "7d": "Last 7 Days", month: "This Month" };
@@ -1803,12 +1815,12 @@ const MDDashboard = () => {
   const { data: userRoles = [] } = useQuery<UserRoleRow[]>({
     queryKey: ["md-roles", isMdOrAdmin, showroomId],
     queryFn: async () => {
-      let q = supabase.from("user_roles")
+      let q = (supabase.from("user_roles") as any)
         .select("user_id, role, showroom_id")
         .in("role", ["executive", "manager", "tl"])
         .eq("is_active" as any, true); // Only show active employees
       if (!isMdOrAdmin && showroomIds.length > 0) q = q.in("showroom_id", showroomIds);
-      const { data } = await q; return data || [];
+      const { data } = await q; return (data || []) as UserRoleRow[];
     },
   });
 
@@ -2435,7 +2447,7 @@ const MDDashboard = () => {
         id: "never-visited", severity: "critical",
         title: `${neverV.length} employee${neverV.length > 1 ? "s" : ""} have NEVER recorded a visit`,
         desc: `New hires not yet active: ${neverV.slice(0,3).map(e => e.fullName).join(", ")}${neverV.length > 3 ? ` +${neverV.length-3} more` : ""}. Ensure onboarding and field work has started.`,
-        tag: "🚨 Onboarding Gap", action: "View Visits", route: "/visits",
+        tag: "🚨 Onboarding Gap", action: "Open Report", onClick: () => setBusinessReport("inactive"),
       });
     }
 
@@ -2446,7 +2458,7 @@ const MDDashboard = () => {
         id: "neglected-partners", severity: "critical",
         title: `${neglected.length} partner${neglected.length > 1 ? "s" : ""} not visited in 45+ days`,
         desc: `Revenue risk: ${neglected.slice(0,3).map(p => p.name).join(", ")}${neglected.length > 3 ? ` +${neglected.length-3} more` : ""}. Ask executives to schedule a visit this week.`,
-        tag: "🤝 Partner Utilization", action: "View Partners", route: "/partner-visits",
+        tag: "🤝 Partner Utilization", action: "Open Action List", onClick: () => setBusinessReport("coverage_cycle"),
       });
     }
 
@@ -2457,7 +2469,7 @@ const MDDashboard = () => {
         id: "red-alert-emp", severity: "critical",
         title: `${redAlert.length} employee${redAlert.length > 1 ? "s" : ""} failing ALL performance benchmarks`,
         desc: `${redAlert.slice(0,3).map(e => e.fullName).join(", ")} — below target on visits, WOS, and won. Immediate manager review required.`,
-        tag: "🚨 Performance Emergency",
+        tag: "🚨 Performance Emergency", action: "Open Report", onClick: () => setBusinessReport("red_alert"),
       });
     }
 
@@ -2468,7 +2480,7 @@ const MDDashboard = () => {
         id: `zero-sr-${s.id}`, severity: "critical",
         title: `${s.name} has 0 visits this period`,
         desc: `No activity recorded. Check if executives are marking visits correctly or if the team is absent.`,
-        tag: `🏦 ${s.name}`,
+        tag: `🏦 ${s.name}`, action: "Inspect Showroom", onClick: () => setSelectedShowroomId(s.id),
       });
     });
 
@@ -2481,7 +2493,7 @@ const MDDashboard = () => {
         id: "at-risk", severity: "warning",
         title: `${atRisk.length} employee${atRisk.length > 1 ? "s" : ""} at risk — no visit in 3–7 days`,
         desc: `${atRisk.slice(0,3).map(e => e.fullName).join(", ")}. Contact now before they become inactive.`,
-        tag: "👥 Employee Performance",
+        tag: "👥 Employee Performance", action: "Open Report", onClick: () => setBusinessReport("inactive"),
       });
     }
 
@@ -2492,7 +2504,7 @@ const MDDashboard = () => {
         id: `lc-${s.id}`, severity: "warning",
         title: `${s.name} — low WOS conversion ${s.winRate}%`,
         desc: `${s.wosCount} WOS added but only ${s.wonCount} won. Review sales quality, pricing, or follow-up process with manager.`,
-        tag: `🏦 ${s.name}`,
+        tag: `🏦 ${s.name}`, action: "Inspect Funnel", onClick: () => setSelectedShowroomId(s.id),
       });
     });
 
@@ -2503,7 +2515,7 @@ const MDDashboard = () => {
         id: "no-wos", severity: "warning",
         title: `${noWos.length} employee${noWos.length > 1 ? "s" : ""} visiting clients but logging 0 WOS`,
         desc: `${noWos.slice(0,3).map(e => e.fullName).join(", ")}. They are active in field but not converting to scope. Check visit quality.`,
-        tag: "📋 Pipeline",
+        tag: "📋 Pipeline", action: "Open Report", onClick: () => setBusinessReport("no_wos"),
       });
     }
 
@@ -2514,7 +2526,7 @@ const MDDashboard = () => {
         id: "zero-clients", severity: "warning",
         title: "No new clients added this period across all showrooms",
         desc: "The entire team has not added a single new client. This is a growth risk. Review lead generation process.",
-        tag: "👤 Client Acquisition",
+        tag: "👤 Client Acquisition", action: "Open Report", onClick: () => setBusinessReport("new_clients"),
       });
     }
 
@@ -2528,7 +2540,7 @@ const MDDashboard = () => {
         id: "stuck-pipeline", severity: "warning",
         title: `${stuckPipeline.length} showroom${stuckPipeline.length > 1 ? "s" : ""} have pipeline stuck`,
         desc: `${stuckPipeline.map(s => `${s.name}: ${s.wosCount - s.wonCount} WOS unresolved`).slice(0,2).join(" · ")}. Follow up on pending quotes urgently.`,
-        tag: "⏳ Pipeline Review",
+        tag: "⏳ Pipeline Review", action: "Inspect Showroom", onClick: () => setSelectedShowroomId(stuckPipeline[0].id),
       });
     }
 
@@ -2539,7 +2551,7 @@ const MDDashboard = () => {
         id: "tl-underperf", severity: "warning",
         title: `${underTLs.length} Team Leader${underTLs.length > 1 ? "s" : ""} with low team activity`,
         desc: `${underTLs.slice(0,2).map(e => `${e.fullName}: team ${e.teamVisits} visits`).join(", ")}. TL needs to motivate and lead their team better.`,
-        tag: "🛡️ Team Leadership",
+        tag: "🛡️ Team Leadership", action: "View TL", onClick: () => setSelectedEmpId(underTLs[0].userId),
       });
     }
 
@@ -2550,7 +2562,7 @@ const MDDashboard = () => {
         id: "partner-lead-novisit", severity: "warning",
         title: `${partnerLeadsNotRevisited.length} partner${partnerLeadsNotRevisited.length > 1 ? "s" : ""} gave leads but not visited in 30+ days`,
         desc: `High-value partners being neglected: ${partnerLeadsNotRevisited.slice(0,3).map(p => p.name).join(", ")}. Re-visit to strengthen relationship and generate more leads.`,
-        tag: "🎯 Partner Retention", action: "View Partners", route: "/partner-visits",
+        tag: "🎯 Partner Retention", action: "Open Action List", onClick: () => setBusinessReport("coverage_cycle"),
       });
     }
 
@@ -2603,7 +2615,7 @@ const MDDashboard = () => {
       const order = { critical: 0, warning: 1, positive: 2 };
       return order[a.severity] - order[b.severity];
     });
-  }, [allEmpStats, partnerStats, showroomStats, glance, isLoading, setSelectedEmpId]);
+  }, [allEmpStats, partnerStats, showroomStats, glance, isLoading, setSelectedEmpId, setSelectedShowroomId]);
 
   /* ── Leaderboard ── */
   const leaderboard = useMemo(() => {
@@ -2666,6 +2678,67 @@ const MDDashboard = () => {
     ? Math.round((visitedPartnerCount / totalPartnerCount) * 100)
     : 0;
 
+  const reportRows = useMemo(() => {
+    if (!businessReport) return [];
+    if (businessReport === "partners" || businessReport === "at_risk_partners" || businessReport === "coverage_cycle") {
+      return partnerStats
+        .filter((partner) => kpiPartners.some((item) => item.id === partner.id))
+        .filter((partner) => businessReport === "partners" || (businessReport === "at_risk_partners" ? partner.status === "low" : partner.status !== "active"))
+        .sort((a, b) => businessReport === "partners" ? b.visitCount - a.visitCount : b.daysSince - a.daysSince)
+        .map((partner) => ({
+          id: partner.id,
+          title: partner.name,
+          subtitle: `${partner.company || "Independent partner"} · ${partner.showroomName}`,
+          value: partner.status === "active" ? `${partner.visitCount} visits` : partner.status === "new" ? "Never visited" : `${partner.daysSince} days ago`,
+          note: `${partner.leadsCount} leads · ${partner.wonWos} won`,
+          target: "partner" as const,
+        }));
+    }
+
+    const employees = businessReport === "active"
+      ? allEmpStats.filter((employee) => employee.status === "active")
+      : businessReport === "inactive"
+        ? allEmpStats.filter((employee) => employee.status !== "active")
+        : businessReport === "no_wos"
+          ? allEmpStats.filter((employee) => employee.visits >= 3 && employee.wosCount === 0)
+          : businessReport === "new_clients"
+            ? allEmpStats.filter((employee) => employee.clientsAdded > 0)
+            : businessReport === "red_alert"
+              ? allEmpStats.filter((employee) => employee.visits <= 2 && employee.wosCount <= 3 && employee.wonCount <= 2 && employee.status !== "never_visited")
+              : [...allEmpStats];
+
+    return employees
+      .sort((a, b) => businessReport === "wos" ? b.wosCount - a.wosCount : businessReport === "new_clients" ? b.clientsAdded - a.clientsAdded : businessReport === "red_alert" ? a.score - b.score : b.visits - a.visits)
+      .map((employee) => ({
+        id: employee.userId,
+        title: employee.fullName,
+        subtitle: `${employee.showroomName} · ${employee.role}`,
+        value: businessReport === "wos"
+          ? `${employee.wosCount} WOS · ${employee.wonCount} won`
+          : businessReport === "new_clients"
+            ? `${employee.clientsAdded} new clients`
+            : businessReport === "no_wos"
+              ? `${employee.visits} visits · 0 WOS`
+              : `${employee.visits} visits · Score ${employee.score}`,
+        note: businessReport === "red_alert" ? `${employee.wosCount} WOS · ${employee.wonCount} won` : employee.lastVisitDate ? `Last active ${safeFormatDate(employee.lastVisitDate)}` : "No visit recorded",
+        target: "employee" as const,
+      }));
+  }, [businessReport, allEmpStats, partnerStats, kpiPartners]);
+
+  const reportMeta = businessReport ? ({
+    business: { title: "Business Performance", value: `${totalVisits} visits`, subtitle: "Complete filtered business health" },
+    visits: { title: "Visit Performance", value: totalVisits.toLocaleString(), subtitle: "Employee-wise visit contribution" },
+    wos: { title: "WOS & Conversion", value: `${totalWos}/${totalWon}`, subtitle: "Pipeline contribution and wins" },
+    active: { title: "Active Employees", value: activeCount.toLocaleString(), subtitle: "Employees active in the selected period" },
+    inactive: { title: "Employees Needing Attention", value: (inactiveCount + atRiskCount + neverVisitedCount).toLocaleString(), subtitle: "At-risk, inactive and never-visited employees" },
+    partners: { title: "Partner Coverage", value: `${overallPartnerCoverage}%`, subtitle: `${visitedPartnerCount}/${totalPartnerCount} partners visited` },
+    no_wos: { title: "Active but 0 WOS", value: reportRows.length.toLocaleString(), subtitle: "Field activity without business scope" },
+    new_clients: { title: "New Client Acquisition", value: glance.totalClientsThisPeriod.toLocaleString(), subtitle: "Employee-wise clients added in the selected period" },
+    red_alert: { title: "Red Alert Employees", value: reportRows.length.toLocaleString(), subtitle: "Below visits, WOS and won benchmarks simultaneously" },
+    at_risk_partners: { title: "At Risk Partners", value: reportRows.length.toLocaleString(), subtitle: "15–45 days since last partner visit" },
+    coverage_cycle: { title: "Partner Cycle Action List", value: reportRows.length.toLocaleString(), subtitle: "Due, overdue and never-visited partners" },
+  } as const)[businessReport] : null;
+
   const handleSort = useCallback((k: SortKey) => {
     if (sortKey === k) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortKey(k); setSortDir("desc"); }
@@ -2706,7 +2779,24 @@ const MDDashboard = () => {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-28">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-28" data-command-section={mobileSection}>
+      <style>{`
+        @media (max-width: 767px) {
+          [data-command-section] .command-overview,
+          [data-command-section] .command-actions,
+          [data-command-section] .command-showrooms,
+          [data-command-section] .command-team,
+          [data-command-section] .command-partners { display: none; }
+          [data-command-section="overview"] .command-overview,
+          [data-command-section="actions"] .command-actions,
+          [data-command-section="showrooms"] .command-showrooms,
+          [data-command-section="team"] .command-team,
+          [data-command-section="partners"] .command-partners { display: block; }
+          [data-command-section="overview"] .command-overview.grid { display: grid; }
+          [data-command-section="actions"] .command-actions.flex { display: flex; }
+          [data-command-section] .command-desktop-secondary { display: none; }
+        }
+      `}</style>
 
       {/* ══════════════ STICKY HEADER ══════════════ */}
       <div className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 px-4 py-3">
@@ -2749,7 +2839,7 @@ const MDDashboard = () => {
                   );
                 }}
                 title="Export Employee Data to CSV"
-                className="h-8 flex items-center gap-1.5 px-2.5 rounded-xl border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-[10px] font-bold"
+                className="hidden md:flex h-8 items-center gap-1.5 px-2.5 rounded-xl border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-[10px] font-bold"
               >
                 <Download className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Export</span>
@@ -2843,7 +2933,7 @@ const MDDashboard = () => {
                   }
                 }}
                 title="Send 5 Category Test Push Notifications to MD"
-                className="h-8 flex items-center gap-1.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white transition-colors text-[10px] font-bold shadow-md shrink-0 cursor-pointer disabled:opacity-50"
+                className="hidden md:flex h-8 items-center gap-1.5 px-3 rounded-xl bg-red-600 hover:bg-red-700 text-white transition-colors text-[10px] font-bold shadow-md shrink-0 cursor-pointer disabled:opacity-50"
               >
                 {isSendingTest ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                 <span>{isSendingTest ? "Sending 5 Alerts..." : "Test 5 Alerts 🔔"}</span>
@@ -2851,7 +2941,7 @@ const MDDashboard = () => {
             </div>
           </div>
           {/* Quick Page Links Bar for Mobile */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-2 pt-1 scrollbar-none">
+          <div className="hidden lg:flex items-center gap-1.5 overflow-x-auto pb-2 pt-1 scrollbar-none">
             <Link to="/" className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 dark:bg-slate-800 text-white text-[11px] font-bold shrink-0 shadow-sm hover:opacity-90 transition-all">
               🏠 Home
             </Link>
@@ -2887,13 +2977,32 @@ const MDDashboard = () => {
               <Chip key={s.id} label={s.name} active={showroomFilter === s.id} onClick={() => setShowroomFilter(s.id)} />
             ))}
           </div>
+          <div className="md:hidden grid grid-cols-5 gap-1 mt-2" role="tablist" aria-label="Command Center sections">
+            {([
+              ["overview", "Overview"],
+              ["actions", "Actions"],
+              ["showrooms", "Stores"],
+              ["team", "Team"],
+              ["partners", "Partners"],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                role="tab"
+                aria-selected={mobileSection === id}
+                onClick={() => setMobileSection(id)}
+                className={`min-h-11 rounded-xl px-1 text-[10px] font-bold transition-colors ${mobileSection === id ? "bg-red-600 text-white shadow-sm" : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-300"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       <div className="max-w-7xl mx-auto px-4 pt-4 space-y-5">
 
         {/* ── ATTENTION REQUIRED TOP WIDGET ── */}
-        <AttentionRequiredSection />
+        <div className="command-actions"><AttentionRequiredSection /></div>
 
         {/* ══════════════ SHOWROOM HEALTH BANNER ══════════════ */}
         {(() => {
@@ -2908,7 +3017,7 @@ const MDDashboard = () => {
             <motion.div
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/40 dark:to-rose-950/40 border border-red-200 dark:border-red-800/50 rounded-2xl px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-2"
+              className="command-actions bg-gradient-to-r from-red-50 to-rose-50 dark:from-red-950/40 dark:to-rose-950/40 border border-red-200 dark:border-red-800/50 rounded-2xl px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center gap-2"
             >
               <div className="flex items-center gap-2 shrink-0">
                 <div className="h-8 w-8 rounded-xl bg-red-600 flex items-center justify-center shrink-0">
@@ -2940,7 +3049,7 @@ const MDDashboard = () => {
         })()}
 
         {/* ══════════════ KPI STRIP ══════════════ */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        <div className="command-overview grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
           <KpiCard label="Total Visits" value={isLoading ? "—" : totalVisits}
             icon={<Activity className="h-5 w-5" />} gradient="from-sky-500 to-blue-600"
             sub={
@@ -2949,27 +3058,17 @@ const MDDashboard = () => {
                 : DR_LABELS[dateRange]
             }
             warn={visitTrend !== null && visitTrend < -10}
-            onClick={() => {
-              const el = document.getElementById("showroom-performance-section");
-              if (el) el.scrollIntoView({ behavior: "smooth" });
-            }}
+            onClick={() => setBusinessReport("visits")}
           />
           <KpiCard label="WOS / Won" value={`${totalWos}/${totalWon}`}
             icon={<Target className="h-5 w-5" />} gradient="from-emerald-500 to-teal-600"
             sub={totalWos > 0 ? `${Math.round((totalWon / totalWos) * 100)}% win rate` : "No WOS yet"}
-            onClick={() => {
-              const el = document.getElementById("pipeline-summary-section");
-              if (el) el.scrollIntoView({ behavior: "smooth" });
-            }}
+            onClick={() => setBusinessReport("wos")}
           />
           <KpiCard label="Active Employees" value={activeCount}
             icon={<UserCheck className="h-5 w-5" />} gradient="from-indigo-500 to-violet-600"
             sub={`${atRiskCount} at risk · ${inactiveCount} inactive`}
-            onClick={() => {
-              setEmpFilter("active");
-              const el = document.getElementById("employee-performance-section");
-              if (el) el.scrollIntoView({ behavior: "smooth" });
-            }}
+            onClick={() => setBusinessReport("active")}
           />
           <KpiCard label="Not Active" value={inactiveCount + neverVisitedCount}
             icon={<UserX className="h-5 w-5" />} gradient="from-rose-500 to-red-700"
@@ -2977,11 +3076,7 @@ const MDDashboard = () => {
               ? `${inactiveCount} inactive · ${neverVisitedCount} never visited`
               : "All employees active"}
             warn={inactiveCount > 0 || neverVisitedCount > 0}
-            onClick={() => {
-              setEmpFilter("inactive");
-              const el = document.getElementById("employee-performance-section");
-              if (el) el.scrollIntoView({ behavior: "smooth" });
-            }}
+            onClick={() => setBusinessReport("inactive")}
           />
           <KpiCard
             label="Partner Coverage"
@@ -2991,15 +3086,20 @@ const MDDashboard = () => {
               ? `${visitedPartnerCount}/${totalPartnerCount} partners visited`
               : "No real partners found"}
             warn={overallPartnerCoverage < 50 && totalPartnerCount > 0}
-            onClick={() => {
-              const el = document.getElementById("partner-utilization-section");
-              if (el) el.scrollIntoView({ behavior: "smooth" });
-            }}
+            onClick={() => setBusinessReport("partners")}
           />
         </div>
 
+        <button type="button" onClick={() => setBusinessReport("business")} className="command-overview w-full rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-4 py-3 text-left transition-all hover:border-red-300 hover:shadow-md active:scale-[0.99]">
+          <p className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400 mb-1">MD Brief</p>
+          <p className="text-sm font-semibold text-slate-700 dark:text-slate-200 leading-relaxed">
+            {totalVisits} visits recorded. {activeCount} employees are active, while {atRiskCount + inactiveCount + neverVisitedCount} need attention. Partner coverage is {overallPartnerCoverage}%{totalWos > 0 ? ` and WOS conversion is ${Math.round((totalWon / totalWos) * 100)}%` : " with no WOS conversion data yet"}.
+          </p>
+          <span className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-red-600"><Eye className="h-3 w-3" /> Open filtered business report</span>
+        </button>
+
         {/* ══════════════ AT A GLANCE ══════════════ */}
-        <Card>
+        <Card className="command-overview">
           <SecHead
             icon={<Flame className="h-3.5 w-3.5" />}
             title="Business Health — At a Glance"
@@ -3133,6 +3233,7 @@ const MDDashboard = () => {
                         detail={glance.zeroWosCount > 0
                           ? "Visiting clients but not logging business scope — follow up"
                           : "All active employees have logged WOS"}
+                        onClick={() => setBusinessReport("no_wos")}
                       />
                       {/* 13: Best TL */}
                       <InsightCard
@@ -3170,6 +3271,7 @@ const MDDashboard = () => {
                         detail={glance.totalClientsThisPeriod > 0
                           ? `Added across all showrooms this ${DR_LABELS[dateRange].toLowerCase()}`
                           : "No new clients added yet"}
+                        onClick={() => setBusinessReport("new_clients")}
                       />
                       {/* 17: Red Alert Employees */}
                       <InsightCard
@@ -3180,6 +3282,7 @@ const MDDashboard = () => {
                         detail={glance.redAlertCount > 0
                           ? "Failing visits + WOS + Won benchmarks simultaneously"
                           : "All employees meet at least one benchmark"}
+                        onClick={() => setBusinessReport("red_alert")}
                       />
                       {/* 18: At Risk Partners */}
                       <InsightCard
@@ -3190,6 +3293,7 @@ const MDDashboard = () => {
                         detail={glance.atRiskPartners.length > 0
                           ? `15–45 days without visit: ${glance.atRiskPartners.slice(0,3).map(p=>p.name).join(", ")}${glance.atRiskPartners.length > 3 ? ` +${glance.atRiskPartners.length-3} more` : ""}`
                           : "All partners visited within 14 days"}
+                        onClick={() => setBusinessReport("at_risk_partners")}
                       />
                     </div>
                   </div>
@@ -3223,7 +3327,7 @@ const MDDashboard = () => {
           const displayed = showAllAlerts ? [...defaultVisible, ...extraVisible] : defaultVisible;
 
           return (
-            <Card>
+            <Card className="command-actions">
               <SecHead
                 icon={<Zap className="h-3.5 w-3.5" />}
                 title="Smart Alerts & Action Items"
@@ -3329,7 +3433,7 @@ const MDDashboard = () => {
 
         {/* ══════════════ PARTNER ACCOUNTABILITY & FUNNEL HEALTH ══════════════ */}
         {funnelData.length > 0 && (
-          <Card>
+          <Card className="command-partners">
             <SecHead
               icon={<Target className="h-3.5 w-3.5" />}
               title="Partner Accountability & Funnel Health"
@@ -3365,7 +3469,7 @@ const MDDashboard = () => {
 
         {/* ══════════════ SHOWROOM PERFORMANCE ══════════════ */}
         {showroomStats.length > 0 && (
-          <div id="showroom-performance-section">
+          <div id="showroom-performance-section" className="command-showrooms">
             <div className="flex items-center justify-between mb-2.5">
               <h2 className="text-[13px] font-extrabold text-slate-700 dark:text-slate-200 flex items-center gap-2">
                 <Building2 className="h-4 w-4 text-red-600" />Showroom Performance
@@ -3421,7 +3525,7 @@ const MDDashboard = () => {
         )}
 
         {/* ══════════════ EMPLOYEE PERFORMANCE ══════════════ */}
-        <Card id="employee-performance-section">
+        <Card id="employee-performance-section" className="command-team">
           <SecHead
             icon={<Users className="h-3.5 w-3.5" />}
             title="Employee Performance"
@@ -3431,6 +3535,20 @@ const MDDashboard = () => {
               executives.length > 0 && `${executives.length} executive${executives.length !== 1 ? "s" : ""}`,
             ].filter(Boolean).join(" · ") + " · sorted by score"}
           />
+          <div className="grid grid-cols-2 gap-px border-b border-slate-100 bg-slate-100 dark:border-slate-800 dark:bg-slate-800 sm:grid-cols-4">
+            {[
+              { label: "Team output", value: `${allEmpStats.reduce((sum, e) => sum + e.visits, 0)} visits`, note: `${allEmpStats.reduce((sum, e) => sum + e.wosCount, 0)} WOS` },
+              { label: "Avg score", value: `${allEmpStats.length ? Math.round(allEmpStats.reduce((sum, e) => sum + e.score, 0) / allEmpStats.length) : 0}/100`, note: "weighted productivity" },
+              { label: "Needs action", value: `${atRiskCount + inactiveCount + neverVisitedCount}`, note: "risk + inactive" },
+              { label: "Best performer", value: allEmpStats[0]?.fullName || "—", note: allEmpStats[0] ? `Score ${allEmpStats[0].score}` : "No data" },
+            ].map((metric) => (
+              <div key={metric.label} className="min-w-0 bg-white px-3 py-2.5 dark:bg-slate-900">
+                <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">{metric.label}</p>
+                <p className="mt-0.5 truncate text-sm font-black text-slate-900 dark:text-white">{metric.value}</p>
+                <p className="truncate text-[9px] text-slate-400">{metric.note}</p>
+              </div>
+            ))}
+          </div>
           <div className="px-4 py-2.5 space-y-2 border-b border-slate-100 dark:border-slate-800">
             <div className="flex gap-2 overflow-x-auto pb-0.5" style={{ scrollbarWidth: "none" }}>
               <Chip label="All" active={empFilter === "all"} onClick={() => setEmpFilter("all")} count={allEmpStats.length} />
@@ -3609,13 +3727,32 @@ const MDDashboard = () => {
         </Card>
 
         {/* ══════════════ PARTNER UTILIZATION ══════════════ */}
-        <Card id="partner-utilization-section">
+        <Card id="partner-utilization-section" className="command-partners">
           <SecHead
             icon={<Handshake className="h-3.5 w-3.5" />}
             title="Partner Utilization"
             sub="Real architects & builders only — internal/test entries excluded"
             action={<span className="text-[10px] text-slate-400 font-semibold">{partners.length} real partners</span>}
           />
+          <div className="grid grid-cols-2 gap-px border-b border-slate-100 bg-slate-100 dark:border-slate-800 dark:bg-slate-800 sm:grid-cols-5">
+            {[
+              { label: "On cycle", value: partnerStats.filter(p => p.status === "active").length, note: "visited ≤14 days" },
+              { label: "Needs action", value: partnerStats.filter(p => p.status !== "active").length, note: "due / overdue" },
+              { label: "Lead partners", value: partnerStats.filter(p => p.leadsCount > 0).length, note: `${partnerStats.reduce((s, p) => s + p.leadsCount, 0)} leads` },
+              { label: "Revenue partners", value: partnerStats.filter(p => p.wonWos > 0).length, note: `${partnerStats.reduce((s, p) => s + p.wonWos, 0)} WOS won` },
+              { label: "Lead conversion", value: `${partnerStats.reduce((s, p) => s + p.wosCount, 0) ? Math.round(partnerStats.reduce((s, p) => s + p.wonWos, 0) / partnerStats.reduce((s, p) => s + p.wosCount, 0) * 100) : 0}%`, note: "partner WOS → won" },
+            ].map(metric => (
+              <div key={metric.label} className="bg-white px-3 py-2.5 dark:bg-slate-900">
+                <p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">{metric.label}</p>
+                <p className="mt-0.5 text-lg font-black text-slate-900 dark:text-white">{metric.value}</p>
+                <p className="text-[9px] text-slate-400">{metric.note}</p>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-amber-50/70 px-4 py-2 dark:border-slate-800 dark:bg-amber-950/20">
+            <p className="text-[10px] font-semibold text-amber-800 dark:text-amber-300">15-day cycle: {partnerStats.filter(p => p.status !== "active").length} partners require follow-up.</p>
+            <button onClick={() => setBusinessReport("coverage_cycle")} className="shrink-0 rounded-lg bg-slate-900 px-3 py-1.5 text-[10px] font-bold text-white hover:bg-red-600 dark:bg-white dark:text-slate-900">Open action list</button>
+          </div>
           <div className="px-4 py-2.5 border-b border-slate-100 dark:border-slate-800">
             <div className="flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
               <Chip label="All" active={pFilter === "all"} onClick={() => setPFilter("all")}
@@ -3708,7 +3845,7 @@ const MDDashboard = () => {
         </Card>
 
         {/* ══════════════ PIPELINE SUMMARY ══════════════ */}
-        <Card id="pipeline-summary-section">
+        <Card id="pipeline-summary-section" className="command-showrooms">
           <SecHead
             icon={<TrendingUp className="h-3.5 w-3.5" />}
             title="Pipeline Summary by Showroom"
@@ -3724,7 +3861,16 @@ const MDDashboard = () => {
               />
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div>
+              <div className="grid grid-cols-2 gap-px border-b border-slate-100 bg-slate-100 dark:border-slate-800 dark:bg-slate-800 sm:grid-cols-4">
+                {[
+                  { label: "Open pipeline", value: pipelineByShowroom.reduce((s, p) => s + p.pending + p.quoted, 0), note: "pending + quoted" },
+                  { label: "Won", value: pipelineByShowroom.reduce((s, p) => s + p.won, 0), note: "closed business" },
+                  { label: "Lost", value: pipelineByShowroom.reduce((s, p) => s + p.lost, 0), note: "needs reason review" },
+                  { label: "Overall win rate", value: `${pipelineByShowroom.reduce((s, p) => s + p.total, 0) ? Math.round(pipelineByShowroom.reduce((s, p) => s + p.won, 0) / pipelineByShowroom.reduce((s, p) => s + p.total, 0) * 100) : 0}%`, note: "won ÷ total" },
+                ].map(metric => <div key={metric.label} className="bg-white px-4 py-2.5 dark:bg-slate-900"><p className="text-[9px] font-extrabold uppercase tracking-wider text-slate-400">{metric.label}</p><p className="text-lg font-black text-slate-900 dark:text-white">{metric.value}</p><p className="text-[9px] text-slate-400">{metric.note}</p></div>)}
+              </div>
+              <div className="overflow-x-auto">
               <table className="w-full min-w-[480px]">
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-800/40 border-b border-slate-100 dark:border-slate-800">
@@ -3751,12 +3897,13 @@ const MDDashboard = () => {
                     ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </Card>
 
         {/* ══════════════ LEADERBOARD ══════════════ */}
-        <Card>
+        <Card className="command-team">
           <SecHead
             icon={<Trophy className="h-3.5 w-3.5" />}
             title="Leaderboard"
@@ -3773,7 +3920,13 @@ const MDDashboard = () => {
             {leaderboard.filter(e => (leaderTab === "visits" ? e.visits : leaderTab === "wos" ? e.wosCount : e.wonCount) > 0).length === 0 ? (
               <EmptyState icon={<Award className="h-10 w-10" />} msg="No performance data yet for this period" />
             ) : (
-              leaderboard.map((e, i) => (
+              <>
+              {leaderboard[0] && (
+                <button onClick={() => setSelectedEmpId(leaderboard[0].userId)} className="mb-2 flex w-full items-center gap-3 rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 to-white p-3 text-left dark:border-amber-900/50 dark:from-amber-950/30 dark:to-slate-900">
+                  <span className="text-3xl">🏆</span><span className="min-w-0 flex-1"><span className="block text-[9px] font-extrabold uppercase tracking-widest text-amber-600">Current winner</span><span className="block truncate text-sm font-black text-slate-900 dark:text-white">{leaderboard[0].fullName}</span><span className="block text-[10px] text-slate-500">{leaderboard[0].showroomName} · Recognition + monthly reward review + best-practice spotlight</span></span><span className="text-xl font-black text-amber-600">{leaderTab === "visits" ? leaderboard[0].visits : leaderTab === "wos" ? leaderboard[0].wosCount : leaderboard[0].wonCount}</span>
+                </button>
+              )}
+              {leaderboard.map((e, i) => (
                 <motion.div key={e.userId} initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}>
                   <LeaderRow
                     rank={i + 1} name={e.fullName} showroom={e.showroomName}
@@ -3782,15 +3935,79 @@ const MDDashboard = () => {
                     userId={e.userId} onSelectEmp={setSelectedEmpId}
                   />
                 </motion.div>
-              ))
+              ))}
+              </>
             )}
           </div>
         </Card>
 
-        {/* Push Notifications Broadcast form */}
-        <div className="mt-6">
+        {/* Unified notification composer: available under Actions on mobile. */}
+        <div className="mt-6 command-actions">
           <SendNotificationForm />
         </div>
+
+        <Dialog open={businessReport !== null} onOpenChange={(open) => !open && setBusinessReport(null)}>
+          <DialogContent className="max-w-3xl overflow-hidden rounded-3xl border-slate-200 bg-slate-50 p-0 shadow-2xl dark:border-slate-800 dark:bg-slate-950">
+            {reportMeta && (
+              <>
+                <DialogHeader className="border-b border-slate-200 bg-white px-5 py-5 text-left dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+                  <div className="flex items-start gap-3 pr-8">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-red-600 to-red-900 text-white shadow-md">
+                      <BarChart2 className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-extrabold uppercase tracking-[0.18em] text-red-600">MD filtered report</p>
+                      <DialogTitle className="mt-1 text-xl font-black text-slate-950 dark:text-white">{reportMeta.title}</DialogTitle>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{reportMeta.subtitle}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-black text-slate-950 dark:text-white">{reportMeta.value}</p>
+                      <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Selected result</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-red-50 px-3 py-1 text-[10px] font-bold text-red-700 dark:bg-red-950/40 dark:text-red-300">{DR_LABELS[dateRange]}</span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{showroomFilter === "all" ? "All Showrooms" : showroomMap[showroomFilter] || "Selected Showroom"}</span>
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">From {safeFormatDate(dateFrom)}</span>
+                  </div>
+                </DialogHeader>
+
+                <div className="max-h-[62vh] overflow-y-auto p-3 sm:p-5">
+                  <div className="mb-3 flex items-center justify-between px-1">
+                    <p className="text-xs font-extrabold uppercase tracking-wider text-slate-500">Performance breakdown</p>
+                    <span className="text-[10px] font-bold text-slate-400">{reportRows.length} records</span>
+                  </div>
+                  <div className="space-y-2">
+                    {reportRows.map((row, index) => (
+                      <button
+                        type="button"
+                        key={`${row.target}-${row.id}`}
+                        onClick={() => {
+                          setBusinessReport(null);
+                          if (row.target === "partner") setSelectedPartnerId(row.id);
+                          else setSelectedEmpId(row.id);
+                        }}
+                        className="flex min-h-16 w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left transition-all hover:border-red-300 hover:shadow-md active:scale-[0.99] dark:border-slate-800 dark:bg-slate-900 dark:hover:border-red-800"
+                      >
+                        <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-black ${index < 3 ? "bg-red-600 text-white" : "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-300"}`}>{index + 1}</span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-extrabold text-slate-900 dark:text-white">{row.title}</span>
+                          <span className="block truncate text-[10px] font-medium text-slate-500 dark:text-slate-400">{row.subtitle}</span>
+                        </span>
+                        <span className="shrink-0 text-right">
+                          <span className="block text-xs font-extrabold text-slate-800 dark:text-slate-100">{row.value}</span>
+                          <span className="block text-[9px] text-slate-400">{row.note}</span>
+                        </span>
+                        <Eye className="h-4 w-4 shrink-0 text-red-500" />
+                      </button>
+                    ))}
+                    {reportRows.length === 0 && <div className="rounded-2xl border border-dashed p-10 text-center text-sm font-semibold text-slate-400">No data found for the selected filters.</div>}
+                  </div>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
 
         <AnimatePresence>
           {selectedEmpId && (

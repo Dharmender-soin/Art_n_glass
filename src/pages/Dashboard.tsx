@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import type { Database } from "@/integrations/supabase/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,7 @@ import NotificationBell from "@/components/layout/NotificationBell";
 import { LiveTracking } from "@/components/dashboard/LiveTracking";
 import { ChampionBanner, HallOfFame } from "@/components/dashboard/ChampionBanner";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import {
   Building2, Users, CalendarCheck, Briefcase, Activity, TrendingUp, TrendingDown, ArrowUpRight,
   Trophy, Star, UserCheck, ShoppingCart, CheckCircle2, Clock, XCircle, BarChart3,
@@ -80,6 +82,7 @@ interface DrawerItem {
   badge?: string;
   badgeColor?: string;
   amount?: string;
+  details?: string[];
 }
 
 const ClickableStatCard = ({ label, value, icon: Icon, gradient, sub, onClick, accent, change }: {
@@ -188,23 +191,28 @@ const DetailDrawer = ({ open, onClose, title, items, emptyMsg }: {
             </button>
           </div>
           {/* List */}
-          <div className="overflow-y-auto flex-1 px-4 py-3 space-y-2 pb-8">
+          <div className="overflow-y-auto flex-1 px-4 py-3 pb-8">
             {items.length === 0 ? (
               <div className="py-12 text-center">
-                <p className="text-sm text-[#8E939D]">{emptyMsg || "Koi data nahi mila."}</p>
+                <p className="text-sm text-[#8E939D]">{emptyMsg || "No data found."}</p>
               </div>
             ) : (
-              items.map((item, i) => (
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {items.map((item, i) => (
                 <motion.div
                   key={item.id + i}
                   initial={{ opacity: 0, x: -10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: i * 0.03 }}
-                  className="flex items-center gap-3 bg-[#1A1D24] rounded-xl px-4 py-3 border border-white/5"
+                  transition={{ delay: Math.min(i, 20) * 0.015 }}
+                  style={{ contentVisibility: "auto", containIntrinsicSize: "88px" }}
+                  className="flex items-start gap-3 bg-[#1A1D24] rounded-xl px-4 py-3 border border-white/5 hover:border-white/10 transition-colors"
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-[13px] font-bold text-[#F5F5F7] truncate leading-tight">{item.primary}</p>
                     {item.secondary && <p className="text-[11px] text-[#8E939D] mt-0.5 truncate">{item.secondary}</p>}
+                    {item.details?.map((detail, detailIndex) => (
+                      <p key={detailIndex} className="text-[10px] text-[#A1A5AE] mt-1 leading-relaxed line-clamp-2">{detail}</p>
+                    ))}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {item.amount && <span className="text-[11px] font-bold text-emerald-400">{item.amount}</span>}
@@ -215,7 +223,8 @@ const DetailDrawer = ({ open, onClose, title, items, emptyMsg }: {
                     )}
                   </div>
                 </motion.div>
-              ))
+              ))}
+              </div>
             )}
           </div>
         </motion.div>
@@ -360,18 +369,30 @@ const AnalyticsDashboard = () => {
   const { data: visits = [], isLoading: visitsLoading } = useQuery({
     queryKey: ["dashboard-visits-all", targetUserIds, dateRange, prevDateRange],
     queryFn: async () => {
-      let q = supabase.from("visits").select("id, status, visit_date, created_at, created_by, client_id, partner_id, client:clients(name), partner:partners(name)");
-      if (targetUserIds.length > 0) {
-        q = q.in("created_by", targetUserIds);
+      // Supabase projects commonly cap every response at 1,000 rows even when
+      // a larger `.limit()` is requested. Fetch in pages so dashboard totals
+      // are actual totals instead of stopping at exactly 1,000.
+      const pageSize = 1000;
+      const allRows: any[] = [];
+      let exactTotal: number | null = null;
+      for (let from = 0; ; from += pageSize) {
+        let q = supabase.from("visits").select("id, status, visit_date, created_at, created_by, client_id, partner_id, visit_with_type, purpose, address, client:clients(name,address), partner:partners(name,address)", { count: "exact" });
+        if (targetUserIds.length > 0) q = q.in("created_by", targetUserIds);
+        if (dateRange && prevDateRange) {
+          q = q.gte("visit_date", prevDateRange.from).lte("visit_date", dateRange.to);
+        } else if (dateRange) {
+          q = q.gte("visit_date", dateRange.from).lte("visit_date", dateRange.to);
+        }
+        const { data, error, count } = await q
+          .order("visit_date", { ascending: false })
+          .range(from, from + pageSize - 1);
+        if (error) throw error;
+        const rows = data || [];
+        allRows.push(...rows);
+        if (exactTotal === null && count !== null) exactTotal = count;
+        if (rows.length < pageSize || (exactTotal !== null && allRows.length >= exactTotal)) break;
       }
-      if (dateRange && prevDateRange) {
-        q = q.gte("visit_date", prevDateRange.from).lte("visit_date", dateRange.to);
-      } else if (dateRange) {
-        q = q.gte("visit_date", dateRange.from).lte("visit_date", dateRange.to);
-      }
-      const { data, error } = await q.order("visit_date", { ascending: false }).limit(10000); // bypass default 1000 row limit
-      if (error) throw error;
-      return data || [];
+      return allRows;
     },
   });
 
@@ -379,18 +400,16 @@ const AnalyticsDashboard = () => {
   const { data: clients = [] } = useQuery({
     queryKey: ["dashboard-clients", targetUserIds, dateRange, prevDateRange],
     queryFn: async () => {
-      let q = supabase.from("clients").select("id, name, created_at, created_by, status, partner_id");
-      if (targetUserIds.length > 0) {
-        q = q.in("created_by", targetUserIds);
-      }
-      if (dateRange && prevDateRange) {
-        q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
-      } else if (dateRange) {
-        q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
-      }
-      const { data, error } = await q.order("created_at", { ascending: false }).limit(10000); // bypass default 1000 row limit
-      if (error) throw error;
-      return data || [];
+      return fetchAllRows<any>((from, to) => {
+        let q = supabase.from("clients").select("id, name, created_at, created_by, status, partner_id");
+        if (targetUserIds.length > 0) q = q.in("created_by", targetUserIds);
+        if (dateRange && prevDateRange) {
+          q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        } else if (dateRange) {
+          q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        }
+        return q.order("created_at", { ascending: false }).range(from, to) as any;
+      });
     },
   });
 
@@ -398,18 +417,16 @@ const AnalyticsDashboard = () => {
   const { data: partners = [] } = useQuery({
     queryKey: ["dashboard-partners", targetUserIds, dateRange, prevDateRange],
     queryFn: async () => {
-      let q = supabase.from("partners").select("id, name, created_at, created_by, type");
-      if (targetUserIds.length > 0) {
-        q = q.in("created_by", targetUserIds);
-      }
-      if (dateRange && prevDateRange) {
-        q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
-      } else if (dateRange) {
-        q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
-      }
-      const { data, error } = await q.order("created_at", { ascending: false }).limit(10000); // bypass default 1000 row limit
-      if (error) throw error;
-      return data || [];
+      return fetchAllRows<any>((from, to) => {
+        let q = supabase.from("partners").select("id, name, created_at, created_by, type");
+        if (targetUserIds.length > 0) q = q.in("created_by", targetUserIds);
+        if (dateRange && prevDateRange) {
+          q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        } else if (dateRange) {
+          q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        }
+        return q.order("created_at", { ascending: false }).range(from, to) as any;
+      });
     },
   });
 
@@ -417,18 +434,63 @@ const AnalyticsDashboard = () => {
   const { data: workItems = [] } = useQuery({
     queryKey: ["dashboard-work-items", targetUserIds, dateRange, prevDateRange],
     queryFn: async () => {
-      let q = supabase.from("work_scope_items").select("id, work_status, amount_in_lac, created_at, created_by, is_verified, client_id");
-      if (targetUserIds.length > 0) {
-        q = q.in("created_by", targetUserIds);
-      }
-      if (dateRange && prevDateRange) {
-        q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
-      } else if (dateRange) {
-        q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
-      }
-      const { data, error } = await q.order("created_at", { ascending: false }).limit(10000); // bypass default 1000 row limit
-      if (error) throw error;
-      return data || [];
+      return fetchAllRows<any>((from, to) => {
+        let q = supabase.from("work_scope_items").select("id, work_status, amount_in_lac, created_at, created_by, is_verified, client_id");
+        if (targetUserIds.length > 0) q = q.in("created_by", targetUserIds);
+        if (dateRange && prevDateRange) {
+          q = q.gte("created_at", `${prevDateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        } else if (dateRange) {
+          q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        }
+        return q.order("created_at", { ascending: false }).range(from, to) as any;
+      });
+    },
+  });
+
+  const countUserIds = useMemo(() => {
+    if (selectedExecutive !== "all") return [selectedExecutive];
+    return targetUserIds;
+  }, [selectedExecutive, targetUserIds]);
+
+  const { data: exactDashboardCounts } = useQuery({
+    queryKey: ["dashboard-exact-counts", countUserIds, dateRange],
+    queryFn: async () => {
+      const visitCount = async (status?: Database["public"]["Enums"]["visit_status"]) => {
+        let q = supabase.from("visits").select("id", { count: "exact", head: true });
+        if (countUserIds.length > 0) q = q.in("created_by", countUserIds);
+        if (dateRange) q = q.gte("visit_date", dateRange.from).lte("visit_date", dateRange.to);
+        if (status) q = q.eq("status", status);
+        const { count, error } = await q;
+        if (error) throw error;
+        return count || 0;
+      };
+
+      const workCount = async (status?: Database["public"]["Enums"]["work_order_status"]) => {
+        let q = supabase.from("work_scope_items").select("id", { count: "exact", head: true });
+        if (countUserIds.length > 0) q = q.in("created_by", countUserIds);
+        if (dateRange) q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);
+        if (status) q = q.eq("work_status", status);
+        const { count, error } = await q;
+        if (error) throw error;
+        return count || 0;
+      };
+
+      const [
+        totalVisits, completedVisits, plannedVisits, cancelledVisits,
+        totalOrders, ordersWon, ordersLost, ordersPending, ordersSubmitted,
+      ] = await Promise.all([
+        visitCount(),
+        visitCount("done"),
+        visitCount("planned"),
+        visitCount("cancelled"),
+        workCount(),
+        workCount("won"),
+        workCount("lost"),
+        workCount("pending"),
+        workCount("submitted"),
+      ]);
+
+      return { totalVisits, completedVisits, plannedVisits, cancelledVisits, totalOrders, ordersWon, ordersLost, ordersPending, ordersSubmitted };
     },
   });
 
@@ -465,10 +527,10 @@ const AnalyticsDashboard = () => {
   }, [workItems, selectedExecutive, dateRange]);
 
   const metrics = useMemo(() => {
-    const totalVisits = filteredVisits.length;
-    const completedVisits = filteredVisits.filter(v => v.status === "done").length;
-    const plannedVisits = filteredVisits.filter(v => v.status === "planned").length;
-    const cancelledVisits = filteredVisits.filter(v => v.status === "cancelled").length;
+    const totalVisits = exactDashboardCounts?.totalVisits ?? filteredVisits.length;
+    const completedVisits = exactDashboardCounts?.completedVisits ?? filteredVisits.filter(v => v.status === "done").length;
+    const plannedVisits = exactDashboardCounts?.plannedVisits ?? filteredVisits.filter(v => v.status === "planned").length;
+    const cancelledVisits = exactDashboardCounts?.cancelledVisits ?? filteredVisits.filter(v => v.status === "cancelled").length;
     const completionRate = totalVisits > 0 ? Math.round((completedVisits / totalVisits) * 100) : 0;
 
     const totalClients = filteredClients.length;
@@ -477,13 +539,13 @@ const AnalyticsDashboard = () => {
     const newClientsThisMonth = dateRange ? filteredClients.length : filteredClients.filter(c => c.created_at >= monthStart).length;
     const newPartnersThisMonth = dateRange ? filteredPartners.length : filteredPartners.filter(p => p.created_at >= monthStart).length;
 
-    const totalOrders = filteredWorkItems.length;
-    const ordersWon = filteredWorkItems.filter(w => w.work_status === "won").length;
-    const ordersLost = filteredWorkItems.filter(w => w.work_status === "lost").length;
+    const totalOrders = exactDashboardCounts?.totalOrders ?? filteredWorkItems.length;
+    const ordersWon = exactDashboardCounts?.ordersWon ?? filteredWorkItems.filter(w => w.work_status === "won").length;
+    const ordersLost = exactDashboardCounts?.ordersLost ?? filteredWorkItems.filter(w => w.work_status === "lost").length;
     // Pending = explicitly "pending" OR null/undefined status (unclassified orders)
-    const ordersPending = filteredWorkItems.filter(w => w.work_status === "pending" || !w.work_status).length;
+    const ordersPending = exactDashboardCounts?.ordersPending ?? filteredWorkItems.filter(w => w.work_status === "pending" || !w.work_status).length;
     // Submitted = orders filed/submitted but not yet actioned
-    const ordersSubmitted = filteredWorkItems.filter(w => w.work_status === "submitted").length;
+    const ordersSubmitted = exactDashboardCounts?.ordersSubmitted ?? filteredWorkItems.filter(w => w.work_status === "submitted").length;
     const totalOrderValue = filteredWorkItems.reduce((s, w) => s + (w.amount_in_lac || 0), 0);
     const wonOrderValue = filteredWorkItems.filter(w => w.work_status === "won").reduce((s, w) => s + (w.amount_in_lac || 0), 0);
     const verifiedCount = filteredWorkItems.filter(w => w.is_verified).length;
@@ -493,7 +555,7 @@ const AnalyticsDashboard = () => {
       totalClients, totalPartners, newClientsThisMonth, newPartnersThisMonth,
       totalOrders, ordersWon, ordersLost, ordersPending, ordersSubmitted, totalOrderValue, wonOrderValue, verifiedCount,
     };
-  }, [filteredVisits, filteredClients, filteredPartners, filteredWorkItems, monthStart, dateRange]);
+  }, [filteredVisits, filteredClients, filteredPartners, filteredWorkItems, monthStart, dateRange, exactDashboardCounts]);
 
 
 
@@ -719,8 +781,22 @@ const AnalyticsDashboard = () => {
     [...filteredVisits].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .map(v => {
         const vb = visitsBadge(v.status);
-        return { id: v.id, primary: (v.partner as any)?.name || (v.client as any)?.name || "Visit", secondary: v.visit_date, badge: vb.badge, badgeColor: vb.color };
-      }), [filteredVisits]);
+        const entityName = (v.partner as any)?.name || (v.client as any)?.name || (v.address ? v.address.split(",")[0] : "Visit");
+        const employee = profileMap[v.created_by] || "Unassigned employee";
+        const formattedDate = format(new Date(`${v.visit_date}T00:00:00`), "dd MMM yyyy");
+        const entityAddress = v.address || (v.client as any)?.address || (v.partner as any)?.address;
+        return {
+          id: v.id,
+          primary: entityName,
+          secondary: `${formattedDate} · ${employee}`,
+          details: [
+            `${String(v.visit_with_type || "visit").replace(/_/g, " ")} · ${v.purpose || "Purpose not recorded"}`,
+            entityAddress || "Address not recorded",
+          ],
+          badge: vb.badge,
+          badgeColor: vb.color,
+        };
+      }), [filteredVisits, profileMap]);
 
   const completedItems: DrawerItem[] = useMemo(() =>
     [...filteredVisits].filter(v => v.status === "done").sort((a, b) => new Date(b.visit_date).getTime() - new Date(a.visit_date).getTime())

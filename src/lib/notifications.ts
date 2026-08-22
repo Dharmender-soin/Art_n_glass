@@ -1,7 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
 import { buildNotificationDeepLink } from "./notificationDeepLinks";
-import { Capacitor } from "@capacitor/core";
-import { LocalNotifications } from "@capacitor/local-notifications";
 
 export type NotificationCategory = "critical" | "important" | "report" | "reminder" | "informational";
 export type NotificationPriority = "high" | "medium" | "normal" | "low";
@@ -75,6 +73,8 @@ export interface SendNotificationParams {
   entityType?: string;
   entityId?: string;
   metadata?: Record<string, any>;
+  /** Stable user/campaign/date key used by the backend to block duplicate dispatches. */
+  dedupeKey?: string;
 }
 
 /**
@@ -93,12 +93,32 @@ export const sendNotification = async ({
   entityType,
   entityId,
   metadata = {},
+  dedupeKey,
 }: SendNotificationParams) => {
   const deepLink = targetUrl || buildNotificationDeepLink(notificationType, metadata);
 
-  // 1. Database Persistence (Safe Insert)
+  // The backend is the single source of truth for Bell history and FCM.
+  // Scheduling a second LocalNotification here caused the same phone to show
+  // one local alert plus one FCM alert for a single campaign.
   try {
-    const { error: insErr } = await supabase.from("notifications" as any).insert({
+    const { error } = await supabase.functions.invoke("send-push-notification", {
+      body: {
+        userId,
+        title,
+        body: message,
+        category,
+        priority,
+        data: { targetUrl: deepLink, notificationType, category, entityType, entityId, metadata },
+        persistInApp: true,
+        dedupeKey,
+      },
+    });
+    if (error) throw error;
+  } catch (fcmErr) {
+    console.warn("Edge function push invoke error:", fcmErr);
+    // Keep an in-app fallback when the push service is temporarily unavailable.
+    // This does not produce a phone popup, so it cannot duplicate a later FCM.
+    await supabase.from("notifications" as any).insert({
       user_id: userId,
       title,
       message,
@@ -110,68 +130,10 @@ export const sendNotification = async ({
       deep_link: deepLink,
       entity_type: entityType || null,
       entity_id: entityId || null,
-      metadata: metadata || {},
+      metadata: { ...(metadata || {}), push_failed: true, dedupe_key: dedupeKey || null },
       is_read: false,
       created_at: new Date().toISOString(),
     });
-
-    if (insErr) {
-      console.warn("DB insert primary error, trying fallback insert:", insErr.message);
-      // Fallback insert with core columns
-      await supabase.from("notifications" as any).insert({
-        user_id: userId,
-        title,
-        message,
-        body: message,
-        is_read: false,
-        target_url: deepLink,
-        created_at: new Date().toISOString(),
-      });
-    }
-  } catch (dbErr) {
-    console.error("DB Notification insert catch error:", dbErr);
-  }
-
-  // 2. Native Mobile Status Bar Alert Popup (Capacitor Phone Platform)
-  if (Capacitor.isNativePlatform()) {
-    try {
-      const perm = await LocalNotifications.requestPermissions();
-      if (perm.display === "granted") {
-        const notifId = Math.floor(Math.random() * 1000000);
-        await LocalNotifications.schedule({
-          notifications: [
-            {
-              id: notifId,
-              title: title,
-              body: message,
-              schedule: { at: new Date(Date.now() + 200) },
-              sound: undefined,
-              attachments: undefined,
-              actionTypeId: "",
-              extra: { targetUrl: deepLink, category, priority },
-            },
-          ],
-        });
-      }
-    } catch (locErr) {
-      console.error("Local notification schedule error:", locErr);
-    }
-  }
-
-  // 3. Supabase Edge Function FCM Push dispatch
-  try {
-    await supabase.functions.invoke("send-push-notification", {
-      body: {
-        userId,
-        title,
-        body: message,
-        category,
-        priority,
-        data: { targetUrl: deepLink, notificationType, category },
-      },
-    });
-  } catch (fcmErr) {
-    console.warn("Edge function push invoke error:", fcmErr);
   }
 };
 
@@ -197,9 +159,11 @@ export const notifyAllMDs = async ({
 
     let mdUserIds = [...new Set((roles || []).map((r: any) => r.user_id))];
 
+    // Never fall back to arbitrary profiles: a management alert must only
+    // reach users explicitly assigned the MD or Admin role.
     if (mdUserIds.length === 0) {
-      const { data: profiles } = await supabase.from("profiles" as any).select("user_id").limit(10);
-      mdUserIds = (profiles || []).map((p: any) => p.user_id);
+      console.warn("No MD/Admin recipients found for management notification.");
+      return;
     }
 
     for (const uid of mdUserIds) {

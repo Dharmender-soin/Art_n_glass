@@ -54,6 +54,7 @@ export type Database = {
           notes: string | null
           partner_id: string | null
           project_status: string | null
+          secondary_owner_id: string | null
           status: Database["public"]["Enums"]["client_status"]
           updated_at: string
         }
@@ -71,6 +72,7 @@ export type Database = {
           notes?: string | null
           partner_id?: string | null
           project_status?: string | null
+          secondary_owner_id?: string | null
           status?: Database["public"]["Enums"]["client_status"]
           updated_at?: string
         }
@@ -88,6 +90,7 @@ export type Database = {
           notes?: string | null
           partner_id?: string | null
           project_status?: string | null
+          secondary_owner_id?: string | null
           status?: Database["public"]["Enums"]["client_status"]
           updated_at?: string
         }
@@ -98,6 +101,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "partners"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "clients_secondary_owner_id_fkey"
+            columns: ["secondary_owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
           },
         ]
       }
@@ -344,6 +354,7 @@ export type Database = {
           id: string
           mobile: string
           name: string
+          secondary_owner_id: string | null
           type: Database["public"]["Enums"]["partner_type"]
           updated_at: string
         }
@@ -356,6 +367,7 @@ export type Database = {
           id?: string
           mobile: string
           name: string
+          secondary_owner_id?: string | null
           type: Database["public"]["Enums"]["partner_type"]
           updated_at?: string
         }
@@ -368,10 +380,19 @@ export type Database = {
           id?: string
           mobile?: string
           name?: string
+          secondary_owner_id?: string | null
           type?: Database["public"]["Enums"]["partner_type"]
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "partners_secondary_owner_id_fkey"
+            columns: ["secondary_owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -484,20 +505,70 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          whatsapp_group_id: string | null
+          whatsapp_planning_enabled: boolean
         }
         Insert: {
           city: string
           created_at?: string
           id?: string
           name: string
+          whatsapp_group_id?: string | null
+          whatsapp_planning_enabled?: boolean
         }
         Update: {
           city?: string
           created_at?: string
           id?: string
           name?: string
+          whatsapp_group_id?: string | null
+          whatsapp_planning_enabled?: boolean
         }
         Relationships: []
+      }
+      whatshub_message_logs: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          message: string
+          message_type: string
+          recipient_count: number
+          showroom_id: string | null
+          status: string
+          success_count: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          message: string
+          message_type: string
+          recipient_count?: number
+          showroom_id?: string | null
+          status: string
+          success_count?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          message?: string
+          message_type?: string
+          recipient_count?: number
+          showroom_id?: string | null
+          status?: string
+          success_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatshub_message_logs_showroom_id_fkey"
+            columns: ["showroom_id"]
+            isOneToOne: false
+            referencedRelation: "showrooms"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_fcm_tokens: {
         Row: {
@@ -667,6 +738,44 @@ export type Database = {
           },
         ]
       }
+      wos_status_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          id: string
+          new_status: string
+          old_status: string | null
+          reason: string | null
+          work_scope_item_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          new_status: string
+          old_status?: string | null
+          reason?: string | null
+          work_scope_item_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          id?: string
+          new_status?: string
+          old_status?: string | null
+          reason?: string | null
+          work_scope_item_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wos_status_history_work_scope_item_id_fkey"
+            columns: ["work_scope_item_id"]
+            isOneToOne: false
+            referencedRelation: "work_scope_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_scope_items: {
         Row: {
           amount_in_lac: number | null
@@ -676,6 +785,7 @@ export type Database = {
           description: string | null
           id: string
           is_verified: boolean
+          last_status_change_reason: string | null
           quantity: number | null
           submitted_at: string | null
           verification_reason: string | null
@@ -694,6 +804,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_verified?: boolean
+          last_status_change_reason?: string | null
           quantity?: number | null
           submitted_at?: string | null
           verification_reason?: string | null
@@ -712,6 +823,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_verified?: boolean
+          last_status_change_reason?: string | null
           quantity?: number | null
           submitted_at?: string | null
           verification_reason?: string | null
@@ -763,6 +875,26 @@ export type Database = {
           visits_count: number
           wos_count: number
           wos_won_total: number
+        }[]
+      }
+      get_assignable_users: {
+        Args: never
+        Returns: {
+          full_name: string
+          role: string
+          showroom_id: string | null
+          user_id: string
+        }[]
+      }
+      get_wos_status_history: {
+        Args: { p_work_scope_item_id: string }
+        Returns: {
+          changed_at: string
+          changed_by_name: string
+          id: string
+          new_status: string
+          old_status: string | null
+          reason: string | null
         }[]
       }
       get_user_showroom_id: { Args: { _user_id: string }; Returns: string }

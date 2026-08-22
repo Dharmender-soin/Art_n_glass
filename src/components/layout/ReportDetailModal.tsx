@@ -28,6 +28,7 @@ import { formatDistanceToNow, parseISO } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { parseNotificationDeepLink } from "@/lib/notificationDeepLinks";
+import { normalizeNotificationText } from "@/lib/notificationText";
 
 export interface NotificationRecord {
   id: string;
@@ -57,10 +58,11 @@ export function ReportDetailModal({
   if (!notification) return null;
 
   const target = parseNotificationDeepLink(notification.target_url);
+  const displayedMessage = normalizeNotificationText(notification.message);
 
   // Helper to trigger WhatsApp Share
   const handleShareWhatsApp = () => {
-    const text = `*${notification.title}*\n\n${notification.message}\n\n_Sent via Art N Glass Property OS_`;
+    const text = `*${notification.title}*\n\n${displayedMessage}\n\n_Sent via Art N Glass CRM_`;
     const encoded = encodeURIComponent(text);
     window.open(`https://wa.me/?text=${encoded}`, "_blank");
   };
@@ -118,7 +120,7 @@ export function ReportDetailModal({
           {/* Main Message Text Box */}
           <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 space-y-2">
             <p className="text-sm font-medium text-slate-200 leading-relaxed whitespace-pre-line">
-              {notification.message}
+              {displayedMessage}
             </p>
           </div>
 
@@ -131,9 +133,9 @@ export function ReportDetailModal({
               </span>
             </div>
             <div className="bg-slate-900/60 border border-slate-800/80 rounded-xl p-3 flex flex-col justify-center">
-              <span className="text-[10px] uppercase font-bold text-slate-400">Delivery Status</span>
+              <span className="text-[10px] uppercase font-bold text-slate-400">Record Status</span>
               <span className="text-emerald-400 font-semibold flex items-center gap-1 pt-0.5">
-                <CheckCircle2 className="h-3 w-3" /> Live Synced
+                <CheckCircle2 className="h-3 w-3" /> Saved in App
               </span>
             </div>
           </div>

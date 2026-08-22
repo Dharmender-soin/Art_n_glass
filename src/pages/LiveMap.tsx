@@ -1,9 +1,13 @@
 import { useAuth } from "@/hooks/useAuth";
 import { LiveTracking } from "@/components/dashboard/LiveTracking";
-import { Map, Navigation } from "lucide-react";
+import { Map, Navigation, Loader2 } from "lucide-react";
 
 const LiveMapPage = () => {
-  const { role } = useAuth();
+  const { role, loading } = useAuth();
+
+  if (loading || !role) {
+    return <div className="flex min-h-[60vh] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-red-600" /></div>;
+  }
 
   const canAccess = role === "admin" || role === "md" || role === "manager";
 
@@ -30,9 +34,9 @@ const LiveMapPage = () => {
             {role === "manager" ? "Your showroom · real-time" : "All showrooms · real-time"}
           </p>
         </div>
-        <div className="ml-auto flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-          <span className="text-[10px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wider">Live</span>
+        <div className="ml-auto flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 dark:border-slate-700 dark:bg-slate-900">
+          <div className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+          <span className="text-[9px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Tracking monitor</span>
         </div>
       </div>
 

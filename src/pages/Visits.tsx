@@ -12,12 +12,13 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Plus, CalendarCheck, MapPin, Camera, Loader2, ChevronDown, ChevronRight, Search, UserCircle, Clock } from "lucide-react";
+import { Plus, CalendarCheck, MapPin, Camera, Loader2, ChevronDown, ChevronRight, Search, UserCircle, Clock, Users } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import type { Database } from "@/integrations/supabase/types";
 import { sendNotification } from "@/lib/notifications";
 import { calculateDistance, calculateRouteDistance } from "@/lib/utils";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 import { useJsApiLoader, Autocomplete } from "@react-google-maps/api";
 import { useSearchParams } from "react-router-dom";
 
@@ -152,41 +153,18 @@ const Visits = () => {
   const { data: visits = [], isLoading } = useQuery({
     queryKey: ["visits", user?.id, role],
     queryFn: async () => {
-      let q = supabase
-        .from("visits")
-        .select("*, clients(name, address), partners(name, address)")
-        .order("visit_date", { ascending: false })
-        .limit(10000);
-
-      if (role === "executive" && user) {
-        // Exec sees own visits only
-        q = q.eq("created_by", user.id);
-
-      } else if (role === "tl" && user) {
-        // TL sees own + all exec visits under them
-        const { data: myExecs } = await supabase
-          .from("user_roles")
-          .select("user_id")
-          .eq("reports_to", user.id)
-          .eq("role", "executive");
-        const execIds = (myExecs || []).map((r: UserIdRow) => r.user_id);
-        q = q.in("created_by", [user.id, ...execIds]);
-
-      } else if (role === "manager" && showroomIds.length > 0) {
-        const { data: teamRoles } = await supabase
-          .from("user_roles")
-          .select("user_id")
-          .in("showroom_id", showroomIds);  // multi-showroom
-        const teamIds = (teamRoles || []).map((r: UserIdRow) => r.user_id);
-        if (teamIds.length > 0) q = q.in("created_by", teamIds);
-      }
-      // MD / Admin: no filter
-
-      const { data, error } = await q;
-      if (error) throw error;
+      // The Visits workspace is personal planning for every role. Team-wide
+      // monitoring remains available in Daily Visits and Partner Visits.
+      const rows = await fetchAllRows<any>((from, to) => {
+        let q = supabase
+          .from("visits")
+          .select("*, clients(name, address), partners(name, address)");
+        if (user) q = q.eq("created_by", user.id);
+        return q.order("visit_date", { ascending: false }).range(from, to) as any;
+      });
 
       const visitsWithSignedUrls = await Promise.all(
-        (data || []).map(async (v) => {
+        rows.map(async (v) => {
           if (v.photo_url && !v.photo_url.startsWith("http")) {
             const { data: urlData } = await supabase.storage
               .from("visit-photos")
@@ -209,6 +187,26 @@ const Visits = () => {
       return Object.fromEntries((data || []).map(p => [p.user_id, p.full_name]));
     },
   });
+
+  const overlappingPlans = useMemo(() => {
+    const groups = new Map<string, typeof visits>();
+    visits.forEach((visit) => {
+      if (visit.status === "cancelled") return;
+      const entityId = visit.client_id || visit.partner_id;
+      if (!entityId) return;
+      const key = `${visit.visit_date}:${visit.visit_with_type}:${entityId}`;
+      const group = groups.get(key) || [];
+      group.push(visit);
+      groups.set(key, group);
+    });
+    const byVisitId: Record<string, string[]> = {};
+    groups.forEach((group) => {
+      const plannerIds = [...new Set(group.map((visit) => visit.created_by))];
+      if (plannerIds.length < 2) return;
+      group.forEach((visit) => { byVisitId[visit.id] = plannerIds; });
+    });
+    return byVisitId;
+  }, [visits]);
 
   const { data: clients = [] } = useQuery({
     queryKey: ["clients-list", user?.id, role],
@@ -560,7 +558,7 @@ const Visits = () => {
   });
 
   const cancelVisit = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
       const { data: visit } = await supabase.from("visits").select("visit_date").eq("id", id).single();
       if (!visit) throw new Error("Visit not found");
       const isDayEnded = await checkIfDayEnded(visit.visit_date);
@@ -568,7 +566,7 @@ const Visits = () => {
         throw new Error("This day has already been marked ended. Visits cannot be modified.");
       }
 
-      const { error } = await supabase.from("visits").update({ status: "cancelled" as VisitStatus }).eq("id", id);
+      const { error } = await supabase.from("visits").update({ status: "cancelled" as VisitStatus, remarks: `Cancellation reason: ${reason.trim()}` }).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -969,7 +967,18 @@ const Visits = () => {
                   {isDateOpen(dateKey) ? <ChevronDown className="h-4 w-4 text-primary" /> : <ChevronRight className="h-4 w-4 text-muted-foreground" />}
                   <CalendarCheck className={`h-4 w-4 ${isDateOpen(dateKey) ? 'text-primary' : 'text-muted-foreground'}`} />
                   <h2 className={`text-sm font-semibold ${isDateOpen(dateKey) ? 'text-primary' : 'text-foreground'}`}>{getDateLabel(dateKey)}</h2>
-                  <Badge variant="outline" className="text-[10px] ml-auto font-medium">{groupedByDate[dateKey].length} visits</Badge>
+                  <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
+                    <Badge variant="outline" className="text-[10px] font-medium">{groupedByDate[dateKey].length} visits</Badge>
+                    {(["planned", "in_progress", "done", "cancelled"] as const).map((status) => {
+                      const count = groupedByDate[dateKey].filter((visit) => visit.status === status).length;
+                      if (!count) return null;
+                      return (
+                        <Badge key={status} className={`${visitStatusColors[status]} capitalize text-[9px] border-0 px-1.5 py-0`}>
+                          {status.replace("_", " ")}: {count}
+                        </Badge>
+                      );
+                    })}
+                  </div>
                 </div>
               </CollapsibleTrigger>
               <CollapsibleContent>
@@ -986,6 +995,12 @@ const Visits = () => {
                                 <UserCircle className="h-3 w-3" />
                                 KAM: {creatorProfilesMap[v.created_by] || "Executive"}
                               </span>
+                              {overlappingPlans[v.id] && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-500/25" title="More than one team member planned this client/partner on the same date">
+                                  <Users className="h-3 w-3" />
+                                  Team overlap: {overlappingPlans[v.id].map((id) => creatorProfilesMap[id] || "Team member").join(", ")}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -1027,7 +1042,11 @@ const Visits = () => {
                             {(v.status as string) === "planned" && (
                               <>
                                 <Button size="sm" variant="outline" onClick={() => { setEditVisitId(v.id); setEditVisitDate(v.visit_date); }}>Reschedule</Button>
-                                <Button size="sm" variant="outline" onClick={() => cancelVisit.mutate(v.id)}>Cancel</Button>
+                                <Button size="sm" variant="outline" onClick={() => {
+                                  const reason = window.prompt("Cancellation reason is mandatory:");
+                                  if (reason?.trim()) cancelVisit.mutate({ id: v.id, reason });
+                                  else if (reason !== null) toast.error("Cancellation reason is required");
+                                }}>Cancel</Button>
                               </>
                             )}
                           </div>

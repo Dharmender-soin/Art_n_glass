@@ -16,6 +16,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { toast } from "sonner";
 import { CATEGORY_META, NotificationCategory } from "@/lib/notifications";
 import { parseNotificationDeepLink } from "@/lib/notificationDeepLinks";
+import { recordNotificationOpened } from "@/lib/notificationDelivery";
+import { normalizeNotificationText } from "@/lib/notificationText";
 
 const PAGE_SIZE = 20;
 
@@ -137,6 +139,7 @@ export default function NotificationsCenter() {
     if (!notif.is_read) {
       await markReadMutation.mutateAsync(notif.id);
     }
+    await recordNotificationOpened(notif, user?.id);
     const target = parseNotificationDeepLink(notif.target_url || notif.deep_link);
     navigate(target.fullUrl);
   };
@@ -265,7 +268,7 @@ export default function NotificationsCenter() {
           paginatedList.map((item) => {
             const category = (item.category as NotificationCategory) || "informational";
             const meta = CATEGORY_META[category] || CATEGORY_META.informational;
-            const messageText = item.message || item.body || "";
+            const messageText = normalizeNotificationText(item.message || item.body || "");
             const isUnread = !item.is_read;
 
             return (

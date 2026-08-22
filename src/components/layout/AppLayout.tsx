@@ -1,4 +1,4 @@
-import { ReactNode, useState } from "react";
+import { ReactNode } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { SidebarProvider, SidebarInset, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -11,8 +11,6 @@ import NotificationBell from "./NotificationBell";
 import { GlobalSearch } from "./GlobalSearch";
 import { QuickAddModal } from "./QuickAddModal";
 import { LogOut } from "lucide-react";
-
-import { useScheduledNotifications } from "@/hooks/useScheduledNotifications";
 
 const pageTitles: Record<string, string> = {
   "/": "Dashboard",
@@ -32,50 +30,25 @@ const pageTitles: Record<string, string> = {
   "/partner-visits": "Partner Visits",
   "/notifications": "Notifications",
   "/notification-settings": "Notification Settings",
+  "/notification-logs": "Notification Delivery Logs",
 };
 
 const AppLayoutContent = ({ children }: { children: ReactNode }) => {
   const { signOut } = useAuth();
-  const { isMobile, state, setOpen } = useSidebar();
+  const { isMobile } = useSidebar();
   const { pathname } = useLocation();
-  const [isHovered, setIsHovered] = useState(false);
-
-  // Activate automated background daily report scheduler
-  useScheduledNotifications();
 
   const pageTitle = pageTitles[pathname] || "Art N Glass CRM";
 
-  // Smart Sidebar Logic
-  const handleMouseEnter = () => {
-    if (!isMobile && state === "collapsed") {
-      setIsHovered(true);
-      setOpen(true);
-    }
-  };
-
-  const handleMouseLeave = () => {
-    if (!isMobile && isHovered) {
-      setOpen(false);
-      setIsHovered(false);
-    }
-  };
-
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background relative">
-      <div
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        className={cn(
-          "relative z-50 transition-all duration-300 ease-out will-change-[width]",
-          isHovered && "[&_[data-sidebar=spacer]]:!w-[--sidebar-width-icon]"
-        )}
-      >
+      <div className="relative z-50 transition-all duration-300 ease-out">
         <AppSidebar />
       </div>
 
       <SidebarInset className="flex flex-1 flex-col h-full min-w-0 overflow-hidden relative">
         {/* — Top Bar — */}
-        <header className="flex h-14 items-center justify-between gap-2 border-b bg-background/95 backdrop-blur-md px-3 md:px-6 shrink-0 z-30">
+        <header className="relative flex h-14 items-center justify-between gap-2 border-b bg-background/95 backdrop-blur-md px-3 md:px-6 shrink-0 z-[60]">
           {/* Mobile trigger & Page Title */}
           <div className="flex items-center gap-2 min-w-0">
             {isMobile && <SidebarTrigger className="-ml-1 text-slate-700 dark:text-slate-200" aria-label="Toggle Navigation Sidebar" />}

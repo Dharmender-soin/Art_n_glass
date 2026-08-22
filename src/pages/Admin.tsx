@@ -208,29 +208,42 @@ const Admin = () => {
         .select("*");
       if (profilesError) throw profilesError;
 
-      // Merge data - iterate over roles to ensure we show all users even if auth fetch fails
-      return roles.map((r) => {
-        const authUser = authUsers.find((u: any) => u.id === r.user_id);
-        const userProfile = profiles.find((p) => p.user_id === r.user_id);
+      // Use the union of Auth, profile and role IDs. A missing role row should
+      // be visible to an admin as a repairable user, not disappear from UI.
+      const roleByUser = new Map((roles || []).map((item) => [item.user_id, item]));
+      const profileByUser = new Map((profiles || []).map((item) => [item.user_id, item]));
+      const userIds = [...new Set([
+        ...(roles || []).map((item) => item.user_id),
+        ...(profiles || []).map((item) => item.user_id),
+        ...authUsers.map((item: any) => item.id),
+      ])];
+
+      return userIds.map((id) => {
+        const r: any = roleByUser.get(id);
+        const authUser = authUsers.find((u: any) => u.id === id);
+        const userProfile: any = profileByUser.get(id);
 
         // Use profile email (from new migration) or auth email, or fallback
         const email = (userProfile as any)?.email || authUser?.email || "Email hidden (Backend pending)";
 
         return {
-          id: r.user_id,
+          id,
           email: email,
           full_name: userProfile?.full_name || authUser?.user_metadata?.full_name || "Unknown",
           phone: userProfile?.phone,
-          role: r.role || "executive",
-          showroom_id: r.showroom_id,
+          role: r?.role || "executive",
+          showroom_id: r?.showroom_id ?? null,
           reports_to: (r as any).reports_to ?? null,
-          created_at: r.created_at,
-          role_id: r.id,
-          is_active: (r as any).is_active !== false, // default true if column not yet migrated
+          created_at: r?.created_at || authUser?.created_at || userProfile?.created_at || new Date(0).toISOString(),
+          role_id: r?.id,
+          is_active: r?.is_active !== false,
         };
       }).sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     },
     enabled: role === "admin",
+    staleTime: 0,
+    refetchOnMount: "always",
+    retry: 2,
   });
 
   // Mutation: Update Role/Showroom/ReportsTo
@@ -803,8 +816,8 @@ const Admin = () => {
                           onClick={() => openAlert(
                             u.is_active ? "Deactivate Employee" : "Activate Employee",
                             u.is_active
-                              ? `${u.full_name} ko deactivate karo? Ye Command Centre aur leaderboard se hide ho jaayega.`
-                              : `${u.full_name} ko wapas activate karo?`,
+                              ? `Deactivate ${u.full_name}? This user will be hidden from the Command Center and leaderboard.`
+                              : `Reactivate ${u.full_name}?`,
                             () => toggleUserActive.mutate({ roleId: u.role_id, is_active: u.is_active })
                           )}
                         >

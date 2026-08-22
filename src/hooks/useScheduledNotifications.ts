@@ -13,9 +13,14 @@ import { format } from "date-fns";
 
 export function useScheduledNotifications() {
   const { role, user } = useAuth();
+  // Scheduled pushes must be owned by the backend. Running them from every
+  // browser/phone causes late "catch-up" bursts when the app opens and sends
+  // duplicates when the same account is active on multiple devices.
+  // Keep an explicit emergency opt-in for local testing only.
+  const clientSchedulerEnabled = import.meta.env.VITE_ENABLE_CLIENT_NOTIFICATION_SCHEDULER === "true";
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !clientSchedulerEnabled) return;
 
     const checkAndTriggerScheduledReports = async () => {
       const now = new Date();
@@ -189,5 +194,5 @@ export function useScheduledNotifications() {
     // Check every 60 seconds
     const interval = setInterval(checkAndTriggerScheduledReports, 60000);
     return () => clearInterval(interval);
-  }, [role, user]);
+  }, [role, user, clientSchedulerEnabled]);
 }

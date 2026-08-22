@@ -50,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Cast to unknown[] to handle reports_to column before DB migration
     const { data: rawData, error } = await supabase
       .from("user_roles")
-      .select("role, showroom_id")
+      .select("role, showroom_id, reports_to")
       .eq("user_id", userId);
 
     type RoleRow = { role: AppRole; showroom_id: string | null; reports_to?: string | null };

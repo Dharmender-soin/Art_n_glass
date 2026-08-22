@@ -11,7 +11,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
-import { Plus, Trash2, Package, Layers, FileText, Hash, CheckCircle, ShieldCheck, Send } from "lucide-react";
+import { notifyAllMDs } from "@/lib/notifications";
+import { Plus, Trash2, Package, Layers, FileText, Hash, CheckCircle, ShieldCheck, Send, Trophy, XCircle, PauseCircle, Clock } from "lucide-react";
+
+type ExecutiveWorkStatus = "pending" | "submitted" | "won" | "lost" | "hold";
 
 const WorkScopeSection = ({ clientId }: { clientId: string }) => {
   const { user, role } = useAuth();
@@ -20,6 +23,31 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
   const [workTypeId, setWorkTypeId] = useState("");
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState("");
+
+  const notifyManagement = async (status: ExecutiveWorkStatus, itemId?: string) => {
+    try {
+      const [{ data: client }, { data: profile }] = await Promise.all([
+        supabase.from("clients").select("name").eq("id", clientId).maybeSingle(),
+        supabase.from("profiles").select("full_name").eq("user_id", user!.id).maybeSingle(),
+      ]);
+      const executiveName = profile?.full_name || user?.email || "Executive";
+      const clientName = client?.name || "Client";
+      const statusLabel = status === "pending" ? "New WOS Added" : status === "submitted" ? "Quotation Sent" : status === "won" ? "WOS Won" : status === "lost" ? "WOS Lost" : "WOS Put On Hold";
+      await notifyAllMDs({
+        title: `${statusLabel}${status === "won" ? " 🎉" : status === "lost" ? " ❌" : status === "hold" ? " ⏸️" : " 📋"}`,
+        message: `${executiveName} updated ${clientName}: ${statusLabel}. Tap to inspect the client pipeline.`,
+        category: status === "won" ? "important" : status === "lost" ? "critical" : "informational",
+        priority: status === "won" || status === "lost" ? "high" : "normal",
+        notificationType: status === "won" ? "deal_won" : status === "lost" ? "deal_lost" : "wos_update",
+        targetUrl: `/clients?client=${clientId}`,
+        entityType: "work_scope_item",
+        entityId: itemId,
+        metadata: { client_id: clientId, status, executive_name: executiveName },
+      });
+    } catch (error) {
+      console.error("Unable to notify management about WOS:", error);
+    }
+  };
 
   const { data: masterTypes = [] } = useQuery({
     queryKey: ["master-work-types"],
@@ -45,19 +73,20 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
 
   const addItem = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("work_scope_items").insert({
+      const { data, error } = await supabase.from("work_scope_items").insert({
         client_id: clientId,
         work_type_id: workTypeId,
         description: description || null,
         quantity: quantity ? parseInt(quantity) : null,
         work_status: "pending",  // Always start as WOS — executive marks quotation separately
         created_by: user!.id,
-      });
+      }).select("id").single();
       if (error) {
         // DB unique constraint violation — duplicate WOS
         if (error.code === "23505") throw new Error("This work type has already been added for this client. Duplicates are not allowed.");
         throw error;
       }
+      await notifyManagement("pending", data?.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["work-scope", clientId] });
@@ -91,6 +120,7 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
         .update({ work_status: "submitted", submitted_at: new Date().toISOString() })
         .eq("id", id);
       if (error) throw error;
+      await notifyManagement("submitted", id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["work-scope", clientId] });
@@ -98,6 +128,28 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
       toast.success("Quotation marked as sent!");
     },
     onError: (e: Error) => toast.error(e.message),
+  });
+
+  const updateStatus = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: ExecutiveWorkStatus }) => {
+      const now = new Date().toISOString();
+      const update: Record<string, unknown> = { work_status: status };
+      if (status === "submitted") update.submitted_at = now;
+      if (status === "won" || status === "lost") {
+        update.verified_at = now;
+        update.is_verified = status === "won";
+      }
+      const { error } = await supabase.from("work_scope_items").update(update).eq("id", id).eq("created_by", user!.id);
+      if (error) throw error;
+      await notifyManagement(status, id);
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["work-scope", clientId] });
+      queryClient.invalidateQueries({ queryKey: ["wos-pipeline", user?.id] });
+      queryClient.invalidateQueries({ queryKey: ["work-scope-items-with-names"] });
+      toast.success(`WOS marked as ${variables.status === "submitted" ? "Quotation" : variables.status.toUpperCase()}`);
+    },
+    onError: (e: Error) => toast.error(e.message || "Status update failed"),
   });
 
   const verifyItem = useMutation({
@@ -227,6 +279,7 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
             const isQuotation = wStatus === "submitted";
             const isWon  = wStatus === "won";
             const isLost = wStatus === "lost";
+            const isHold = wStatus === "hold";
             const isOwnItem = item.created_by === user?.id;
 
             // Pipeline badge config
@@ -236,6 +289,8 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
               ? { label: "Quotation", cls: "text-amber-700 bg-amber-50 border-amber-200" }
               : isWon
               ? { label: "Won ✓",     cls: "text-emerald-700 bg-emerald-50 border-emerald-200" }
+              : isHold
+              ? { label: "Hold",      cls: "text-violet-700 bg-violet-50 border-violet-200" }
               : { label: "Lost",      cls: "text-rose-600 bg-rose-50 border-rose-200" };
 
             return (
@@ -265,15 +320,23 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                     {item.description && (
                       <p className="text-xs text-muted-foreground mt-1.5 line-clamp-2">{item.description}</p>
                     )}
-                    {/* Quotation Sent button — for executive only, on pending WOS items */}
-                    {!isManager && isOwnItem && isPending && (
-                      <button
-                        onClick={() => markQuotation.mutate(item.id)}
-                        disabled={markQuotation.isPending}
-                        className="mt-2 flex items-center gap-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-50 text-white text-[10px] font-bold px-2.5 py-1.5 rounded-lg transition-all"
-                      >
-                        <Send className="h-3 w-3" /> Quotation Sent
-                      </button>
+                    {/* Executive owns the complete pipeline status lifecycle. */}
+                    {!isManager && isOwnItem && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {([
+                          { status: "pending", label: "WOS", icon: <Clock className="h-3 w-3" />, cls: "bg-sky-600" },
+                          { status: "submitted", label: "Quoted", icon: <Send className="h-3 w-3" />, cls: "bg-amber-500" },
+                          { status: "won", label: "Won", icon: <Trophy className="h-3 w-3" />, cls: "bg-emerald-600" },
+                          { status: "lost", label: "Lost", icon: <XCircle className="h-3 w-3" />, cls: "bg-rose-600" },
+                          { status: "hold", label: "Hold", icon: <PauseCircle className="h-3 w-3" />, cls: "bg-violet-600" },
+                        ] as const).map(option => (
+                          <button key={option.status} onClick={() => updateStatus.mutate({ id: item.id, status: option.status })}
+                            disabled={updateStatus.isPending || wStatus === option.status}
+                            className={`${option.cls} flex min-h-8 items-center gap-1 rounded-lg px-2.5 py-1.5 text-[10px] font-bold text-white transition-all disabled:cursor-default disabled:opacity-40`}>
+                            {option.icon}{option.label}
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
                   <div className="flex items-center gap-1 shrink-0">

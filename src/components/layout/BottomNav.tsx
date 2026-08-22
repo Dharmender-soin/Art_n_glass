@@ -63,7 +63,7 @@ const TabItem = ({
       <span
         className="relative z-10 font-semibold tracking-wide transition-all duration-300 ease-out leading-none"
         style={{
-          fontSize: "9px",
+          fontSize: "10px",
           color: isActive ? "#F5F5F7" : "#6B7280",
           opacity: isActive ? 1 : 0.75,
           transform: isActive ? "translateY(0px)" : "translateY(1px)",
@@ -232,7 +232,7 @@ const BottomNav = () => {
                 <span
                   className="relative z-10 font-semibold tracking-wide transition-all duration-300 ease-out leading-none"
                   style={{
-                    fontSize: "9px",
+                    fontSize: "10px",
                     color: isMoreActive ? "#F5F5F7" : "#6B7280",
                     opacity: isMoreActive ? 1 : 0.75,
                     transform: isMoreActive ? "translateY(0px)" : "translateY(1px)",
@@ -254,7 +254,7 @@ const BottomNav = () => {
               </SheetHeader>
               
               {/* Grid Layout of more items */}
-              <div className="grid grid-cols-3 gap-3 p-1">
+              <div className="grid grid-cols-2 gap-3 p-1">
                 {moreLinks.map((item) => {
                   const Icon = item.icon;
                   const isActive = pathname.startsWith(item.to);

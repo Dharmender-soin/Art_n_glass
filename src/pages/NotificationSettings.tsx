@@ -70,16 +70,25 @@ export default function NotificationSettings() {
     },
   });
 
-  const { data: integrationShowrooms = whatsHubShowrooms } = useQuery({
+type IntegrationShowroom = {
+  id: string;
+  name: string;
+  whatsapp_group_id?: string | null;
+  whatsapp_planning_enabled?: boolean | null;
+};
+
+  const { data: rawIntegrationShowrooms } = useQuery<IntegrationShowroom[]>({
     queryKey: ["whatshub-integration-showrooms", whatsHubShowrooms.map((showroom) => showroom.id).join(",")],
     enabled: role === "admin" && whatsHubShowrooms.length > 0,
     retry: false,
     queryFn: async () => {
       const { data, error } = await supabase.from("showrooms").select("id, name, whatsapp_group_id, whatsapp_planning_enabled").order("name");
       if (error) return whatsHubShowrooms.map((showroom) => ({ ...showroom, whatsapp_group_id: null, whatsapp_planning_enabled: true }));
-      return data || [];
+      return (data as IntegrationShowroom[]) || [];
     },
   });
+
+  const integrationShowrooms: IntegrationShowroom[] = rawIntegrationShowrooms || whatsHubShowrooms;
 
   useEffect(() => {
     if (!integrationShowrooms.length) return;

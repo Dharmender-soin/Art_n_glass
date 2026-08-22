@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import type { Database } from "@/integrations/supabase/types";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
@@ -454,7 +455,7 @@ const AnalyticsDashboard = () => {
   const { data: exactDashboardCounts } = useQuery({
     queryKey: ["dashboard-exact-counts", countUserIds, dateRange],
     queryFn: async () => {
-      const visitCount = async (status?: string) => {
+      const visitCount = async (status?: Database["public"]["Enums"]["visit_status"]) => {
         let q = supabase.from("visits").select("id", { count: "exact", head: true });
         if (countUserIds.length > 0) q = q.in("created_by", countUserIds);
         if (dateRange) q = q.gte("visit_date", dateRange.from).lte("visit_date", dateRange.to);
@@ -464,7 +465,7 @@ const AnalyticsDashboard = () => {
         return count || 0;
       };
 
-      const workCount = async (status?: string) => {
+      const workCount = async (status?: Database["public"]["Enums"]["work_order_status"]) => {
         let q = supabase.from("work_scope_items").select("id", { count: "exact", head: true });
         if (countUserIds.length > 0) q = q.in("created_by", countUserIds);
         if (dateRange) q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);

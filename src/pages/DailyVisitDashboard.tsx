@@ -389,7 +389,7 @@ const DailyVisitDashboard = () => {
         const plannedAt = visit.created_at ? format(new Date(visit.created_at), "dd MMM, hh:mm a") : "—";
         const checkedInAt = visit.check_in_at ? format(new Date(visit.check_in_at), "hh:mm a") : "—";
         const finishedAt = visit.done_at ? format(new Date(visit.done_at), "hh:mm a") : visit.status === "cancelled" ? format(new Date(visit.updated_at), "hh:mm a") : "—";
-        const statusLabel = String(visit.status || "planned").replaceAll("_", " ");
+        const statusLabel = String(visit.status || "planned").replace(/_/g, " ");
         const remarks = visit.remarks || (visit.status === "cancelled" ? "Cancellation reason not recorded" : "—");
         return `<tr>
           <td><b>${escapeReportHtml(getEntityName(visit))}</b><span class="visit-tag ${entityType.toLowerCase()}">${entityType}</span><small>${escapeReportHtml(address)}</small></td>

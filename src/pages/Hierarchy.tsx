@@ -949,7 +949,7 @@ const Hierarchy = () => {
     queryKey: ["wos-h3-exact-stats", role, user?.id, showroomIds, fExec, fShowroom, exactStatsCreatorIds, canUseExactWosStats],
     enabled: canAccess && !!user && canUseExactWosStats,
     queryFn: async () => {
-      const countWos = async (status?: string) => {
+      const countWos = async (status?: WorkStatus) => {
         let q = supabase.from("work_scope_items").select("id", { count: "exact", head: true });
         if (exactStatsCreatorIds.length > 0) q = q.in("created_by", exactStatsCreatorIds);
         if (status) q = q.eq("work_status", status);

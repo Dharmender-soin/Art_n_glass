@@ -152,7 +152,7 @@ const PivotTable = ({
   isClosed: boolean;
   onStatusClick: (rec: WOSRecord) => void;
   onProjectStatusClick: (clientId: string, clientName: string, currentStatus: string) => void;
-  onManageWos: (clientId: string, clientName: string) => void;
+  onManageWos: (clientId: string, clientName: string, ownerId?: string | null) => void;
   isManager: boolean;
   allWorkTypes: any[];
   expandedExecs: Record<string, boolean>;
@@ -348,7 +348,7 @@ const PivotTable = ({
                           </div>
                           <button
                             type="button"
-                            onClick={() => onManageWos(client.client_id, client.client_name)}
+                            onClick={() => onManageWos(client.client_id, client.client_name, client.created_by || null)}
                             className="mt-1 inline-flex w-full items-center justify-center gap-0.5 rounded border border-dashed border-indigo-300 px-1 py-0.5 text-[8px] font-bold text-indigo-600 hover:bg-indigo-50 dark:border-indigo-700 dark:text-indigo-300 dark:hover:bg-indigo-950/40"
                             title="Add or manage WOS for this client"
                           >
@@ -494,7 +494,7 @@ const PivotTable = ({
               <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">WOS Pipeline Items</p>
-                  <button type="button" onClick={() => onManageWos(client.client_id, client.client_name)} className="inline-flex items-center gap-1 rounded-md border border-indigo-200 px-2 py-1 text-[9px] font-bold text-indigo-600">
+                  <button type="button" onClick={() => onManageWos(client.client_id, client.client_name, client.created_by || null)} className="inline-flex items-center gap-1 rounded-md border border-indigo-200 px-2 py-1 text-[9px] font-bold text-indigo-600">
                     <Plus className="h-3 w-3" /> Add WOS
                   </button>
                 </div>
@@ -558,7 +558,7 @@ const Hierarchy = () => {
   const [selectedCell, setSelectedCell] = useState<WOSRecord|null>(null);
   const [updateStatus, setUpdateStatus] = useState<WorkStatus>("won");
   const [statusReason, setStatusReason] = useState("");
-  const [wosClient, setWosClient] = useState<{ id: string; name: string } | null>(null);
+  const [wosClient, setWosClient] = useState<{ id: string; name: string; ownerId?: string | null } | null>(null);
   const [confirmClose, setConfirmClose] = useState<{ clientId: string; clientName: string; currentStatus: string } | null>(null);
   const [blockClose, setBlockClose] = useState<{ clientName: string; blockers: string[] } | null>(null);
   const [showClosedTable, setShowClosedTable] = useState(false);
@@ -1432,7 +1432,7 @@ const Hierarchy = () => {
               isClosed={false}
               onStatusClick={rec=>{ setSelectedCell(rec); setUpdateStatus(rec.work_status); setStatusReason(""); }}
               onProjectStatusClick={handleProjectStatusClick}
-              onManageWos={(clientId, clientName) => setWosClient({ id: clientId, name: clientName })}
+              onManageWos={(clientId, clientName, ownerId) => setWosClient({ id: clientId, name: clientName, ownerId })}
               isManager={isManager}
               allWorkTypes={allWorkTypes}
               expandedExecs={expandedExecs}
@@ -1499,7 +1499,7 @@ const Hierarchy = () => {
                     isClosed={true}
                     onStatusClick={rec=>{ setSelectedCell(rec); setUpdateStatus(rec.work_status); setStatusReason(""); }}
                     onProjectStatusClick={handleProjectStatusClick}
-                    onManageWos={(clientId, clientName) => setWosClient({ id: clientId, name: clientName })}
+                    onManageWos={(clientId, clientName, ownerId) => setWosClient({ id: clientId, name: clientName, ownerId })}
                     isManager={isManager}
                     allWorkTypes={allWorkTypes}
                     expandedExecs={expandedExecs}
@@ -1624,7 +1624,7 @@ const Hierarchy = () => {
       }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader><DialogTitle>Add / Manage WOS — {wosClient?.name}</DialogTitle></DialogHeader>
-          {wosClient && <WorkScopeSection clientId={wosClient.id} onChanged={refreshHierarchyWos} />}
+          {wosClient && <WorkScopeSection clientId={wosClient.id} createdByOverride={wosClient.ownerId} onChanged={refreshHierarchyWos} />}
         </DialogContent>
       </Dialog>
 

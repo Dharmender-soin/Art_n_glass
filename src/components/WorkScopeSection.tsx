@@ -16,7 +16,7 @@ import { Plus, Trash2, Package, Layers, FileText, Hash, CheckCircle, ShieldCheck
 
 type ExecutiveWorkStatus = "pending" | "submitted" | "won" | "lost" | "hold";
 
-const WorkScopeSection = ({ clientId }: { clientId: string }) => {
+const WorkScopeSection = ({ clientId, onChanged }: { clientId: string; onChanged?: () => void | Promise<void> }) => {
   const { user, role } = useAuth();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -71,8 +71,25 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
     },
   });
 
+  const existingWorkTypeIds = new Set(items.map((item: any) => item.work_type_id).filter(Boolean));
+  const selectedExistingItem = items.find((item: any) => item.work_type_id === workTypeId);
+  const refreshWosViews = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["work-scope", clientId] }),
+      queryClient.invalidateQueries({ queryKey: ["work-scope-counts"] }),
+      queryClient.invalidateQueries({ queryKey: ["wos-h3"] }),
+      queryClient.invalidateQueries({ queryKey: ["wos-h3-exact-stats"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard-work-items"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard-exact-counts"] }),
+    ]);
+    await onChanged?.();
+  };
+
   const addItem = useMutation({
     mutationFn: async () => {
+      if (selectedExistingItem) {
+        throw new Error("This work type is already visible for this client. Please update the existing WOS item or select another work type.");
+      }
       const { data, error } = await supabase.from("work_scope_items").insert({
         client_id: clientId,
         work_type_id: workTypeId,
@@ -83,14 +100,13 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
       }).select("id").single();
       if (error) {
         // DB unique constraint violation — duplicate WOS
-        if (error.code === "23505") throw new Error("This work type has already been added for this client. Duplicates are not allowed.");
+        if (error.code === "23505") throw new Error("This work type is already added in the database. If it is not visible here, another user/old DB constraint may be hiding or blocking it—refresh Hierarchy after migration deploy.");
         throw error;
       }
       await notifyManagement("pending", data?.id);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["work-scope", clientId] });
-      queryClient.invalidateQueries({ queryKey: ["work-scope-counts"] });
+    onSuccess: async () => {
+      await refreshWosViews();
       toast.success("Work scope item added!");
       setWorkTypeId("");
       setDescription("");
@@ -105,9 +121,8 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
       const { error } = await supabase.from("work_scope_items").delete().eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["work-scope", clientId] });
-      queryClient.invalidateQueries({ queryKey: ["work-scope-counts"] });
+    onSuccess: async () => {
+      await refreshWosViews();
       toast.success("Item removed!");
     },
   });
@@ -122,9 +137,8 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
       if (error) throw error;
       await notifyManagement("submitted", id);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["work-scope", clientId] });
-      queryClient.invalidateQueries({ queryKey: ["wos-h3"] });
+    onSuccess: async () => {
+      await refreshWosViews();
       toast.success("Quotation marked as sent!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -143,8 +157,8 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
       if (error) throw error;
       await notifyManagement(status, id);
     },
-    onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["work-scope", clientId] });
+    onSuccess: async (_, variables) => {
+      await refreshWosViews();
       queryClient.invalidateQueries({ queryKey: ["wos-pipeline", user?.id] });
       queryClient.invalidateQueries({ queryKey: ["work-scope-items-with-names"] });
       toast.success(`WOS marked as ${variables.status === "submitted" ? "Quotation" : variables.status.toUpperCase()}`);
@@ -161,8 +175,8 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
       }).eq("id", id);
       if (error) throw error;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["work-scope", clientId] });
+    onSuccess: async () => {
+      await refreshWosViews();
       toast.success("Work scope verified!");
     },
     onError: (e: Error) => toast.error(e.message),
@@ -224,12 +238,19 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                       <div key={group}>
                         <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">{group}</div>
                         {types.map((t) => (
-                          <SelectItem key={t.id} value={t.id}>{t.sub_work}</SelectItem>
+                          <SelectItem key={t.id} value={t.id} disabled={existingWorkTypeIds.has(t.id)}>
+                            {t.sub_work}{existingWorkTypeIds.has(t.id) ? " — Already added" : ""}
+                          </SelectItem>
                         ))}
                       </div>
                     ))}
                   </SelectContent>
                 </Select>
+                {selectedExistingItem && (
+                  <p className="text-xs font-medium text-amber-700">
+                    This work type is already present for this client. Choose another work type or update the existing WOS item below.
+                  </p>
+                )}
               </div>
 
               {selectedType && (
@@ -254,7 +275,7 @@ const WorkScopeSection = ({ clientId }: { clientId: string }) => {
                 </div>
               </div>
 
-              <Button type="submit" size="default" className="w-full bg-red-400 hover:bg-red-500 text-white shadow-sm mt-3" disabled={!workTypeId || addItem.isPending}>
+              <Button type="submit" size="default" className="w-full bg-red-400 hover:bg-red-500 text-white shadow-sm mt-3" disabled={!workTypeId || !!selectedExistingItem || addItem.isPending}>
                 {addItem.isPending ? "Saving..." : "Add Work Scope Item"}
               </Button>
             </form>

@@ -618,7 +618,7 @@ const Hierarchy = () => {
       toast.error(`Failed to update partner: ${err.message}`);
     },
   });
-  const { data: rawWOS=[], isLoading } = useQuery({ queryKey:["wos-h3", user?.id, role, showroomIds], enabled:canAccess && !!user,
+  const { data: rawWOS=[], isLoading, refetch: refetchRawWOS } = useQuery({ queryKey:["wos-h3", user?.id, role, showroomIds], enabled:canAccess && !!user,
     queryFn: async()=>{
       let creatorIds: string[] | null = null;
 
@@ -648,6 +648,14 @@ const Hierarchy = () => {
       });
     }
   });
+
+  const refreshHierarchyWos = async () => {
+    await Promise.all([
+      refetchRawWOS(),
+      queryClient.invalidateQueries({ queryKey: ["wos-h3"] }),
+      queryClient.invalidateQueries({ queryKey: ["wos-h3-exact-stats"] }),
+    ]);
+  };
 
   const { data: allClients=[] } = useQuery({ queryKey:["clients-h3", user?.id, role, showroomIds], enabled:canAccess && !!user,
     queryFn: async()=>{
@@ -853,7 +861,7 @@ const Hierarchy = () => {
           created_by: creatorId === "unassigned" ? "" : creatorId
         };
       }
-      const pName = wtPartnerMap[r.work_type_id];
+      const pName = wtPartnerMap[r.work_type_id] || r.master_work_types?.sub_work || r.master_work_types?.type_of_work || "";
       if (pName && !cl.partners.includes(pName)) cl.partners.push(pName);
     });
     let res = Array.from(em.values()).map(item => item.exec).sort((a, b) => a.executive_name.localeCompare(b.executive_name));
@@ -1595,10 +1603,15 @@ const Hierarchy = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={!!wosClient} onOpenChange={(open) => !open && setWosClient(null)}>
+      <Dialog open={!!wosClient} onOpenChange={(open) => {
+        if (!open) {
+          setWosClient(null);
+          void refreshHierarchyWos();
+        }
+      }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader><DialogTitle>Add / Manage WOS — {wosClient?.name}</DialogTitle></DialogHeader>
-          {wosClient && <WorkScopeSection clientId={wosClient.id} />}
+          {wosClient && <WorkScopeSection clientId={wosClient.id} onChanged={refreshHierarchyWos} />}
         </DialogContent>
       </Dialog>
 

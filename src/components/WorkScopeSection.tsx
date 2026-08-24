@@ -16,7 +16,14 @@ import { Plus, Trash2, Package, Layers, FileText, Hash, CheckCircle, ShieldCheck
 
 type ExecutiveWorkStatus = "pending" | "submitted" | "won" | "lost" | "hold";
 
-const WorkScopeSection = ({ clientId, onChanged }: { clientId: string; onChanged?: () => void | Promise<void> }) => {
+type WorkScopeSectionProps = {
+  clientId: string;
+  /** When WOS is created from Hierarchy, keep it under the client owner's pipeline. */
+  createdByOverride?: string | null;
+  onChanged?: () => void | Promise<void>;
+};
+
+const WorkScopeSection = ({ clientId, createdByOverride, onChanged }: WorkScopeSectionProps) => {
   const { user, role } = useAuth();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -24,11 +31,12 @@ const WorkScopeSection = ({ clientId, onChanged }: { clientId: string; onChanged
   const [description, setDescription] = useState("");
   const [quantity, setQuantity] = useState("");
 
-  const notifyManagement = async (status: ExecutiveWorkStatus, itemId?: string) => {
+  const notifyManagement = async (status: ExecutiveWorkStatus, itemId?: string, ownerId?: string | null) => {
     try {
+      const profileUserId = ownerId || user!.id;
       const [{ data: client }, { data: profile }] = await Promise.all([
         supabase.from("clients").select("name").eq("id", clientId).maybeSingle(),
-        supabase.from("profiles").select("full_name").eq("user_id", user!.id).maybeSingle(),
+        supabase.from("profiles").select("full_name").eq("user_id", profileUserId).maybeSingle(),
       ]);
       const executiveName = profile?.full_name || user?.email || "Executive";
       const clientName = client?.name || "Client";
@@ -90,24 +98,42 @@ const WorkScopeSection = ({ clientId, onChanged }: { clientId: string; onChanged
       if (selectedExistingItem) {
         throw new Error("This work type is already visible for this client. Please update the existing WOS item or select another work type.");
       }
-      const { data, error } = await supabase.from("work_scope_items").insert({
-        client_id: clientId,
-        work_type_id: workTypeId,
-        description: description || null,
-        quantity: quantity ? parseInt(quantity) : null,
-        work_status: "pending",  // Always start as WOS — executive marks quotation separately
-        created_by: user!.id,
-      }).select("id").single();
+      const preferredCreatorId = createdByOverride || user!.id;
+      const insertForCreator = (creatorId: string) => supabase.from("work_scope_items").insert({
+          client_id: clientId,
+          work_type_id: workTypeId,
+          description: description || null,
+          quantity: quantity ? parseInt(quantity) : null,
+          work_status: "pending",  // Always start as WOS — executive marks quotation separately
+          created_by: creatorId,
+        }).select("id,created_by").single();
+
+      let { data, error } = await insertForCreator(preferredCreatorId);
+      let usedFallbackCreator = false;
+      if (
+        error &&
+        createdByOverride &&
+        createdByOverride !== user!.id &&
+        (error.code === "42501" || /row-level security|permission|not authorized/i.test(error.message || ""))
+      ) {
+        ({ data, error } = await insertForCreator(user!.id));
+        usedFallbackCreator = !error;
+      }
       if (error) {
         // DB unique constraint violation — duplicate WOS
         if (error.code === "23505") throw new Error("This work type is already added in the database. If it is not visible here, another user/old DB constraint may be hiding or blocking it—refresh Hierarchy after migration deploy.");
         throw error;
       }
-      await notifyManagement("pending", data?.id);
+      await notifyManagement("pending", data?.id, data?.created_by || preferredCreatorId);
+      return { usedFallbackCreator };
     },
-    onSuccess: async () => {
+    onSuccess: async (result) => {
       await refreshWosViews();
-      toast.success("Work scope item added!");
+      if (result?.usedFallbackCreator) {
+        toast.warning("Work scope item added. Deploy the latest WOS owner migration so Hierarchy can always place it under the client owner.");
+      } else {
+        toast.success("Work scope item added!");
+      }
       setWorkTypeId("");
       setDescription("");
       setQuantity("");

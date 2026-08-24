@@ -796,9 +796,10 @@ const Hierarchy = () => {
       const clientObj = r.clients as any;
       const clientProjStatus = clientObj.project_status || "active";
       if (clientProjStatus !== statusFilter) return;
-      // Older WOS rows can have a missing creator. In that case use the
-      // owning client's creator so the row stays under the correct person.
-      const creatorId = r.created_by || clientObj.created_by || "unassigned";
+      // Hierarchy is client-owner based. A WOS can be added by Admin/TL/Manager
+      // from this screen, but it must still appear under the executive who owns
+      // the client; otherwise it shows inside the dialog but not on that row.
+      const creatorId = clientObj.created_by || r.created_by || "unassigned";
       const creatorShowroom = showroomMap[creatorId] ?? null;
       if (fShowroom !== "all" && creatorShowroom !== fShowroom) return;
       if (fExec !== "all" && creatorId !== fExec) return;
@@ -858,7 +859,7 @@ const Hierarchy = () => {
           verified_at: r.verified_at,
           quantity: r.quantity,
           description: r.description,
-          created_by: creatorId === "unassigned" ? "" : creatorId
+          created_by: r.created_by || (creatorId === "unassigned" ? "" : creatorId)
         };
       }
       const pName = wtPartnerMap[r.work_type_id] || r.master_work_types?.sub_work || r.master_work_types?.type_of_work || "";
@@ -951,7 +952,7 @@ const Hierarchy = () => {
     return [];
   }, [allClients, fExec, fShowroom, rawWOS, role, showroomIds, showroomMap, user?.id]);
 
-  const canUseExactWosStats = !fSearch.trim();
+  const canUseExactWosStats = !fSearch.trim() && fExec === "all" && fShowroom === "all";
 
   const { data: exactWosStats } = useQuery({
     queryKey: ["wos-h3-exact-stats", role, user?.id, showroomIds, fExec, fShowroom, exactStatsCreatorIds, canUseExactWosStats],
@@ -983,20 +984,21 @@ const Hierarchy = () => {
     let total = 0, won = 0, quotation = 0, lost = 0, pending = 0;
     rawWOS.forEach(r => {
       if (!r.clients) return;
+      const ownerId = (r.clients as any).created_by || r.created_by || "";
       
       // Filter by showroom
-      const execShowroom = showroomMap[r.created_by] ?? null;
+      const execShowroom = showroomMap[ownerId] ?? null;
       if (fShowroom !== "all" && execShowroom !== fShowroom) return;
       
       // Filter by executive
-      if (fExec !== "all" && r.created_by !== fExec) return;
+      if (fExec !== "all" && ownerId !== fExec) return;
       
       // Filter by search
       if (fSearch.trim()) {
         const q = fSearch.toLowerCase();
         const clientName = r.clients.name.toLowerCase();
         const clientAddress = (r.clients.address || "").toLowerCase();
-        const execName = (profileMap[r.created_by] || "").toLowerCase();
+        const execName = (profileMap[ownerId] || "").toLowerCase();
         if (!clientName.includes(q) && !clientAddress.includes(q) && !execName.includes(q)) return;
       }
 
@@ -1031,7 +1033,18 @@ const Hierarchy = () => {
     };
   }, [rawWOS, allClients, fExec, fShowroom, fSearch, showroomMap, profileMap, exactWosStats]);
 
-  const execList = useMemo(()=>[...new Map(rawWOS.map(r=>[r.created_by,profileMap[r.created_by]||"Unknown"])).entries()].map(([id,name])=>({id,name})).sort((a,b)=>a.name.localeCompare(b.name)),[rawWOS,profileMap]);
+  const execList = useMemo(()=>{
+    const entries = new Map<string, string>();
+    allClients.forEach((client: any) => {
+      const ownerId = client?.created_by;
+      if (ownerId) entries.set(ownerId, profileMap[ownerId] || "Unknown");
+    });
+    rawWOS.forEach((row) => {
+      const ownerId = (row.clients as any)?.created_by || row.created_by;
+      if (ownerId) entries.set(ownerId, profileMap[ownerId] || "Unknown");
+    });
+    return [...entries.entries()].map(([id,name])=>({id,name})).sort((a,b)=>a.name.localeCompare(b.name));
+  },[allClients, rawWOS, profileMap]);
   const hasFilters = fShowroom!=="all"||fExec!=="all"||fStatus!=="all"||fSearch!=="";
   const activeRows = activePivot.reduce((s,e)=>s+e.clients.length,0);
   const closedRows = closedPivot.reduce((s,e)=>s+e.clients.length,0);

@@ -401,7 +401,10 @@ const DailyVisitDashboard = () => {
     };
     const executiveCards = execData.map((exec) => {
       const showroomName = showrooms.find((showroom) => showroom.id === exec.showroomId)?.name || "—";
-      const ydayActual = exec.ydayVisits.filter((visit) => visit.status !== "planned");
+      // "Actual" is the completed count shown in the executive header and KPIs.
+      // Cancelled visits still belong in yesterday's planning history, but must not
+      // be mixed into the completed/actual table.
+      const ydayActual = exec.ydayVisits.filter((visit) => visit.status === "done");
       return `<article class="executive-card">
         <div class="executive-head"><b>${escapeReportHtml(exec.name)}</b><span>${escapeReportHtml(showroomName)} · Planned(Y): ${exec.ydayPlanned} · Actual(Y): ${exec.ydayDone} · Planned(Today): ${exec.todayPlanned}</span></div>
         <section class="visit-section planning"><h3>Planning (Yesterday)</h3><table><thead><tr><th>Client / Partner</th><th>Purpose, Status & WOS</th><th>Timeline & Remarks</th></tr></thead><tbody>${renderRows(exec.ydayVisits, "planning")}</tbody></table></section>
@@ -413,7 +416,7 @@ const DailyVisitDashboard = () => {
       <style>
         .daily-report-summary { margin-bottom: 10px; text-align: left; }
         .executive-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; align-items: start; }
-        .executive-card { border: 1px solid #b8c3cf; break-inside: avoid; page-break-inside: avoid; background: #fff; }
+        .executive-card { border: 1px solid #b8c3cf; background: #fff; }
         .executive-head { min-height: 28px; padding: 6px 7px; background: #dff1ff; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
         .executive-head b { color: #101828; font-size: 10px; }
         .executive-head span { color: #475467; font-size: 7px; text-align: right; }
@@ -431,7 +434,31 @@ const DailyVisitDashboard = () => {
         .empty-data td { height: 23px; color: #98a2b3; text-align: center; font-style: italic; }
         .actual h3 { background: #fff0bf; }
         .today h3 { background: #fff5ce; }
-        @media print { .executive-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+        @media print {
+          /* Chromium fragments CSS grid rows poorly when one executive has long
+             remarks. A single print column is both denser (wider tables wrap less)
+             and lets the browser paginate cleanly between report sections. */
+          .executive-grid { display: block; }
+          .executive-card {
+            margin-bottom: 9px;
+            break-inside: auto;
+            page-break-inside: auto;
+          }
+          .executive-head,
+          .visit-section h3 {
+            break-after: avoid-page;
+            page-break-after: avoid;
+          }
+          .visit-section {
+            break-inside: avoid-page;
+            page-break-inside: avoid;
+          }
+          .visit-section thead { display: table-header-group; }
+          .visit-section tr {
+            break-inside: avoid;
+            page-break-inside: avoid;
+          }
+        }
       </style>
       <div class="meta daily-report-summary"><b>Selected date:</b> ${escapeReportHtml(format(parseISO(selectedDate), "dd MMM yyyy"))} &nbsp;·&nbsp; <b>Showroom:</b> ${escapeReportHtml(showroomLabel)} &nbsp;·&nbsp; <b>Executive search:</b> ${escapeReportHtml(searchExec || "None")}</div>
       <div class="kpis"><div class="kpi"><b>${pdfStats.ydayPlanned}</b><span>Yesterday planned</span></div><div class="kpi"><b>${pdfStats.ydayDone}</b><span>Yesterday done</span></div><div class="kpi"><b>${pdfStats.todayPlanned}</b><span>Today planned</span></div><div class="kpi"><b>${pdfSuccessRate}%</b><span>Success rate</span></div><div class="kpi"><b>${execData.length}</b><span>Executives</span></div></div>

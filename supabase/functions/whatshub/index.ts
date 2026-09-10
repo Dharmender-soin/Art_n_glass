@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { parseTestTarget } from "./test-target.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -34,7 +35,7 @@ serve(async (req) => {
       const { data: { user }, error: authError } = await userClient.auth.getUser();
       if (authError || !user) return json({ error: "Unauthorized" }, 401);
       const { data: roles } = await admin.from("user_roles").select("role, showroom_id").eq("user_id", user.id).eq("is_active", true);
-      const authorized = (roles || []).find((row) => allowedRoles.has(row.role));
+      const authorized = (roles || []).find((row) => row.role === "admin") || (roles || []).find((row) => allowedRoles.has(row.role));
       if (!authorized) return json({ error: "Only TL, Manager, Admin or MD can send internal showroom messages" }, 403);
       caller = { id: user.id, role: authorized.role, showroomIds: [...new Set((roles || []).map((row) => row.showroom_id).filter(Boolean))] as string[] };
     }
@@ -42,6 +43,31 @@ serve(async (req) => {
     const body = await req.json();
     const action = String(body.action || "");
     const canUseShowroom = (showroomId: string) => isCron || caller?.role === "admin" || caller?.role === "md" || caller?.showroomIds.includes(showroomId);
+
+    if (action === "send_test") {
+      if (caller?.role !== "admin") return json({ error: "Only admin can send integration tests" }, 403);
+      const recipient = parseTestTarget(String(body.target || ""), !!body.showroomId);
+      const showroomId = body.showroomId ? String(body.showroomId) : null;
+      if (showroomId) {
+        const { data, error } = await admin.from("showrooms").select("id").eq("id", showroomId).single();
+        if (error || !data) return json({ error: "Showroom not found" }, 400);
+      }
+      const message = "Art N Glass — WhatsApp integration test. If you received this message, this destination is reachable.";
+      const response = await fetch(recipient.kind === "group"
+        ? `${WHATSHUB_BASE_URL}/api/groups/${encodeURIComponent(recipient.target)}/message`
+        : `${WHATSHUB_BASE_URL}/api/messages/send`, {
+        method: "POST",
+        headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify(recipient.kind === "group" ? { message, slot: 1 } : {
+          to: recipient.target, message, type: "text", slot: 1, idempotencyKey: crypto.randomUUID(),
+        }),
+      });
+      const result = await response.json().catch(() => null);
+      const accepted = response.ok && result?.success !== false && result?.ok !== false && !result?.error;
+      await admin.from("whatshub_message_logs").insert({ showroom_id: showroomId, message_type: "integration_test", message, recipient_count: 1, success_count: accepted ? 1 : 0, status: accepted ? "sent" : "failed", created_by: caller.id });
+      if (!accepted) return json({ error: `WhatsHub rejected the test (HTTP ${response.status}). Check the saved API key, connected WhatsApp session and destination.` }, 400);
+      return json({ accepted: true, target: recipient.target });
+    }
 
     const sendToShowroom = async (showroomId: string, message: string, messageType: string) => {
       if (!canUseShowroom(showroomId)) throw new Error("You cannot message this showroom");

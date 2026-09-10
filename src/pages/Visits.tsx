@@ -17,7 +17,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { format, isToday, isTomorrow, parseISO, addDays } from "date-fns";
 import type { Database } from "@/integrations/supabase/types";
 import { sendNotification } from "@/lib/notifications";
-import { calculateDistance, calculateRouteDistance } from "@/lib/utils";
+import { calculateDistance } from "@/lib/utils";
+import { calculateConveyanceDistance } from "@/lib/calculateConveyanceDistance";
 import { fetchAllRows } from "@/lib/fetchAllRows";
 import { useJsApiLoader, Autocomplete } from "@react-google-maps/api";
 import { useSearchParams } from "react-router-dom";
@@ -438,11 +439,13 @@ const Visits = () => {
       let fromLat: number | null = null;
       let fromLng: number | null = null;
       let fromLocationName = "Unknown Location";
+      let fromTime: string | null = null;
 
       if (lastVisit && lastVisit.gps_latitude && lastVisit.gps_longitude) {
          fromLat = lastVisit.gps_latitude;
          fromLng = lastVisit.gps_longitude;
          fromLocationName = lastVisit.address || "Previous Visit";
+         fromTime = lastVisit.done_at;
       } else {
          const { data: attendance } = await supabase.from("daily_attendance")
            .select("*")
@@ -454,6 +457,7 @@ const Visits = () => {
             fromLat = attendance.check_in_lat;
             fromLng = attendance.check_in_lng;
             fromLocationName = "Start Day Check-In";
+            fromTime = attendance.created_at;
          }
       }
 
@@ -473,19 +477,22 @@ const Visits = () => {
         return null;
       }
 
+      const doneAt = new Date().toISOString();
       const { error } = await supabase.from("visits").update({
         status: "done" as VisitStatus,
         remarks,
         photo_url: photoPath,
         gps_latitude: gpsLat,
         gps_longitude: gpsLng,
-        done_at: new Date().toISOString(),
+        done_at: doneAt,
       }).eq("id", visitId);
       if (error) throw error;
 
       let convResult = null;
-      if (fromLat && fromLng && profile?.conveyance_type) {
-         const distance = await calculateRouteDistance(fromLat, fromLng, gpsLat, gpsLng);
+      if (fromLat != null && fromLng != null && fromTime && profile?.conveyance_type) {
+         const distance = await calculateConveyanceDistance(user!.id,
+           { lat: fromLat, lng: fromLng, timestamp: fromTime },
+           { lat: gpsLat, lng: gpsLng, timestamp: doneAt });
          const amount = Number((distance * (profile.conveyance_rate || 0)).toFixed(2));
          
          const { data: currentVisit } = await supabase.from("visits").select("address").eq("id", visitId).single();

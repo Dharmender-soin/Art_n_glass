@@ -126,7 +126,7 @@ type IntegrationShowroom = {
 
   const sendPlanningMutation = useMutation({
     mutationFn: () => sendShowroomPlanningNow(whatsHubShowroom),
-    onSuccess: () => toast.success("10:30 planning summary sent"),
+    onSuccess: () => toast.success("WhatsHub accepted the planning report. Check WhatsApp to confirm receipt."),
     onError: (error: Error) => toast.error(error.message),
   });
 
@@ -151,10 +151,10 @@ type IntegrationShowroom = {
         const visitLines = personVisits.length
           ? personVisits.map((visit, visitIndex) => {
             const targetName = visit.clients?.name || visit.partners?.name || "Unlinked visit";
-            return `${visitIndex + 1}) ${targetName} — ${visit.purpose || "Purpose not specified"}`;
+            return `${visitIndex + 1}. ${targetName} — ${visit.purpose || "Purpose not specified"}`;
           }).join("\n")
           : "No planned visits";
-        return `*${personIndex + 1}. ${profile.full_name || "Executive"}*\n${visitLines}`;
+        return `*${personIndex + 1}. ${profile.full_name || "Executive"}*\n\n${visitLines}`;
       }).join("\n\n");
       return `*DAILY PLANNED VISITS REPORT*\n*Showroom:* ${showroom.name}\n*Date:* ${today}\n\n${sections || "No active team members found."}\n\n*Total planned visits: ${(visits || []).length}*\n— Art N Glass`;
     },
@@ -530,6 +530,8 @@ type IntegrationShowroom = {
                 </Button>
               </div>
               {planningPreview && <pre className="whitespace-pre-wrap rounded-xl border bg-slate-950 p-4 text-xs leading-5 text-slate-100">{planningPreview}</pre>}
+              {sendPlanningMutation.error && <p role="alert" className="text-sm text-destructive">{sendPlanningMutation.error.message}</p>}
+              {sendPlanningMutation.isSuccess && <p role="status" className="text-sm text-emerald-600">WhatsHub accepted the planning report. Check the destination in WhatsApp to confirm receipt.</p>}
               <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
                 Automatic planning runs daily at 10:30 AM IST. A configured Group JID receives one group message; otherwise the same summary is delivered individually to showroom staff and logged centrally.
               </p>

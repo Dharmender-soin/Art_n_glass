@@ -19,7 +19,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { RaceCountdown } from "@/components/dashboard/ChampionBanner";
 
-import { calculateRouteDistance } from "@/lib/utils";
+import { calculateConveyanceDistance } from "@/lib/calculateConveyanceDistance";
 
 type Visit = Omit<Database["public"]["Tables"]["visits"]["Row"], "status"> & {
     status: "planned" | "in_progress" | "done" | "cancelled";
@@ -339,6 +339,7 @@ export const ExecutiveHome = () => {
             });
             const gpsLat = pos.coords.latitude;
             const gpsLng = pos.coords.longitude;
+            const endAt = new Date().toISOString();
 
             const { data: profile } = await supabase.from("profiles").select("conveyance_type, conveyance_rate").eq("user_id", user.id).single();
 
@@ -354,19 +355,24 @@ export const ExecutiveHome = () => {
             let fromLat: number | null = null;
             let fromLng: number | null = null;
             let fromLocationName = "Unknown Location";
+            let fromTime: string | null = null;
 
             if (lastVisit && lastVisit.gps_latitude && lastVisit.gps_longitude) {
                 fromLat = lastVisit.gps_latitude;
                 fromLng = lastVisit.gps_longitude;
                 fromLocationName = lastVisit.address || "Last Visit";
+                fromTime = lastVisit.done_at;
             } else if (todayAttendance) {
                 fromLat = todayAttendance.check_in_lat;
                 fromLng = todayAttendance.check_in_lng;
                 fromLocationName = "Start Day Location";
+                fromTime = todayAttendance.created_at;
             }
 
-            if (fromLat && fromLng && profile?.conveyance_type) {
-                const distance = await calculateRouteDistance(fromLat, fromLng, gpsLat, gpsLng);
+            if (fromLat != null && fromLng != null && fromTime && profile?.conveyance_type) {
+                const distance = await calculateConveyanceDistance(user.id,
+                    { lat: fromLat, lng: fromLng, timestamp: fromTime },
+                    { lat: gpsLat, lng: gpsLng, timestamp: endAt });
                 const amount = Number((distance * (profile.conveyance_rate || 0)).toFixed(2));
 
                 // Office-to-home commute check: starts at showroom/office and ends at "End Day Location"

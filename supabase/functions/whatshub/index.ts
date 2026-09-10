@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { parseTestTarget } from "./test-target.ts";
+import { reportDefinitions, indiaDate, reportDue, weekStart, buildReport, allRows } from "./reports.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -71,13 +72,15 @@ serve(async (req) => {
 
     const sendToShowroom = async (showroomId: string, message: string, messageType: string) => {
       if (!canUseShowroom(showroomId)) throw new Error("You cannot message this showroom");
-      const [{ data: showroom }, { data: roleRows }] = await Promise.all([
+      const [showroomResult, roleRows] = await Promise.all([
         admin.from("showrooms").select("id, name, whatsapp_group_id").eq("id", showroomId).single(),
-        admin.from("user_roles").select("user_id").eq("showroom_id", showroomId).eq("is_active", true),
+        allRows(admin.from("user_roles").select("user_id,role").eq("showroom_id", showroomId).eq("is_active", true).order("id")),
       ]);
+      if (showroomResult.error) throw showroomResult.error;
+      const showroom = showroomResult.data;
       if (!showroom) throw new Error("Showroom not found");
       const groupJid = String(showroom.whatsapp_group_id || "").trim();
-      if (groupJid) {
+      if (groupJid && messageType !== "conveyance") {
         if (!groupJid.endsWith("@g.us")) throw new Error("Invalid WhatsApp Group ID. Expected a Group JID ending in @g.us");
         const response = await fetch(`${WHATSHUB_BASE_URL}/api/groups/${encodeURIComponent(groupJid)}/message`, {
           method: "POST",
@@ -105,8 +108,8 @@ serve(async (req) => {
         };
       }
 
-      const userIds = [...new Set((roleRows || []).map((row) => row.user_id))];
-      const { data: profiles } = userIds.length ? await admin.from("profiles").select("user_id, full_name, phone").in("user_id", userIds) : { data: [] };
+      const userIds = [...new Set((roleRows || []).filter(row => messageType !== "conveyance" || ["manager", "md", "admin"].includes(row.role)).map((row) => row.user_id))];
+      const profiles = userIds.length ? await allRows(admin.from("profiles").select("user_id, full_name, phone").in("user_id", userIds).order("user_id")) : [];
       const recipients = (profiles || []).map((profile) => ({ ...profile, phone: normalizePhone(profile.phone || "") })).filter((profile) => profile.phone.length >= 11);
 
       const results = await Promise.all(recipients.map(async (recipient) => {
@@ -144,42 +147,93 @@ serve(async (req) => {
       return json(await sendToShowroom(showroomId, message, "manual_internal"));
     }
 
-    if (action === "send_planning_summaries") {
-      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-      // A user explicitly sending one showroom is independent of its daily schedule switch.
-      let showroomsQuery = admin.from("showrooms").select("id, name");
-      if (isCron || !body.showroomId) showroomsQuery = showroomsQuery.eq("whatsapp_planning_enabled", true);
-      if (body.showroomId && !canUseShowroom(String(body.showroomId))) return json({ error: "You cannot message this showroom" }, 403);
-      if (body.showroomId) showroomsQuery = showroomsQuery.eq("id", String(body.showroomId));
-      const { data: showrooms, error: showroomError } = await showroomsQuery;
-      if (showroomError) throw showroomError;
-      if (!isCron && !showrooms?.length) return json({ error: "No showroom selected for delivery. Nothing was sent." }, 400);
-      const output = [];
-
-      for (const showroom of showrooms || []) {
-        if (!canUseShowroom(showroom.id)) continue;
-        const { data: roles } = await admin.from("user_roles").select("user_id").eq("showroom_id", showroom.id).eq("is_active", true);
-        const userIds = [...new Set((roles || []).map((row) => row.user_id))];
-        const [{ data: profiles }, { data: visits }] = await Promise.all([
-          userIds.length ? admin.from("profiles").select("user_id, full_name").in("user_id", userIds) : Promise.resolve({ data: [] }),
-          userIds.length ? admin.from("visits").select("created_by, status, purpose, clients(name), partners(name)").eq("visit_date", today).in("created_by", userIds).neq("status", "cancelled") : Promise.resolve({ data: [] }),
-        ]);
-        const visitsByPerson = new Map<string, any[]>();
-        (visits || []).forEach((visit) => visitsByPerson.set(visit.created_by, [...(visitsByPerson.get(visit.created_by) || []), visit]));
-        const sections = (profiles || []).map((profile, personIndex) => {
-          const personVisits = visitsByPerson.get(profile.user_id) || [];
-          const visitLines = personVisits.length
-            ? personVisits.map((visit, visitIndex) => {
-              const targetName = visit.clients?.name || visit.partners?.name || "Unlinked visit";
-              return `${visitIndex + 1}. ${targetName} — ${visit.purpose || "Purpose not specified"}`;
-            }).join("\n")
-            : "No planned visits";
-          return `*${personIndex + 1}. ${profile.full_name || "Executive"}*\n\n${visitLines}`;
-        }).join("\n\n");
-        const message = `*DAILY PLANNED VISITS REPORT*\n*Showroom:* ${showroom.name}\n*Date:* ${today}\n\n${sections || "No active team members found."}\n\n*Total planned visits: ${(visits || []).length}*\n— Art N Glass`;
-        output.push(await sendToShowroom(showroom.id, message, "daily_planning"));
+    const loadReport = async (showroomId: string, key: string) => {
+      if (!canUseShowroom(showroomId)) throw new Error("You cannot access this showroom");
+      const definition = reportDefinitions.find(r => r.key === key);
+      if (!definition) throw new Error("Unknown report");
+      if (key === "conveyance" && !isCron && !["admin","md","manager"].includes(caller?.role || "")) throw new Error("Only management can access conveyance reports");
+      const { data: showroom, error } = await admin.from("showrooms").select("name").eq("id", showroomId).single();
+      if (error) throw error;
+      const roles = await allRows(admin.from("user_roles").select("user_id").eq("showroom_id", showroomId).eq("role", "executive").eq("is_active", true).order("id"));
+      const ids = [...new Set(roles.map(r => r.user_id))];
+      const today = indiaDate();
+      const start = definition.weekly ? weekStart(today) : today;
+      const people = ids.length ? await allRows(admin.from("profiles").select("user_id,full_name").in("user_id",ids).order("user_id")) : [];
+      let visits: any[] = [], claims: any[] = [], clients: any[] = [];
+      if (ids.length) {
+        if (key === "conveyance") {
+          claims = await allRows(admin.from("conveyance_records").select("*").in("user_id",ids).gte("date",start).lte("date",today).order("id"));
+        } else {
+          let query = admin.from("visits").select("*,clients(name),partners(name)").in("created_by",ids).neq("status","cancelled").lte("visit_date",today).order("id");
+          query = key === "followups" ? query.eq("status","planned") : query.gte("visit_date",start);
+          visits = await allRows(query);
+          if (key === "outcomes") {
+            const upcoming = await allRows(admin.from("visits").select("created_by,client_id,partner_id,visit_date").in("created_by",ids).eq("status","planned").gt("visit_date",today).order("visit_date").order("id"));
+            visits = visits.map(v => ({...v, next_followup: upcoming.find(n => n.created_by === v.created_by && ((v.client_id && n.client_id === v.client_id) || (v.partner_id && n.partner_id === v.partner_id)))?.visit_date}));
+          }
+          if (key === "weekly_summary") {
+            const end = new Date(Date.parse(today+"T00:00:00+05:30")+86400000).toISOString();
+            clients = await allRows(admin.from("clients").select("created_by,status").in("created_by",ids).gte("created_at",start+"T00:00:00+05:30").lt("created_at",end).order("id"));
+          }
+        }
       }
-      return json({ results: output });
+      return buildReport(key,showroom.name,today,people,visits,claims,clients);
+    };
+    if (action === "report_settings" || action === "save_report_setting") {
+      const showroomId = String(body.showroomId || "");
+      if (!canUseShowroom(showroomId)) return json({error:"Forbidden"},403);
+      if (action === "save_report_setting") {
+        if (caller?.role !== "admin") return json({error:"Only admin can change report schedules"},403);
+        if (!reportDefinitions.some(r => r.key === body.reportKey) || typeof body.enabled !== "boolean") throw new Error("Invalid report setting");
+        const result = body.reportKey === "daily_planning"
+          ? await admin.from("showrooms").update({whatsapp_planning_enabled:body.enabled}).eq("id",showroomId).select("id").single()
+          : await admin.from("whatshub_report_settings").upsert({showroom_id:showroomId,report_key:body.reportKey,enabled:body.enabled});
+        if (result.error) throw result.error;
+        return json({saved:true});
+      }
+      const {data: showroom,error} = await admin.from("showrooms").select("whatsapp_planning_enabled").eq("id",showroomId).single();
+      if (error) throw error;
+      const settings = await allRows(admin.from("whatshub_report_settings").select("report_key,enabled").eq("showroom_id",showroomId).order("report_key"));
+      return json({reports:reportDefinitions.map(r => ({...r,enabled:r.key === "daily_planning" ? showroom.whatsapp_planning_enabled : settings.find(s => s.report_key === r.key)?.enabled === true}))});
+    }
+    if (action === "preview_report" || action === "send_report") {
+      const showroomId = String(body.showroomId || "");
+      const key = String(body.reportKey || "");
+      const message = await loadReport(showroomId,key);
+      if (action === "preview_report") return json({message});
+      return json(await sendToShowroom(showroomId,message,key));
+    }
+    if (action === "run_scheduled_reports" || action === "send_planning_summaries") {
+      if (action === "run_scheduled_reports" && !isCron) return json({error:"Scheduler authentication required"},403);
+      if (!isCron) {
+        const id = String(body.showroomId || "");
+        if (!id) throw new Error("Select a showroom");
+        return json({results:[await sendToShowroom(id,await loadReport(id,"daily_planning"),"daily_planning")]});
+      }
+      const showrooms = await allRows(admin.from("showrooms").select("id,whatsapp_planning_enabled").order("id"));
+      const settings = await allRows(admin.from("whatshub_report_settings").select("*").eq("enabled",true).order("showroom_id").order("report_key"));
+      const results = [];
+      const now = new Date();
+      for (const showroom of showrooms) for (const report of reportDefinitions) {
+        const enabled = report.key === "daily_planning" ? showroom.whatsapp_planning_enabled : settings.some(s => s.showroom_id === showroom.id && s.report_key === report.key);
+        if (!enabled || !reportDue(report.key,now)) continue;
+        const run = {showroom_id:showroom.id, report_key:report.key, report_date:indiaDate(now)};
+        const {error: claimError} = await admin.from("whatshub_report_runs").insert(run);
+        if (claimError?.code === "23505") continue;
+        if (claimError) throw claimError;
+        try {
+          const delivery = await sendToShowroom(showroom.id,await loadReport(showroom.id,report.key),report.key);
+          if (!delivery.recipients || delivery.sent !== delivery.recipients) throw new Error("Incomplete delivery");
+          const {error} = await admin.from("whatshub_report_runs").update({status:"sent"}).match(run);
+          if (error) throw error;
+          results.push(delivery);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          await admin.from("whatshub_report_runs").update({status:"failed",error:message}).match(run);
+          results.push({showroom:showroom.id,report:report.key,error:message});
+        }
+      }
+      return json({results});
     }
     return json({ error: "Unsupported WhatsHub action" }, 400);
   } catch (error) {

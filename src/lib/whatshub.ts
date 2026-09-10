@@ -23,3 +23,12 @@ export const sendShowroomPlanningNow = async (showroomId?: string) => {
   return result;
 };
 export const sendWhatsHubTest = (target: string, showroomId?: string) => invoke({ action: "send_test", target, ...(showroomId ? { showroomId } : {}) });
+
+export const getReportSettings = (showroomId: string) => invoke({ action: "report_settings", showroomId });
+export const saveReportSetting = (showroomId: string, reportKey: string, enabled: boolean) => invoke({ action: "save_report_setting", showroomId, reportKey, enabled });
+export const previewReport = (showroomId: string, reportKey: string) => invoke({ action: "preview_report", showroomId, reportKey });
+export async function sendReport(showroomId: string, reportKey: string) {
+  const result = await invoke({ action: "send_report", showroomId, reportKey });
+  if (!result?.recipients || result.sent !== result.recipients) throw new Error(`Report delivery incomplete (${result?.sent || 0}/${result?.recipients || 0}). Check saved recipients and delivery logs.`);
+  return result;
+}

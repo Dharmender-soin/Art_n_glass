@@ -1,4 +1,6 @@
 BEGIN;
+CREATE EXTENSION IF NOT EXISTS pg_net;
+CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE TABLE IF NOT EXISTS public.whatshub_report_settings (
   showroom_id uuid NOT NULL REFERENCES public.showrooms(id) ON DELETE CASCADE,
   report_key text NOT NULL CHECK (report_key IN ('plan_actual','followups','outcomes','weekly_summary','conveyance')),

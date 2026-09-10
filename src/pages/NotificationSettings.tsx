@@ -23,6 +23,7 @@ import {
   triggerEndDayReminder,
 } from "@/lib/scheduledReportGenerator";
 import { sendInternalShowroomMessage, sendShowroomPlanningNow } from "@/lib/whatshub";
+import { WhatsHubTestButton } from "@/components/WhatsHubTestButton";
 
 export default function NotificationSettings() {
   const { user, role, loading, showroomId, showroomIds } = useAuth();
@@ -31,6 +32,7 @@ export default function NotificationSettings() {
   const [whatsHubShowroom, setWhatsHubShowroom] = useState("");
   const [internalMessage, setInternalMessage] = useState("");
   const [planningPreview, setPlanningPreview] = useState("");
+  const [testDestination, setTestDestination] = useState("");
   const [integrationForm, setIntegrationForm] = useState({
     apiKey: "",
     cronSecret: "",
@@ -59,13 +61,13 @@ export default function NotificationSettings() {
     if (!whatsHubShowroom && whatsHubShowrooms[0]?.id) setWhatsHubShowroom(whatsHubShowrooms[0].id);
   }, [whatsHubShowroom, whatsHubShowrooms]);
 
-  const { data: integrationStatus = { api_key_configured: false, cron_secret_configured: false, project_url_configured: false, anon_key_configured: false, setup_ready: false } } = useQuery({
-    queryKey: ["whatshub-integration-status"],
+  const { data: integrationStatus = { api_key_configured: false, cron_secret_configured: false, project_url_configured: false, anon_key_configured: false, setup_ready: false }, error: integrationError, isFetching: checkingIntegration, refetch: recheckIntegration } = useQuery({
+    queryKey: ["whatshub-integration-status", user?.id],
     enabled: role === "admin",
     retry: false,
     queryFn: async () => {
       const { data, error } = await (supabase.rpc as any)("get_whatshub_integration_status");
-      if (error) return { api_key_configured: false, cron_secret_configured: false, project_url_configured: false, anon_key_configured: false, setup_ready: false };
+      if (error) throw new Error(error.message);
       return { ...(data || {}), setup_ready: true };
     },
   });
@@ -90,23 +92,13 @@ type IntegrationShowroom = {
 
   const integrationShowrooms: IntegrationShowroom[] = rawIntegrationShowrooms || whatsHubShowrooms;
 
-  useEffect(() => {
-    if (!integrationShowrooms.length) return;
-    setShowroomGroups((current) => {
-      const next = { ...current };
-      integrationShowrooms.forEach((showroom) => {
-        if (!next[showroom.id]) next[showroom.id] = { groupId: showroom.whatsapp_group_id || "", planningEnabled: showroom.whatsapp_planning_enabled ?? true };
-      });
-      return next;
-    });
-  }, [integrationShowrooms]);
-
   const saveIntegrationMutation = useMutation({
     mutationFn: async () => {
-      const groups = integrationShowrooms.map((showroom) => ({
-        showroom_id: showroom.id,
-        group_id: showroomGroups[showroom.id]?.groupId || "",
-        planning_enabled: showroomGroups[showroom.id]?.planningEnabled ?? true,
+      // Send only edited rows. A delayed/failed read must never clear saved groups.
+      const groups = Object.entries(showroomGroups).map(([id, group]) => ({
+        showroom_id: id,
+        group_id: group.groupId.trim(),
+        planning_enabled: group.planningEnabled,
       }));
       const { error } = await (supabase.rpc as any)("configure_whatshub_integration", {
         p_api_key: integrationForm.apiKey.trim() || null,
@@ -369,12 +361,12 @@ type IntegrationShowroom = {
 
         <Button
           variant="default"
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
+          onClick={() => activeSection === "integrations" && role === "admin" ? saveIntegrationMutation.mutate() : saveMutation.mutate()}
+          disabled={activeSection === "integrations" ? saveIntegrationMutation.isPending : saveMutation.isPending}
           className="gap-2 font-bold shadow-md shrink-0 bg-white text-red-700 hover:bg-red-50"
         >
-          {saveMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          Save Settings
+          {(activeSection === "integrations" ? saveIntegrationMutation.isPending : saveMutation.isPending) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+          {activeSection === "integrations" ? "Save Integration Securely" : "Save Settings"}
         </Button>
       </div>
 
@@ -409,14 +401,17 @@ type IntegrationShowroom = {
           <Card className="border-indigo-200 shadow-sm dark:border-indigo-900/60">
             <CardHeader className="bg-gradient-to-r from-indigo-50 to-background dark:from-indigo-950/30">
               <CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5 text-indigo-600" /> WhatsHub Integration</CardTitle>
-              <CardDescription>Admin-only secure configuration. Secret values are sent directly to Supabase Vault, are never saved in localStorage, and are never shown again.</CardDescription>
+              <CardDescription>Credentials are saved securely in Supabase Vault. After saving or refreshing, secret fields stay blank; the Configured badge confirms a saved value. Leave a secret blank to keep its saved value. Values you have not saved are lost on refresh.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-5 p-5">
-              {!integrationStatus.setup_ready && (
+              {integrationError && (
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-                  Deploy the admin integration migration first. Until then this form cannot save credentials.
+                  <p>Could not check saved integration credentials. If the integration functions are missing, apply the WhatsHub integration repair SQL in Supabase.</p>
+                  <p className="mt-1 break-words" role="alert">{integrationError.message}</p>
+                  <Button type="button" variant="outline" size="sm" className="mt-2" disabled={checkingIntegration} onClick={() => { void recheckIntegration(); queryClient.invalidateQueries({ queryKey: ["whatshub-integration-showrooms"] }); }}>Recheck Connection</Button>
                 </div>
               )}
+              {checkingIntegration && <p className="text-xs text-muted-foreground" role="status">Checking saved credentials…</p>}
               <div className="grid gap-4 sm:grid-cols-2">
                 {[
                   { key: "apiKey" as const, label: "WhatsHub API Key", placeholder: "Enter a new API key", configured: integrationStatus.api_key_configured },
@@ -445,25 +440,39 @@ type IntegrationShowroom = {
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base"><MessageCircle className="h-5 w-5 text-emerald-600" /> Showroom WhatsApp Groups</CardTitle>
-              <CardDescription>Store a separate Group JID for every showroom and control its daily 10:30 report.</CardDescription>
+              <CardDescription>Store a separate Group JID for every showroom and control its daily 10:30 report. Send Test uses the Group JID currently entered, even before saving, and sends one test message using the saved API key.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {integrationShowrooms.map((showroom) => {
-                const group = showroomGroups[showroom.id] || { groupId: "", planningEnabled: true };
+                const group = showroomGroups[showroom.id] || { groupId: showroom.whatsapp_group_id || "", planningEnabled: showroom.whatsapp_planning_enabled ?? true };
                 return (
-                  <div key={showroom.id} className="grid gap-3 rounded-xl border p-3 sm:grid-cols-[180px_1fr_auto] sm:items-center">
+                  <div key={showroom.id} className="grid gap-3 rounded-xl border p-3 lg:grid-cols-[140px_minmax(0,1fr)_auto_auto] lg:items-center">
                     <p className="text-sm font-bold">{showroom.name}</p>
                     <Input value={group.groupId} onChange={(event) => setShowroomGroups((current) => ({ ...current, [showroom.id]: { ...group, groupId: event.target.value } }))} placeholder="WhatsApp Group JID (12345@g.us)" />
                     <div className="flex items-center gap-2"><Label className="text-xs">10:30 report</Label><Switch checked={group.planningEnabled} onCheckedChange={(checked) => setShowroomGroups((current) => ({ ...current, [showroom.id]: { ...group, planningEnabled: checked } }))} /></div>
+                    <WhatsHubTestButton target={group.groupId} showroomId={showroom.id} />
                   </div>
                 );
               })}
               <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
                 A configured Group JID receives the message through WhatsHub's group endpoint. If a showroom has no Group JID, delivery safely falls back to its active staff phone numbers.
               </div>
-              <Button type="button" onClick={() => saveIntegrationMutation.mutate()} disabled={saveIntegrationMutation.isPending || !integrationStatus.setup_ready} className="gap-2">
+              {saveIntegrationMutation.error && <p role="alert" className="text-sm text-destructive">Integration was not saved: {saveIntegrationMutation.error.message}</p>}
+              <Button type="button" onClick={() => saveIntegrationMutation.mutate()} disabled={saveIntegrationMutation.isPending} className="gap-2">
                 {saveIntegrationMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />} Save Integration Securely
               </Button>
+            </CardContent>
+          </Card>
+          <Card className="shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-base">Test a Number or Group</CardTitle>
+              <CardDescription>Send one test message using the saved WhatsHub API key. This does not change showroom groups or schedules.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Label htmlFor="whatshub-test-destination">WhatsApp number or Group JID</Label>
+              <Input id="whatshub-test-destination" value={testDestination} onChange={(event) => setTestDestination(event.target.value)} placeholder="+919876543210 or 12345@g.us" />
+              <p className="text-xs text-muted-foreground">Include the country code. Indian 10-digit numbers use +91 automatically. For groups, enter the full ID ending in @g.us.</p>
+              <WhatsHubTestButton target={testDestination} />
             </CardContent>
           </Card>
         </div>

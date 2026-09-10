@@ -22,8 +22,9 @@ import {
   triggerStartDayReminder,
   triggerEndDayReminder,
 } from "@/lib/scheduledReportGenerator";
-import { sendInternalShowroomMessage, sendShowroomPlanningNow } from "@/lib/whatshub";
+import { sendInternalShowroomMessage, sendShowroomPlanningNow, previewReport } from "@/lib/whatshub";
 import { WhatsHubTestButton } from "@/components/WhatsHubTestButton";
+import { WhatsHubReports } from "@/components/WhatsHubReports";
 
 export default function NotificationSettings() {
   const { user, role, loading, showroomId, showroomIds } = useAuth();
@@ -113,6 +114,8 @@ type IntegrationShowroom = {
       setIntegrationForm((current) => ({ ...current, apiKey: "", cronSecret: "", anonKey: "" }));
       queryClient.invalidateQueries({ queryKey: ["whatshub-integration-status"] });
       queryClient.invalidateQueries({ queryKey: ["whatshub-integration-showrooms"] });
+      queryClient.invalidateQueries({ queryKey: ["whatsapp-reports"] });
+      setShowroomGroups({});
       toast.success("WhatsHub integration saved securely in Supabase Vault");
     },
     onError: (error: Error) => toast.error(error.message),
@@ -131,33 +134,7 @@ type IntegrationShowroom = {
   });
 
   const previewPlanningMutation = useMutation({
-    mutationFn: async () => {
-      const showroom = whatsHubShowrooms.find((item) => item.id === whatsHubShowroom);
-      if (!showroom) throw new Error("Select a showroom first");
-      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-      const { data: roles, error: rolesError } = await supabase.from("user_roles").select("user_id").eq("showroom_id", showroom.id).eq("is_active", true);
-      if (rolesError) throw rolesError;
-      const userIds = [...new Set((roles || []).map((item) => item.user_id))];
-      const [{ data: profiles, error: profilesError }, { data: visits, error: visitsError }] = await Promise.all([
-        userIds.length ? supabase.from("profiles").select("user_id, full_name").in("user_id", userIds) : Promise.resolve({ data: [], error: null }),
-        userIds.length ? supabase.from("visits").select("created_by, status, purpose, clients(name), partners(name)").eq("visit_date", today).in("created_by", userIds).neq("status", "cancelled") : Promise.resolve({ data: [], error: null }),
-      ]);
-      if (profilesError) throw profilesError;
-      if (visitsError) throw visitsError;
-      const visitsByPerson = new Map<string, any[]>();
-      (visits || []).forEach((visit) => visitsByPerson.set(visit.created_by, [...(visitsByPerson.get(visit.created_by) || []), visit]));
-      const sections = (profiles || []).map((profile, personIndex) => {
-        const personVisits = visitsByPerson.get(profile.user_id) || [];
-        const visitLines = personVisits.length
-          ? personVisits.map((visit, visitIndex) => {
-            const targetName = visit.clients?.name || visit.partners?.name || "Unlinked visit";
-            return `${visitIndex + 1}. ${targetName} — ${visit.purpose || "Purpose not specified"}`;
-          }).join("\n")
-          : "No planned visits";
-        return `*${personIndex + 1}. ${profile.full_name || "Executive"}*\n\n${visitLines}`;
-      }).join("\n\n");
-      return `*DAILY PLANNED VISITS REPORT*\n*Showroom:* ${showroom.name}\n*Date:* ${today}\n\n${sections || "No active team members found."}\n\n*Total planned visits: ${(visits || []).length}*\n— Art N Glass`;
-    },
+    mutationFn: async () => (await previewReport(whatsHubShowroom, "daily_planning")).message,
     onSuccess: (message) => setPlanningPreview(message),
     onError: (error: Error) => toast.error(error.message),
   });
@@ -541,6 +518,7 @@ type IntegrationShowroom = {
             </CardContent>
           </Card>
 
+          <WhatsHubReports showroomId={whatsHubShowroom} />
           <div className="grid gap-5 lg:grid-cols-2">
             <Card className="shadow-sm"><CardHeader><CardTitle className="text-base">Internal automation rules</CardTitle><CardDescription>Useful, consolidated in-app and phone notifications.</CardDescription></CardHeader><CardContent className="space-y-3">
               {[

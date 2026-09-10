@@ -84,16 +84,18 @@ serve(async (req) => {
           headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
           body: JSON.stringify({ message, slot: 1 }),
         });
+        const providerResult = await response.json().catch(() => null);
+        const accepted = response.ok && providerResult?.success !== false && providerResult?.ok !== false && !providerResult?.error;
         await admin.from("whatshub_message_logs").insert({
           showroom_id: showroomId,
           message_type: messageType,
           message,
           recipient_count: 1,
-          success_count: response.ok ? 1 : 0,
-          status: response.ok ? "sent" : "failed",
+          success_count: accepted ? 1 : 0,
+          status: accepted ? "sent" : "failed",
           created_by: caller?.id || null,
         });
-        if (!response.ok) throw new Error(`WhatsHub group delivery failed (${response.status})`);
+        if (!accepted) throw new Error(`WhatsHub group delivery failed (${response.status})`);
         return {
           showroom: showroom.name,
           recipients: 1,
@@ -116,12 +118,13 @@ serve(async (req) => {
             message,
             type: "text",
             slot: 1,
-            idempotencyKey: messageType === "daily_planning"
+            idempotencyKey: messageType === "daily_planning" && isCron
               ? `${messageType}-${showroomId}-${recipient.user_id}-${new Date().toISOString().slice(0, 10)}`
               : crypto.randomUUID(),
           }),
         });
-        return { userId: recipient.user_id, ok: response.ok, status: response.status };
+        const providerResult = await response.json().catch(() => null);
+        return { userId: recipient.user_id, ok: response.ok && providerResult?.success !== false && providerResult?.ok !== false && !providerResult?.error, status: response.status };
       }));
       const successCount = results.filter((result) => result.ok).length;
       await admin.from("whatshub_message_logs").insert({ showroom_id: showroomId, message_type: messageType, message, recipient_count: recipients.length, success_count: successCount, status: recipients.length > 0 && successCount === recipients.length ? "sent" : successCount > 0 ? "partial" : "failed", created_by: caller?.id || null });
@@ -143,10 +146,14 @@ serve(async (req) => {
 
     if (action === "send_planning_summaries") {
       const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-      let showroomsQuery = admin.from("showrooms").select("id, name").eq("whatsapp_planning_enabled", true);
+      // A user explicitly sending one showroom is independent of its daily schedule switch.
+      let showroomsQuery = admin.from("showrooms").select("id, name");
+      if (isCron || !body.showroomId) showroomsQuery = showroomsQuery.eq("whatsapp_planning_enabled", true);
+      if (body.showroomId && !canUseShowroom(String(body.showroomId))) return json({ error: "You cannot message this showroom" }, 403);
       if (body.showroomId) showroomsQuery = showroomsQuery.eq("id", String(body.showroomId));
       const { data: showrooms, error: showroomError } = await showroomsQuery;
       if (showroomError) throw showroomError;
+      if (!isCron && !showrooms?.length) return json({ error: "No showroom selected for delivery. Nothing was sent." }, 400);
       const output = [];
 
       for (const showroom of showrooms || []) {
@@ -164,10 +171,10 @@ serve(async (req) => {
           const visitLines = personVisits.length
             ? personVisits.map((visit, visitIndex) => {
               const targetName = visit.clients?.name || visit.partners?.name || "Unlinked visit";
-              return `${visitIndex + 1}) ${targetName} — ${visit.purpose || "Purpose not specified"}`;
+              return `${visitIndex + 1}. ${targetName} — ${visit.purpose || "Purpose not specified"}`;
             }).join("\n")
             : "No planned visits";
-          return `*${personIndex + 1}. ${profile.full_name || "Executive"}*\n${visitLines}`;
+          return `*${personIndex + 1}. ${profile.full_name || "Executive"}*\n\n${visitLines}`;
         }).join("\n\n");
         const message = `*DAILY PLANNED VISITS REPORT*\n*Showroom:* ${showroom.name}\n*Date:* ${today}\n\n${sections || "No active team members found."}\n\n*Total planned visits: ${(visits || []).length}*\n— Art N Glass`;
         output.push(await sendToShowroom(showroom.id, message, "daily_planning"));

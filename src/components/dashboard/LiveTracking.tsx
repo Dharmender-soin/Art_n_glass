@@ -15,7 +15,7 @@ import {
   MapPin, Navigation, Clock, Users, Calendar, ChevronRight,
   CheckCircle2, XCircle, AlertCircle, Activity, Route,
   Building2, ArrowLeft, Layers, Zap, Timer, Car, Bike, Target,
-  Search, Gauge,
+  Search, Gauge, RefreshCw,
 } from "lucide-react";
 import { format, formatDistanceToNow, differenceInMinutes } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { fetchAllRows } from "@/lib/fetchAllRows";
+import { withLocationTelemetryFallback } from "@/lib/locationTelemetry";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const containerStyle = { width: "100%", height: "100%", borderRadius: "0.75rem" };
@@ -59,7 +60,6 @@ interface ExecutiveLocation {
   showroom_id?: string;
   showroom_name?: string;
   current_address?: string; // reverse geocoded
-  is_live?: boolean;
   conveyance_type?: string;
   _role?: string;
   accuracy_m?: number | null;
@@ -191,6 +191,12 @@ export const LiveTracking = () => {
   const [teamCount, setTeamCount] = useState(0);
   const [presentCount, setPresentCount] = useState(0);
   const [locationsLoading, setLocationsLoading] = useState(true);
+  const [locationsRefreshing, setLocationsRefreshing] = useState(false);
+  const [locationsError, setLocationsError] = useState<string | null>(null);
+  const [historyWarning, setHistoryWarning] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const [, setClock] = useState(0);
+  const refreshLocationsRef = useRef<() => void>(() => {});
   const [directions, setDirections] = useState<google.maps.DirectionsResult | null>(null);
   const [showTraffic, setShowTraffic] = useState(false);
   const [distMatrix, setDistMatrix] = useState<DistMatrixResult | null>(null);
@@ -199,7 +205,7 @@ export const LiveTracking = () => {
   const isAdminOrMd = role === "admin" || role === "md";
   const isToday = selectedDate === format(new Date(), "yyyy-MM-dd");
 
-  const { isLoaded } = useJsApiLoader({
+  const { isLoaded, loadError } = useJsApiLoader({
     id: "google-map-script",
     googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
     libraries,
@@ -207,158 +213,227 @@ export const LiveTracking = () => {
 
   // ── Fetch live locations + enrich with reverse geocode ──────────────────────
   useEffect(() => {
+    let disposed = false;
+    let inFlight = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+    let generation = 0;
+    setLocationsLoading(true);
+    setLiveLocations([]);
+    setLastSyncAt(null);
+    setLocationsError(null);
+    setHistoryWarning(false);
     const fetchLocations = async () => {
-      setLocationsLoading(true);
-      const dayStart = new Date();
-      dayStart.setHours(0, 0, 0, 0);
-      const [{ data: locData }, { data: profiles }, { data: showrooms }, { data: attendanceRows }, historyRows] = await Promise.all([
-        supabase.from("live_locations").select("*"),
-        supabase.from("profiles").select("user_id, full_name, conveyance_type"),
-        supabase.from("showrooms").select("id, name"),
-        supabase.from("daily_attendance").select("user_id").eq("date", format(new Date(), "yyyy-MM-dd")),
-        fetchAllRows<any>((from, to) => (supabase as any)
-          .from("location_history")
-          .select("user_id, lat, lng, timestamp, accuracy_m, speed_mps, bearing_deg")
-          .gte("timestamp", dayStart.toISOString())
-          .order("timestamp", { ascending: false })
-          .range(from, to)),
-      ]);
-      const showroomMap = Object.fromEntries((showrooms || []).map(s => [s.id, s.name]));
+      if (disposed || inFlight) return;
+      inFlight = true;
+      const requestGeneration = ++generation;
+      setLocationsRefreshing(true);
+      try {
+        const dayStart = new Date();
+        dayStart.setHours(0, 0, 0, 0);
+        let historyFailed = false;
+        const [locationsResult, profilesResult, showroomsResult, attendanceResult, historyRows] = await Promise.all([
+          supabase.from("live_locations").select("*"),
+          supabase.from("profiles").select("user_id, full_name, conveyance_type"),
+          supabase.from("showrooms").select("id, name"),
+          supabase.from("daily_attendance").select("user_id").eq("date", format(new Date(), "yyyy-MM-dd")),
+          fetchAllRows<any>((from, to) => withLocationTelemetryFallback(() => (supabase as any)
+            .from("location_history")
+            .select("user_id, lat, lng, timestamp, accuracy_m, speed_mps, bearing_deg")
+            .gte("timestamp", dayStart.toISOString())
+            .order("timestamp", { ascending: false })
+            .range(from, to), () => (supabase as any)
+            .from("location_history")
+            .select("user_id, lat, lng, timestamp")
+            .gte("timestamp", dayStart.toISOString())
+            .order("timestamp", { ascending: false })
+            .range(from, to))).catch((error) => {
+              console.warn("[LiveTracking] Location history unavailable:", error);
+              historyFailed = true;
+              return [];
+            }),
+        ]);
+        for (const result of [locationsResult, profilesResult, showroomsResult, attendanceResult]) {
+          if (result.error) throw result.error;
+        }
+        const { data: locData } = locationsResult;
+        const { data: profiles } = profilesResult;
+        const { data: showrooms } = showroomsResult;
+        const { data: attendanceRows } = attendanceResult;
+        const showroomMap = Object.fromEntries((showrooms || []).map(s => [s.id, s.name]));
 
-      let rolesList: { user_id: string; role: string; showroom_id: string | null; showroom_name: string }[] = [];
-      const isManager = role === "manager";
+        let rolesList: { user_id: string; role: string; showroom_id: string | null; showroom_name: string }[] = [];
+        const isManager = role === "manager";
 
-      if (isManager && showroomIds && showroomIds.length > 0) {
-        const results = await Promise.all(
-          showroomIds.map(async (sid) => {
-            const { data, error } = await supabase.rpc("get_showroom_leaderboard", { p_showroom_id: sid });
-            if (error) return [];
-            return ((data || []) as { user_id: string; role: string }[]).map((item) => ({
-              user_id: item.user_id,
-              role: item.role,
-              showroom_id: sid,
-              showroom_name: showroomMap[sid] || "—"
-            }));
-          })
+        if (isManager && showroomIds && showroomIds.length > 0) {
+          const results = await Promise.all(
+            showroomIds.map(async (sid) => {
+              const { data, error } = await supabase.rpc("get_showroom_leaderboard", { p_showroom_id: sid });
+              if (error) throw error;
+              return ((data || []) as { user_id: string; role: string }[]).map((item) => ({
+                user_id: item.user_id,
+                role: item.role,
+                showroom_id: sid,
+                showroom_name: showroomMap[sid] || "—"
+              }));
+            })
+          );
+          rolesList = results.flat();
+        } else {
+          const { data: rawRoles, error } = await supabase.from("user_roles").select("user_id, role, showroom_id, showrooms(name)");
+          if (error) throw error;
+          rolesList = ((rawRoles || []) as { user_id: string; role: string; showroom_id: string | null; showrooms: { name: string } | null }[]).map((r) => ({
+            user_id: r.user_id,
+            role: r.role,
+            showroom_id: r.showroom_id,
+            showroom_name: r.showrooms?.name || "—"
+          }));
+        }
+
+        // Some devices keep writing location_history while an older deployment or
+        // an RLS/upsert conflict leaves live_locations stale. Use whichever source
+        // has the newest timestamp so the monitor reflects the real GPS heartbeat.
+        const latestHistory = new Map<string, any>();
+        (historyRows || []).forEach((row: any) => {
+          if (!latestHistory.has(row.user_id)) latestHistory.set(row.user_id, row);
+        });
+        const currentLocations = new Map<string, any>();
+        ((locData || []) as any[]).forEach((location) => currentLocations.set(location.user_id, location));
+        latestHistory.forEach((history, userId) => {
+          const live = currentLocations.get(userId);
+          if (!live || new Date(history.timestamp).getTime() > new Date(live.updated_at).getTime()) {
+            currentLocations.set(userId, {
+              ...live,
+              user_id: userId,
+              lat: history.lat,
+              lng: history.lng,
+              updated_at: history.timestamp,
+              accuracy_m: history.accuracy_m,
+              speed_mps: history.speed_mps,
+              bearing_deg: history.bearing_deg,
+            });
+          }
+        });
+
+        const enriched: ExecutiveLocation[] = ([...currentLocations.values()] as Array<{ user_id: string; lat: number; lng: number; updated_at: string; accuracy_m?: number | null; speed_mps?: number | null; bearing_deg?: number | null }>).map((loc) => {
+          const profile = profiles?.find((p) => p.user_id === loc.user_id);
+          const roleData = rolesList.find((r) => r.user_id === loc.user_id);
+          return {
+            user_id: loc.user_id,
+            lat: loc.lat,
+            lng: loc.lng,
+            updated_at: loc.updated_at,
+            full_name: profile?.full_name || "Unknown",
+            showroom_id: roleData?.showroom_id || undefined,
+            showroom_name: roleData?.showroom_name || "—",
+            current_address: undefined,
+            conveyance_type: profile?.conveyance_type || undefined,
+            accuracy_m: loc.accuracy_m,
+            speed_mps: loc.speed_mps,
+            bearing_deg: loc.bearing_deg,
+            _role: roleData?.role,
+          };
+        });
+
+        // Never show MD or Admin users on the live map — they are observers, not field staff
+        const withoutAdmins = enriched.filter((e) => e._role !== "md" && e._role !== "admin");
+        const filtered = isAdminOrMd
+          ? withoutAdmins
+          : (isManager && showroomIds && showroomIds.length > 0)
+            ? withoutAdmins.filter(e => e.showroom_id && showroomIds.includes(e.showroom_id))
+            : withoutAdmins.filter(e => e.showroom_id === showroomId);
+        if (disposed) return;
+        setLiveLocations(filtered);
+        setLocationsError(null);
+        setHistoryWarning(historyFailed);
+        setLastSyncAt(new Date().toISOString());
+
+        const visibleRoles = rolesList.filter((item) =>
+          item.role !== "md" && item.role !== "admin" && (
+            isAdminOrMd ||
+            (isManager && showroomIds && showroomIds.length > 0
+              ? !!item.showroom_id && showroomIds.includes(item.showroom_id)
+              : item.showroom_id === showroomId)
+          )
         );
-        rolesList = results.flat();
-      } else {
-        const { data: rawRoles } = await supabase.from("user_roles").select("user_id, role, showroom_id, showrooms(name)");
-        rolesList = ((rawRoles || []) as { user_id: string; role: string; showroom_id: string | null; showrooms: { name: string } | null }[]).map((r) => ({
-          user_id: r.user_id,
-          role: r.role,
-          showroom_id: r.showroom_id,
-          showroom_name: r.showrooms?.name || "—"
-        }));
-      }
+        const visibleUserIds = new Set(visibleRoles.map((item) => item.user_id));
+        const attendedUserIds = new Set((attendanceRows || []).map((item) => item.user_id));
+        setTeamCount(visibleUserIds.size);
+        setPresentCount([...visibleUserIds].filter((userId) => attendedUserIds.has(userId)).length);
 
-      // Some devices keep writing location_history while an older deployment or
-      // an RLS/upsert conflict leaves live_locations stale. Use whichever source
-      // has the newest timestamp so the monitor reflects the real GPS heartbeat.
-      const latestHistory = new Map<string, any>();
-      (historyRows || []).forEach((row: any) => {
-        if (!latestHistory.has(row.user_id)) latestHistory.set(row.user_id, row);
-      });
-      const currentLocations = new Map<string, any>();
-      ((locData || []) as any[]).forEach((location) => currentLocations.set(location.user_id, location));
-      latestHistory.forEach((history, userId) => {
-        const live = currentLocations.get(userId);
-        if (!live || new Date(history.timestamp).getTime() > new Date(live.updated_at).getTime()) {
-          currentLocations.set(userId, {
-            ...live,
-            user_id: userId,
-            lat: history.lat,
-            lng: history.lng,
-            updated_at: history.timestamp,
-            accuracy_m: history.accuracy_m,
-            speed_mps: history.speed_mps,
-            bearing_deg: history.bearing_deg,
+        // Build showroom list
+        const seen = new Set<string>();
+        const rooms: { id: string; name: string }[] = [];
+        filtered.forEach(e => {
+          if (e.showroom_id && !seen.has(e.showroom_id)) {
+            seen.add(e.showroom_id);
+            rooms.push({ id: e.showroom_id, name: e.showroom_name || "—" });
+          }
+        });
+        setShowroomList(rooms);
+
+        // Reverse geocode only fresh locations. Geocoding every historical marker
+        // on every refresh was the largest source of Live Map loading latency.
+        if (isLoaded && filtered.some((item) => locationFreshness(item.updated_at) !== "offline")) {
+          // Address lookups must never delay GPS results or the next refresh.
+          void Promise.all(
+            filtered.map(async (loc) => {
+              if (locationFreshness(loc.updated_at) === "offline") return loc;
+              try {
+                const addr = await reverseGeocode(loc.lat, loc.lng);
+                return { ...loc, current_address: addr };
+              } catch {
+                return loc;
+              }
+            })
+          ).then((withAddresses) => {
+            if (!disposed && generation === requestGeneration) setLiveLocations(withAddresses);
           });
         }
-      });
-
-      const enriched: ExecutiveLocation[] = ([...currentLocations.values()] as Array<{ user_id: string; lat: number; lng: number; updated_at: string; accuracy_m?: number | null; speed_mps?: number | null; bearing_deg?: number | null }>).map((loc) => {
-        const profile = profiles?.find((p) => p.user_id === loc.user_id);
-        const roleData = rolesList.find((r) => r.user_id === loc.user_id);
-        const minsAgo = differenceInMinutes(new Date(), new Date(loc.updated_at));
-        const isLive = minsAgo <= 5;
-        return {
-          user_id: loc.user_id,
-          lat: loc.lat,
-          lng: loc.lng,
-          updated_at: loc.updated_at,
-          full_name: profile?.full_name || "Unknown",
-          showroom_id: roleData?.showroom_id || undefined,
-          showroom_name: roleData?.showroom_name || "—",
-          current_address: undefined,
-          is_live: isLive,
-          conveyance_type: profile?.conveyance_type || undefined,
-          accuracy_m: loc.accuracy_m,
-          speed_mps: loc.speed_mps,
-          bearing_deg: loc.bearing_deg,
-          _role: roleData?.role,
-        };
-      });
-
-      // Never show MD or Admin users on the live map — they are observers, not field staff
-      const withoutAdmins = enriched.filter((e) => e._role !== "md" && e._role !== "admin");
-      const filtered = isAdminOrMd 
-        ? withoutAdmins 
-        : (isManager && showroomIds && showroomIds.length > 0)
-          ? withoutAdmins.filter(e => e.showroom_id && showroomIds.includes(e.showroom_id))
-          : withoutAdmins.filter(e => e.showroom_id === showroomId);
-      setLiveLocations(filtered);
-
-      const visibleRoles = rolesList.filter((item) =>
-        item.role !== "md" && item.role !== "admin" && (
-          isAdminOrMd ||
-          (isManager && showroomIds && showroomIds.length > 0
-            ? !!item.showroom_id && showroomIds.includes(item.showroom_id)
-            : item.showroom_id === showroomId)
-        )
-      );
-      const visibleUserIds = new Set(visibleRoles.map((item) => item.user_id));
-      const attendedUserIds = new Set((attendanceRows || []).map((item) => item.user_id));
-      setTeamCount(visibleUserIds.size);
-      setPresentCount([...visibleUserIds].filter((userId) => attendedUserIds.has(userId)).length);
-
-      // Build showroom list
-      const seen = new Set<string>();
-      const rooms: { id: string; name: string }[] = [];
-      filtered.forEach(e => {
-        if (e.showroom_id && !seen.has(e.showroom_id)) {
-          seen.add(e.showroom_id);
-          rooms.push({ id: e.showroom_id, name: e.showroom_name || "—" });
+      } catch (error) {
+        console.error("[LiveTracking] Could not refresh locations:", error);
+        if (!disposed) setLocationsError("Live GPS status could not be verified. Check your connection and retry.");
+      } finally {
+        inFlight = false;
+        if (!disposed) {
+          setLocationsLoading(false);
+          setLocationsRefreshing(false);
         }
-      });
-      setShowroomList(rooms);
-
-      // Reverse geocode only fresh locations. Geocoding every historical marker
-      // on every refresh was the largest source of Live Map loading latency.
-      if (isLoaded && filtered.some((item) => locationFreshness(item.updated_at) !== "offline")) {
-        const withAddresses = await Promise.all(
-          filtered.map(async (loc) => {
-            if (locationFreshness(loc.updated_at) === "offline") return loc;
-            try {
-              const addr = await reverseGeocode(loc.lat, loc.lng);
-              return { ...loc, current_address: addr };
-            } catch {
-              return loc;
-            }
-          })
-        );
-        setLiveLocations(withAddresses);
       }
-      setLocationsLoading(false);
     };
 
-    fetchLocations();
+    const scheduleRefresh = () => {
+      if (refreshTimer || disposed) return;
+      refreshTimer = setTimeout(() => {
+        refreshTimer = undefined;
+        void fetchLocations();
+      }, 1000);
+    };
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void fetchLocations();
+    };
+    refreshLocationsRef.current = () => { void fetchLocations(); };
+    void fetchLocations();
+    // Realtime can disconnect on mobile or sleep; polling also ages GPS badges.
+    const poll = setInterval(() => {
+      setClock((value) => value + 1);
+      refreshWhenVisible();
+    }, 30_000);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    window.addEventListener("online", refreshWhenVisible);
     const channel = supabase
       .channel("live-tracking-v3")
-      .on("postgres_changes", { event: "*", schema: "public", table: "live_locations" }, fetchLocations)
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "location_history" }, fetchLocations)
+      .on("postgres_changes", { event: "*", schema: "public", table: "live_locations" }, scheduleRefresh)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "location_history" }, scheduleRefresh)
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      disposed = true;
+      clearInterval(poll);
+      clearTimeout(refreshTimer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+      window.removeEventListener("online", refreshWhenVisible);
+      refreshLocationsRef.current = () => {};
+      void supabase.removeChannel(channel);
+    };
   }, [role, isAdminOrMd, showroomId, showroomIds, isLoaded]);
 
   // ── Visits query ────────────────────────────────────────────────────────────
@@ -657,17 +732,21 @@ export const LiveTracking = () => {
     if (isLoaded && mapRef.current) setTimeout(fitBounds, 300);
   }, [locationHistory, filteredLocations, fitBounds, isLoaded]);
 
-  if (!isLoaded) return (
-    <div className="h-[calc(100vh-8rem)] w-full animate-pulse bg-[#1a1d27] rounded-xl border border-[#2a2d3a] flex items-center justify-center text-[#6b7280]">
-      Loading Map...
-    </div>
-  );
-
   // ─── JSX ──────────────────────────────────────────────────────────────────
   const nextPending = execVisits.find(v => v.status === "planned" && v.gps_lat && v.gps_lng);
 
   return (
     <div className="flex flex-col h-[calc(100vh-7rem)] gap-2.5 text-[#f1f5f9]">
+
+      <div className="flex items-center justify-between gap-3 text-xs">
+        <span className="text-slate-400">{lastSyncAt ? `Last checked ${format(new Date(lastSyncAt), "hh:mm:ss a")} · refreshes every 30s` : "Checking executive GPS status…"}</span>
+        <Button size="sm" variant="outline" disabled={locationsRefreshing} onClick={() => refreshLocationsRef.current()} className="gap-1.5 border-[#2a2d3a] bg-[#1a1d27]">
+          <RefreshCw className={`h-3.5 w-3.5 ${locationsRefreshing ? "animate-spin" : ""}`} />
+          {locationsError ? "Retry" : "Refresh"}
+        </Button>
+      </div>
+      {locationsError && <div role="alert" className="rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-300">{locationsError}{lastSyncAt && " Showing previously saved locations."}</div>}
+      {historyWarning && !locationsError && <div role="status" className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-xs text-amber-300">Location history is unavailable. Showing saved GPS updates; some recent updates may be missing.</div>}
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         {[
@@ -679,7 +758,7 @@ export const LiveTracking = () => {
         ].map((metric) => (
           <div key={metric.label} className="rounded-xl border border-[#2a2d3a] bg-[#1a1d27] px-3 py-2.5 shadow-sm">
             <div className="flex items-center gap-1.5"><span className={`h-1.5 w-1.5 rounded-full ${metric.dot}`} /><span className="text-[9px] font-bold uppercase tracking-wider text-[#778096]">{metric.label}</span></div>
-            <div className="mt-1 flex items-end gap-1.5"><span className={`text-xl font-black leading-none ${metric.color}`}>{metric.value}</span><span className="text-[8px] text-[#6b7280]">{metric.sub}</span></div>
+            <div className="mt-1 flex items-end gap-1.5"><span className={`text-xl font-black leading-none ${metric.color}`}>{locationsLoading || locationsError ? "—" : metric.value}</span><span className="text-[8px] text-[#6b7280]">{metric.sub}</span></div>
           </div>
         ))}
       </div>
@@ -758,11 +837,13 @@ export const LiveTracking = () => {
         <div className="flex-1" />
 
         {/* Live indicator */}
-        {filteredLocations.filter(l => l.is_live).length > 0 ? (
+        {locationsLoading || locationsError ? (
+          <span className="text-[10px] text-amber-400">{locationsLoading ? "Checking GPS…" : "GPS status unavailable"}</span>
+        ) : filteredLocations.filter(l => locationFreshness(l.updated_at) === "live").length > 0 ? (
           <div className="flex items-center gap-1.5 bg-[#1a1d27] border border-green-500/30 rounded-lg px-2.5 py-1.5 shrink-0">
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
             <span className="text-[10px] text-green-400 font-bold uppercase tracking-widest">
-              {filteredLocations.filter(l => l.is_live).length} Live
+              {filteredLocations.filter(l => locationFreshness(l.updated_at) === "live").length} Live
             </span>
           </div>
         ) : (
@@ -780,7 +861,11 @@ export const LiveTracking = () => {
 
         {/* MAP */}
         <div className="flex-1 min-h-[42vh] md:min-h-0 rounded-2xl overflow-hidden border border-[#2a2d3a] bg-[#1a1d27] relative shadow-lg">
-          <GoogleMap
+          {loadError ? (
+            <div role="alert" className="flex h-full min-h-[42vh] items-center justify-center p-6 text-center text-sm text-red-300">The map could not load. Executive GPS status is still available in the list. Reload the page to retry the map.</div>
+          ) : !isLoaded ? (
+            <div className="flex h-full min-h-[42vh] animate-pulse items-center justify-center text-sm text-slate-400">Loading Map…</div>
+          ) : <GoogleMap
             mapContainerStyle={containerStyle}
             center={defaultCenter}
             zoom={5}
@@ -904,7 +989,7 @@ export const LiveTracking = () => {
               <OverlayView position={{ lat: selectedExec.lat, lng: selectedExec.lng }} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
                 <div className="relative -translate-x-1/2 -translate-y-[calc(100%+10px)] flex flex-col items-center">
                   <div className="bg-[#dc2626] text-white rounded-xl px-2.5 py-1 min-w-max mb-1 shadow-xl">
-                    <p className="text-[10px] font-bold">📍 Now</p>
+                    <p className="text-[10px] font-bold">📍 {locationFreshness(selectedExec.updated_at) === "live" ? "Live" : "Last known"}</p>
                     {selectedExec.current_address && (
                       <p className="text-[8px] text-white/70 max-w-[150px] truncate">{selectedExec.current_address}</p>
                     )}
@@ -915,7 +1000,7 @@ export const LiveTracking = () => {
                 </div>
               </OverlayView>
             )}
-          </GoogleMap>
+          </GoogleMap>}
         </div>
 
         {/* ── RIGHT SIDEBAR ───────────────────────────────────────────────── */}
@@ -1128,13 +1213,15 @@ export const LiveTracking = () => {
                   <div className="space-y-2 p-3" aria-label="Loading executive locations">
                     {[1,2,3,4].map((item) => <div key={item} className="h-14 animate-pulse rounded-xl bg-[#252935]" />)}
                   </div>
+                ) : locationsError && !lastSyncAt ? (
+                  <p className="p-6 text-center text-xs text-red-300">Executive locations could not be loaded. Use Retry above.</p>
                 ) : filteredLocations.length === 0 ? (
                   <div className="p-8 text-center text-sm text-[#4b5563] flex flex-col items-center gap-2">
                     <Users className="h-8 w-8 opacity-30" />
-                    <p className="font-semibold text-[#9ca3af]">No saved location found</p>
-                    <p className="text-[10px]">Attendance status and GPS tracking are separate signals.</p>
+                    <p className="font-semibold text-[#9ca3af]">{statusFilter !== "all" || employeeSearch ? "No executives match these filters" : "No saved location found"}</p>
+                    <p className="text-[10px]">{statusFilter === "live" ? "No GPS update within the last 5 minutes matches this view. Check All for last known locations." : "Attendance status and GPS tracking are separate signals."}</p>
                   </div>
-                ) : [...filteredLocations].sort((a,b) => (a.is_live === b.is_live ? 0 : a.is_live ? -1 : 1)).map(loc => {
+                ) : [...filteredLocations].sort((a,b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()).map(loc => {
                   const freshness = locationFreshness(loc.updated_at);
                   return (
                     <div

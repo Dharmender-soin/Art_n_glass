@@ -21,6 +21,7 @@ import { useEffect, useRef } from "react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { withLocationTelemetryFallback } from "@/lib/locationTelemetry";
 
 // ── Plugin interface ─────────────────────────────────────────────────────────
 interface Location {
@@ -83,23 +84,20 @@ async function pushLocation(userId: string, location: Pick<Location, "latitude" 
     altitude_m: location.altitude != null && Number.isFinite(location.altitude) ? location.altitude : null,
   };
   try {
+    const basicLocation = { user_id: userId, lat: location.latitude, lng: location.longitude };
     const [liveResult, histResult] = await Promise.all([
-      supabase.from("live_locations").upsert({
-        user_id: userId,
-        lat: location.latitude,
-        lng: location.longitude,
+      withLocationTelemetryFallback(() => supabase.from("live_locations").upsert({
+        ...basicLocation,
         updated_at: now,
         recorded_at: location.time ? new Date(location.time).toISOString() : now,
         permission_status: "granted",
         ...telemetry,
-      }),
-      supabase.from("location_history").insert({
-        user_id: userId,
-        lat: location.latitude,
-        lng: location.longitude,
+      }), () => supabase.from("live_locations").upsert({ ...basicLocation, updated_at: now })),
+      withLocationTelemetryFallback(() => supabase.from("location_history").insert({
+        ...basicLocation,
         timestamp: now,
         ...telemetry,
-      }),
+      }), () => supabase.from("location_history").insert({ ...basicLocation, timestamp: now })),
     ]);
     if (liveResult.error) {
       console.error("[BGTracking] live_locations upsert error:", liveResult.error.message);

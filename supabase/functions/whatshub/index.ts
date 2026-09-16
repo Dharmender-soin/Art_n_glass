@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { parseTestTarget } from "./test-target.ts";
 import { reportDefinitions, indiaDate, reportDue, weekStart, buildReport, allRows } from "./reports.ts";
+import { createWhatsHubSender, parseWhatsHubSlot } from "./sender.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -44,6 +45,17 @@ serve(async (req) => {
     const body = await req.json();
     const action = String(body.action || "");
     const canUseShowroom = (showroomId: string) => isCron || caller?.role === "admin" || caller?.role === "md" || caller?.showroomIds.includes(showroomId);
+    // Only read the sender for actual deliveries; previews/settings need no session.
+    // Fail closed on configuration errors instead of silently using Number 1.
+    let senderPromise: Promise<ReturnType<typeof createWhatsHubSender>> | undefined;
+    const sendMessage = async (recipient: { kind: "group" | "phone"; target: string }, message: string, idempotencyKey?: string) => {
+      senderPromise ??= (async () => {
+        const { data, error } = await admin.rpc("get_whatshub_sender_slot");
+        if (error) throw new Error("WhatsApp sending number is unavailable. Ask an admin to check WhatsHub Integration settings.");
+        return createWhatsHubSender(WHATSHUB_BASE_URL, apiKey, parseWhatsHubSlot(data));
+      })();
+      return (await senderPromise)(recipient, message, idempotencyKey);
+    };
 
     if (action === "send_test") {
       if (caller?.role !== "admin") return json({ error: "Only admin can send integration tests" }, 403);
@@ -54,15 +66,7 @@ serve(async (req) => {
         if (error || !data) return json({ error: "Showroom not found" }, 400);
       }
       const message = "Art N Glass — WhatsApp integration test. If you received this message, this destination is reachable.";
-      const response = await fetch(recipient.kind === "group"
-        ? `${WHATSHUB_BASE_URL}/api/groups/${encodeURIComponent(recipient.target)}/message`
-        : `${WHATSHUB_BASE_URL}/api/messages/send`, {
-        method: "POST",
-        headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
-        body: JSON.stringify(recipient.kind === "group" ? { message, slot: 1 } : {
-          to: recipient.target, message, type: "text", slot: 1, idempotencyKey: crypto.randomUUID(),
-        }),
-      });
+      const response = await sendMessage(recipient, message);
       const result = await response.json().catch(() => null);
       const accepted = response.ok && result?.success !== false && result?.ok !== false && !result?.error;
       await admin.from("whatshub_message_logs").insert({ showroom_id: showroomId, message_type: "integration_test", message, recipient_count: 1, success_count: accepted ? 1 : 0, status: accepted ? "sent" : "failed", created_by: caller.id });
@@ -82,11 +86,7 @@ serve(async (req) => {
       const groupJid = String(showroom.whatsapp_group_id || "").trim();
       if (groupJid && messageType !== "conveyance") {
         if (!groupJid.endsWith("@g.us")) throw new Error("Invalid WhatsApp Group ID. Expected a Group JID ending in @g.us");
-        const response = await fetch(`${WHATSHUB_BASE_URL}/api/groups/${encodeURIComponent(groupJid)}/message`, {
-          method: "POST",
-          headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({ message, slot: 1 }),
-        });
+        const response = await sendMessage({ kind: "group", target: groupJid }, message);
         const providerResult = await response.json().catch(() => null);
         const accepted = response.ok && providerResult?.success !== false && providerResult?.ok !== false && !providerResult?.error;
         await admin.from("whatshub_message_logs").insert({
@@ -113,19 +113,10 @@ serve(async (req) => {
       const recipients = (profiles || []).map((profile) => ({ ...profile, phone: normalizePhone(profile.phone || "") })).filter((profile) => profile.phone.length >= 11);
 
       const results = await Promise.all(recipients.map(async (recipient) => {
-        const response = await fetch(`${WHATSHUB_BASE_URL}/api/messages/send`, {
-          method: "POST",
-          headers: { "X-API-Key": apiKey, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            to: recipient.phone,
-            message,
-            type: "text",
-            slot: 1,
-            idempotencyKey: messageType === "daily_planning" && isCron
-              ? `${messageType}-${showroomId}-${recipient.user_id}-${new Date().toISOString().slice(0, 10)}`
-              : crypto.randomUUID(),
-          }),
-        });
+        const response = await sendMessage({ kind: "phone", target: recipient.phone }, message,
+          messageType === "daily_planning" && isCron
+            ? `${messageType}-${showroomId}-${recipient.user_id}-${new Date().toISOString().slice(0, 10)}`
+            : undefined);
         const providerResult = await response.json().catch(() => null);
         return { userId: recipient.user_id, ok: response.ok && providerResult?.success !== false && providerResult?.ok !== false && !providerResult?.error, status: response.status };
       }));

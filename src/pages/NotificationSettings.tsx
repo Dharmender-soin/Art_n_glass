@@ -25,6 +25,7 @@ import {
 import { sendInternalShowroomMessage, sendShowroomPlanningNow, previewReport } from "@/lib/whatshub";
 import { WhatsHubTestButton } from "@/components/WhatsHubTestButton";
 import { WhatsHubReports } from "@/components/WhatsHubReports";
+import { WhatsHubSenderSettings } from "@/components/WhatsHubSenderSettings";
 
 export default function NotificationSettings() {
   const { user, role, loading, showroomId, showroomIds } = useAuth();
@@ -375,6 +376,7 @@ type IntegrationShowroom = {
 
       {activeSection === "integrations" && role === "admin" && (
         <div className="space-y-5">
+          <WhatsHubSenderSettings />
           <Card className="border-indigo-200 shadow-sm dark:border-indigo-900/60">
             <CardHeader className="bg-gradient-to-r from-indigo-50 to-background dark:from-indigo-950/30">
               <CardTitle className="flex items-center gap-2"><Plug className="h-5 w-5 text-indigo-600" /> WhatsHub Integration</CardTitle>

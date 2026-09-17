@@ -37,7 +37,7 @@ function ReportRow({ showroomId, report, enabled, ready }: {showroomId: string; 
 
 export function WhatsHubReports({showroomId}: {showroomId: string}) {
   const settings = useQuery({queryKey:['whatsapp-reports',showroomId],enabled:!!showroomId,queryFn:() => getReportSettings(showroomId),retry:false});
-  return <Card><CardHeader><CardTitle>WhatsApp Reports</CardTitle><CardDescription>Reports for the showroom selected above. Toggles save immediately. Test sends the actual report even when auto-send is OFF. Only active executives appear in reports.</CardDescription></CardHeader>
+  return <Card><CardHeader><CardTitle>WhatsApp Reports</CardTitle><CardDescription>Reports for the showroom selected above. Daily Planned Visits includes active Executives, Team Leaders and Managers. Other reports include active Executives. Toggles save immediately. Test sends the actual report even when auto-send is OFF.</CardDescription></CardHeader>
     <CardContent className="space-y-4">
       {settings.error && <div role="alert" className="text-sm text-destructive">Could not load saved report settings: {settings.error.message}. Apply the report SQL migration and deploy the updated WhatsHub function. <Button variant="outline" onClick={() => settings.refetch()}>Retry</Button></div>}
       {settings.isLoading && <p>Loading saved schedules…</p>}

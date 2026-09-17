@@ -20,6 +20,16 @@ export function weekStart(date: string) {
   return new Date(Date.parse(`${date}T00:00:00Z`) - 6 * 86400000).toISOString().slice(0, 10);
 }
 type Row = Record<string, any>;
+// Daily planning covers everyone responsible for showroom visits.
+export async function loadReportPeople(client: any, showroomId: string, reportKey: string): Promise<Row[]> {
+  const includedRoles = reportKey === 'daily_planning' ? ['executive', 'tl', 'manager'] : ['executive'];
+  const roles = await allRows(client.from('user_roles').select('user_id')
+    .eq('showroom_id', showroomId).in('role', includedRoles).eq('is_active', true).order('id'));
+  const userIds = [...new Set(roles.map(role => role.user_id))];
+  if (!userIds.length) return [];
+  return allRows(client.from('profiles').select('user_id,full_name').in('user_id', userIds).order('user_id'));
+}
+
 export function buildReport(key: string, showroom: string, date: string, people: Row[], visits: Row[], claims: Row[] = [], clients: Row[] = []) {
   const definition = reportDefinitions.find(r => r.key === key);
   if (!definition) throw new Error('Unknown report');
@@ -54,9 +64,10 @@ export function buildReport(key: string, showroom: string, date: string, people:
       const review = trips.filter(c => [c.from_lat,c.from_lng,c.to_lat,c.to_lng].some(x => x == null) || (c.from_lat === 0 && c.from_lng === 0) || (c.to_lat === 0 && c.to_lng === 0)).length;
       detail = `Trips: ${trips.length} | KM: ${trips.reduce((s,c) => s+Number(c.distance_km || 0),0).toFixed(1)}\nClaim: INR ${trips.reduce((s,c) => s+Number(c.amount || 0),0).toFixed(2)}\nMissing trip coordinates: ${review} — ${review ? 'Review required' : 'None'}\nGPS route continuity: not verified by this report`;
     }
-    return `*${i+1}. ${p.full_name || 'Executive'}*\n\n${detail}`;
+    return `*${i+1}. ${p.full_name || 'Staff member'}*\n\n${detail}`;
   });
-  return `*${title}*\n*Showroom:* ${showroom}\n*Date:* ${definition.weekly ? `${weekStart(date)} to ${date}` : date}\n\n${sections.join('\n\n') || 'No active executives found.'}\n\n${key === 'daily_planning' ? `*Total planned visits: ${visits.length}*\n` : ''}${key === 'followups' ? 'Based on pending visits due today or earlier.\n' : ''}${key === 'plan_actual' ? 'Plan uses visit creation time with a 10:30 AM IST cutoff.\n' : ''}${key === 'weekly_summary' ? 'Conversions show current status of clients created in this period.\n' : ''}— Art N Glass`;
+  const emptyMessage = key === 'daily_planning' ? 'No active executives, team leaders or managers found.' : 'No active executives found.';
+  return `*${title}*\n*Showroom:* ${showroom}\n*Date:* ${definition.weekly ? `${weekStart(date)} to ${date}` : date}\n\n${sections.join('\n\n') || emptyMessage}\n\n${key === 'daily_planning' ? `*Total planned visits: ${visits.length}*\n` : ''}${key === 'followups' ? 'Based on pending visits due today or earlier.\n' : ''}${key === 'plan_actual' ? 'Plan uses visit creation time with a 10:30 AM IST cutoff.\n' : ''}${key === 'weekly_summary' ? 'Conversions show current status of clients created in this period.\n' : ''}— Art N Glass`;
 }
 
 // Fetch every page and fail visibly rather than sending a truncated/empty report on errors.

@@ -1,7 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { parseTestTarget } from "./test-target.ts";
-import { reportDefinitions, indiaDate, reportDue, weekStart, buildReport, allRows } from "./reports.ts";
+import { reportDefinitions, indiaDate, reportDue, weekStart, buildReport, allRows, loadReportPeople } from "./reports.ts";
 import { createWhatsHubSender, parseWhatsHubSlot } from "./sender.ts";
 
 const corsHeaders = {
@@ -145,11 +145,10 @@ serve(async (req) => {
       if (key === "conveyance" && !isCron && !["admin","md","manager"].includes(caller?.role || "")) throw new Error("Only management can access conveyance reports");
       const { data: showroom, error } = await admin.from("showrooms").select("name").eq("id", showroomId).single();
       if (error) throw error;
-      const roles = await allRows(admin.from("user_roles").select("user_id").eq("showroom_id", showroomId).eq("role", "executive").eq("is_active", true).order("id"));
-      const ids = [...new Set(roles.map(r => r.user_id))];
+      const people = await loadReportPeople(admin, showroomId, key);
+      const ids = people.map(person => person.user_id);
       const today = indiaDate();
       const start = definition.weekly ? weekStart(today) : today;
-      const people = ids.length ? await allRows(admin.from("profiles").select("user_id,full_name").in("user_id",ids).order("user_id")) : [];
       let visits: any[] = [], claims: any[] = [], clients: any[] = [];
       if (ids.length) {
         if (key === "conveyance") {

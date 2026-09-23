@@ -6,6 +6,11 @@ In **Art N Glass**, project ref `khuqshdbpmuolyarhuud`, open SQL Editor and run
 `supabase/migrations/20260923110000_employee_names_and_tracking_access.sql` in full.
 The script is transactional and can be rerun. It needs no Edge Function deployment.
 
+If an earlier attempt failed with `column c.secondary_owner_id does not exist`,
+run `ROLLBACK;` in that SQL session, then replace the editor contents with the
+corrected full script and run it again. The fix supports databases with and
+without the optional shared-owner column; no extra column needs to be created.
+
 It fills the creator display name on existing work items and maintains it on future
 writes. Existing work-item access rules protect those names, including historical
 authors whose profiles a manager can no longer read. It also adds a scoped name

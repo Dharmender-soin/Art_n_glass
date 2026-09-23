@@ -25,7 +25,8 @@ try {
     CREATE TYPE public.app_role AS ENUM ('admin','md','manager','tl','executive');
     CREATE TABLE public.profiles(user_id uuid PRIMARY KEY, full_name text);
     CREATE TABLE public.user_roles(user_id uuid, role app_role, showroom_id uuid);
-    CREATE TABLE public.clients(id uuid PRIMARY KEY, secondary_owner_id uuid);
+    -- Production may predate the optional shared-owner migration.
+    CREATE TABLE public.clients(id uuid PRIMARY KEY);
     CREATE TABLE public.work_scope_items(id uuid PRIMARY KEY, created_by uuid, client_id uuid);
     CREATE TABLE public.daily_attendance(user_id uuid);
     CREATE TABLE public.live_locations(user_id uuid);
@@ -57,7 +58,9 @@ try {
   await db.query('INSERT INTO public.live_locations VALUES ($1)', [id(4)]);
   await db.query('INSERT INTO public.location_history VALUES ($1)', [id(4)]);
   const sql = await readFile(new URL('../migrations/20260923110000_employee_names_and_tracking_access.sql', import.meta.url), 'utf8');
-  await db.exec(sql);
+  // Reproduce the failed SQL Editor transaction and test the retry instructions.
+  await assert.rejects(() => db.exec('BEGIN; SELECT c.secondary_owner_id FROM public.clients c; COMMIT;'), /column c.secondary_owner_id does not exist/);
+  await db.exec(`ROLLBACK;\n${sql}`);
   await db.exec(sql); // Safe manual rerun.
 
   const names = () => db.query('SELECT * FROM public.get_employee_display_names($1::uuid[]) ORDER BY user_id', [[4,5,6,7].map(id)]);
@@ -81,7 +84,22 @@ try {
   assert.equal((await db.query('SELECT * FROM public.location_history')).rows.length, 1);
   await login(1, 'anon');
   await assert.rejects(names, /permission denied/);
-  console.log('PASS: SQL rerun, snapshot backfill, metadata fallback, anti-spoofing, multi-showroom scope, employee/anon isolation, MD tracking access.');
+  // The same migration must also preserve explicit shared-owner name access
+  // when this optional column is present on a newer schema.
+  await db.exec('RESET ROLE');
+  await db.exec('ALTER TABLE public.clients ADD COLUMN secondary_owner_id uuid');
+  await db.query('INSERT INTO public.clients VALUES ($1,$2)', [id(31), id(3)]);
+  await db.query('UPDATE public.work_scope_items SET client_id=$1 WHERE id=$2', [id(31), id(21)]);
+  await db.exec(sql);
+  await login(3);
+  assert.deepEqual((await names()).rows.map(row => row.full_name), ['Room A','Room B','Outside','Metadata name']);
+  await login(4);
+  assert.deepEqual((await names()).rows.map(row => row.full_name), ['Room A']);
+  await db.exec('RESET ROLE');
+  await db.query('UPDATE public.clients SET secondary_owner_id=NULL WHERE id=$1', [id(31)]);
+  await login(3);
+  assert.deepEqual((await names()).rows.map(row => row.full_name), ['Room A','Room B','Metadata name']);
+  console.log('PASS: legacy and shared-owner schemas, SQL rerun, snapshot backfill, metadata fallback, anti-spoofing, multi-showroom scope, employee/anon isolation, MD tracking access.');
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;

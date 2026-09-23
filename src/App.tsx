@@ -1,7 +1,7 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import AppLayout from "@/components/layout/AppLayout";
@@ -12,8 +12,7 @@ import { AnimatePresence } from "framer-motion";
 import PageTransition from "@/components/PageTransition";
 import { AIAssistant } from "@/components/AIAssistant";
 import { usePushNotifications } from "@/hooks/usePushNotifications";
-import { useBackgroundTracking } from "@/hooks/useBackgroundTracking";
-import { supabase } from "@/integrations/supabase/client";
+import { GlobalLocationTracker } from "@/components/GlobalLocationTracker";
 
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Partners = lazy(() => import("./pages/Partners"));
@@ -93,64 +92,6 @@ const RoleBasedHome = () => {
   const { role } = useAuth();
   if (role === "accountant") return <Navigate to="/conveyance" replace />;
   return <Dashboard />;
-};
-
-const todayKey = () => {
-  const date = new Date();
-  const yyyy = date.getFullYear();
-  const mm = String(date.getMonth() + 1).padStart(2, "0");
-  const dd = String(date.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-};
-
-const GlobalLocationTracker = () => {
-  const { user, role } = useAuth();
-  const dateStr = todayKey();
-  const canTrack =
-    role === "executive" ||
-    role === "backhand_executive" ||
-    role === "tl" ||
-    role === "manager";
-
-  const { data: todayAttendance } = useQuery({
-    queryKey: ["global-daily-attendance", user?.id, dateStr],
-    enabled: !!user?.id && canTrack,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("daily_attendance")
-        .select("id")
-        .eq("user_id", user!.id)
-        .eq("date", dateStr)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    refetchInterval: 60_000,
-  });
-
-  const { data: endDayRecord } = useQuery({
-    queryKey: ["global-end-day-record", user?.id, dateStr],
-    enabled: !!user?.id && canTrack,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("conveyance_records")
-        .select("id")
-        .eq("user_id", user!.id)
-        .eq("date", dateStr)
-        .is("visit_id", null)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
-    refetchInterval: 60_000,
-  });
-
-  useBackgroundTracking({
-    active: !!(user?.id && canTrack && todayAttendance && !endDayRecord),
-    userId: user?.id,
-  });
-
-  return null;
 };
 
 const AnimatedRoutes = () => {

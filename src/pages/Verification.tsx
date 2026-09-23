@@ -15,6 +15,8 @@ import { toast } from "sonner";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { ShieldCheck, Package, CheckCircle, XCircle, Clock, Filter, Search, Sparkles, Building2, User, FileText } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { loadEmployeeNames, unavailableEmployeeName } from "@/lib/employeeNames";
+import { fetchAllRows } from "@/lib/fetchAllRows";
 
 const Verification = () => {
   const { user, role, showroomIds } = useAuth();
@@ -30,16 +32,15 @@ const Verification = () => {
   const canAccess = role === "admin" || role === "manager" || role === "md";
 
   // Fetch all work scope items with client & work type info
-  const { data: items = [], isLoading } = useQuery({
-    queryKey: ["verification-items", showroomIds],
+  const { data: items = [], isLoading, error: itemsError, refetch: refetchItems } = useQuery({
+    queryKey: ["verification-items", user?.id, role, showroomIds],
     enabled: canAccess,
     queryFn: async () => {
-      const { data, error } = await supabase
+      return fetchAllRows<any>((from, to) => supabase
         .from("work_scope_items")
         .select("*, master_work_types(type_of_work, sub_work), clients(name, city)")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data;
+        .order("created_at", { ascending: false }).order("id")
+        .range(from, to));
     },
   });
 
@@ -66,26 +67,14 @@ const Verification = () => {
   });
 
   // Fetch profiles for executives
-  const userIds = useMemo(() => [...new Set(items.map((i: any) => i.created_by))], [items]);
-  const { data: profiles = [] } = useQuery({
-    queryKey: ["profiles-for-verification", userIds],
-    enabled: userIds.length > 0,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("user_id, full_name")
-        .in("user_id", userIds);
-      if (error) throw error;
-      return data;
-    },
+  const userIds = useMemo(() => [...new Set<string>(items.map(i => i.created_by).filter(Boolean))], [items]);
+  const { data: employeeNames, isLoading: namesLoading, error: namesError, refetch: refetchNames } = useQuery({
+    queryKey: ["profiles-for-verification", user?.id, role, showroomIds, userIds],
+    enabled: canAccess && userIds.length > 0,
+    queryFn: () => loadEmployeeNames(userIds, items.map(item => ({ user_id: item.created_by, full_name: item.creator_name }))),
+    refetchOnWindowFocus: true,
   });
-
-  const profileMap = useMemo(() => {
-    return (profiles || []).reduce((acc: any, profile: any) => {
-      acc[profile.user_id] = profile;
-      return acc;
-    }, {});
-  }, [profiles]);
+  const employeeName = (id: string) => employeeNames?.names[id] || unavailableEmployeeName(id);
 
   // Summary stats
   const stats = useMemo(() => {
@@ -244,7 +233,15 @@ const Verification = () => {
       <Separator className="bg-border/50" />
 
       {/* Main Content */}
-      {isLoading ? (
+      {itemsError && <div role="alert" className="rounded-lg border border-destructive p-4">
+        Verification items could not be loaded.
+        <Button variant="outline" className="ml-3" onClick={() => void refetchItems()}>Retry</Button>
+      </div>}
+      {(namesError || !!employeeNames?.unresolvedIds.length) && <div role="alert" className="rounded-lg border border-amber-400 p-4">
+        Some employee names could not be loaded. Retry or ask an admin to check employee profiles and name access.
+        <Button variant="outline" className="ml-3" onClick={() => void refetchNames()}>Retry names</Button>
+      </div>}
+      {isLoading || (userIds.length > 0 && namesLoading) ? (
         <div className="flex flex-col items-center justify-center py-20 gap-4">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           <p className="text-muted-foreground animate-pulse">Loading verification items...</p>
@@ -284,7 +281,7 @@ const Verification = () => {
 
                     <Accordion type="multiple" className="space-y-4">
                       {Object.entries(execGroups).map(([execId, items]: [string, any]) => {
-                        const profile = profileMap[execId];
+                        const name = employeeName(execId);
                         return (
                           <AccordionItem key={execId} value={execId} className="border rounded-lg bg-card overflow-hidden px-2">
                             <AccordionTrigger className="hover:no-underline py-3 px-2">
@@ -293,7 +290,7 @@ const Verification = () => {
                                   <User className="h-4 w-4" />
                                 </div>
                                 <div className="text-left">
-                                  <p className="font-semibold text-sm">{profile?.full_name || "Unknown Executive"}</p>
+                                  <p className="font-semibold text-sm">{name}</p>
                                   <p className="text-xs text-muted-foreground">{items.length} items</p>
                                 </div>
                                 <Badge variant="outline" className="ml-auto mr-2">
@@ -338,7 +335,7 @@ const Verification = () => {
                     <h2 className="text-lg font-bold px-4">Unassigned Showroom</h2>
                     <Accordion type="multiple" className="space-y-4">
                       {Object.entries(execGroups).map(([execId, items]: [string, any]) => {
-                        const profile = profileMap[execId];
+                        const name = employeeName(execId);
                         return (
                           <AccordionItem key={execId} value={execId} className="border rounded-lg bg-card overflow-hidden px-2">
                             <AccordionTrigger className="hover:no-underline py-3 px-2">
@@ -347,7 +344,7 @@ const Verification = () => {
                                   <User className="h-4 w-4" />
                                 </div>
                                 <div className="text-left">
-                                  <p className="font-semibold text-sm">{profile?.full_name || "Unknown Executive"}</p>
+                                  <p className="font-semibold text-sm">{name}</p>
                                   <p className="text-xs text-muted-foreground">{items.length} items</p>
                                 </div>
                                 <Badge variant="outline" className="ml-auto mr-2">
@@ -394,7 +391,7 @@ const Verification = () => {
                     }, {});
 
                     return Object.entries(execGroups).map(([execId, items]: [string, any]) => {
-                      const profile = profileMap[execId];
+                      const name = employeeName(execId);
                       return (
                           <AccordionItem key={execId} value={execId} className="border rounded-lg bg-card overflow-hidden px-2">
                           <AccordionTrigger className="hover:no-underline py-3 px-2">
@@ -403,7 +400,7 @@ const Verification = () => {
                                 <User className="h-4 w-4" />
                               </div>
                               <div className="text-left">
-                                <p className="font-semibold text-sm">{profile?.full_name || "Unknown Executive"}</p>
+                                <p className="font-semibold text-sm">{name}</p>
                                 <p className="text-xs text-muted-foreground">{items.length} items</p>
                               </div>
                               <Badge variant="outline" className="ml-auto mr-2">

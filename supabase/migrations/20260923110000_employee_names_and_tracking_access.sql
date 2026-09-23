@@ -66,7 +66,10 @@ AS $$
         OR EXISTS (
           SELECT 1 FROM public.work_scope_items w
           JOIN public.clients c ON c.id = w.client_id
-          WHERE w.created_by = u.id AND c.secondary_owner_id = auth.uid()
+          WHERE w.created_by = u.id
+            -- Older projects have no secondary_owner_id column. JSON lookup
+            -- returns NULL there, so shared-owner access stays denied safely.
+            AND to_jsonb(c)->>'secondary_owner_id' = auth.uid()::text
         )
       ))
     );

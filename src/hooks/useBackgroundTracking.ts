@@ -17,7 +17,7 @@
  *   The native Android/iOS layer automatically overrides the stub at runtime.
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -76,7 +76,7 @@ const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>(
 
 // ── Helper: push a location update to Supabase ──────────────────────────────
 async function pushLocation(userId: string, location: Pick<Location, "latitude" | "longitude" | "accuracy" | "altitude" | "speed" | "bearing" | "time">) {
-  const now = new Date().toISOString();
+  const now = new Date(Number.isFinite(location.time) ? Math.min(location.time, Date.now()) : Date.now()).toISOString();
   const telemetry = {
     accuracy_m: Number.isFinite(location.accuracy) ? location.accuracy : null,
     speed_mps: location.speed != null && Number.isFinite(location.speed) ? location.speed : null,
@@ -89,7 +89,7 @@ async function pushLocation(userId: string, location: Pick<Location, "latitude" 
       withLocationTelemetryFallback(() => supabase.from("live_locations").upsert({
         ...basicLocation,
         updated_at: now,
-        recorded_at: location.time ? new Date(location.time).toISOString() : now,
+        recorded_at: now,
         permission_status: "granted",
         ...telemetry,
       }), () => supabase.from("live_locations").upsert({ ...basicLocation, updated_at: now })),
@@ -101,15 +101,19 @@ async function pushLocation(userId: string, location: Pick<Location, "latitude" 
     ]);
     if (liveResult.error) {
       console.error("[BGTracking] live_locations upsert error:", liveResult.error.message);
+      toast.error("Live location could not be saved. Tracking will retry automatically.", { id: "tracking-upload" });
     }
     if (histResult.error) {
       console.error("[BGTracking] location_history insert error:", histResult.error.message);
     }
     if (!liveResult.error && !histResult.error) {
-      console.log(`[BGTracking] ✓ Location saved: ${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`);
+      toast.dismiss("tracking-upload");
+      toast.dismiss("tracking-gps");
+      toast.dismiss("tracking-permission");
     }
   } catch (err: any) {
     console.error("[BGTracking] pushLocation exception:", err?.message || err);
+    toast.error("Live location could not be saved. Tracking will retry automatically.", { id: "tracking-upload" });
   }
 }
 
@@ -123,153 +127,120 @@ interface UseBackgroundTrackingOptions {
 
 // ── Main Hook ────────────────────────────────────────────────────────────────
 export function useBackgroundTracking({ active, userId }: UseBackgroundTrackingOptions) {
-  const watcherIdRef = useRef<CallbackId | null>(null);
-  const webIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const heartbeatRef = useRef<NodeJS.Timeout | null>(null);
-  const startingRef = useRef(false);
-  const pushInFlightRef = useRef(false);
   const isNative = Capacitor.isNativePlatform();
 
   useEffect(() => {
-    if (!active || !userId) {
-      stopTracking();
-      return;
-    }
+    if (!active || !userId) return;
+    // Each Start Day/account gets its own lifecycle. A late GPS callback or
+    // native watcher registration must not survive End Day or sign-out.
+    let cancelled = false;
+    let watcherId: CallbackId | null = null;
+    let starting = false;
+    let nativeNeedsRestart = false;
+    let requesting = false;
+    let writing = false;
+    let lastRecordedAt = 0;
+    let permissionDenied = false;
+    let permission: PermissionStatus | undefined;
 
-    if (isNative) {
-      startNativeTracking(userId);
-      // A distance-only watcher can stay silent while an employee is parked
-      // or at a client. Heartbeats keep "last seen" genuinely current.
-      startHeartbeat(userId);
-    } else {
-      startWebTracking(userId);
-    }
+    const save = async (location: Location) => {
+      if (cancelled || writing || location.time < lastRecordedAt) return;
+      lastRecordedAt = location.time;
+      writing = true;
+      try { await pushLocation(userId, location); }
+      finally { writing = false; }
+    };
 
-    return () => { stopTracking(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, userId]);
+    const removeWatcher = (id: string) => BackgroundGeolocation.removeWatcher({ id })
+      .catch(error => console.error("[BGTracking] Watcher cleanup failed:", error));
 
-  // ── Native tracking (Capacitor) ──────────────────────────────────────────
-  async function startNativeTracking(userId: string) {
-    if (startingRef.current || watcherIdRef.current) return;
-    startingRef.current = true;
-    try {
-      const id = await BackgroundGeolocation.addWatcher(
-        {
-          backgroundTitle: "VisitWiz Pro — Tracking Active",
+    const startNative = async () => {
+      if (cancelled || starting || (watcherId && !nativeNeedsRestart)) return;
+      starting = true;
+      try {
+        if (watcherId) {
+          await removeWatcher(watcherId);
+          watcherId = null;
+        }
+        if (cancelled) return;
+        nativeNeedsRestart = false;
+        const id = await BackgroundGeolocation.addWatcher({
+          backgroundTitle: "Art N Glass — Tracking Active",
           backgroundMessage: "Your location is being recorded for field management.",
           requestPermissions: true,
           stale: false,
           distanceFilter: 15, // smoother route updates without excessive battery use
-        },
-        async (location, error) => {
+        }, (location, error) => {
+          if (cancelled) return;
           if (error) {
-            if (error.code === "NOT_AUTHORIZED") {
-              toast.error(
-                "Background location denied. Please enable in phone Settings → Apps → VisitWiz Pro → Permissions."
-              );
-              await BackgroundGeolocation.openSettings();
-            }
-            console.error("[BGTracking] Native error:", error);
+            nativeNeedsRestart = true;
+            if (error.code === "NOT_AUTHORIZED") toast.error("Allow background location in phone settings to resume live tracking.", {
+              id: "tracking-permission",
+              action: { label: "Settings", onClick: () => { void BackgroundGeolocation.openSettings(); } },
+            });
             return;
           }
-          if (location) {
-            if (!pushInFlightRef.current) {
-              pushInFlightRef.current = true;
-              await pushLocation(userId, location).finally(() => { pushInFlightRef.current = false; });
-            }
-          }
-        }
-      );
-      watcherIdRef.current = id;
-      console.log("[BGTracking] Native watcher started:", id);
-    } catch (err) {
-      console.error("[BGTracking] Failed to start native tracking:", err);
-      toast.error("Could not start background tracking.");
-    } finally {
-      startingRef.current = false;
-    }
-  }
-
-  function startHeartbeat(userId: string) {
-    if (heartbeatRef.current || !navigator.geolocation) return;
-    const heartbeat = () => navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        if (pushInFlightRef.current) return;
-        pushInFlightRef.current = true;
-        pushLocation(userId, {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          altitude: pos.coords.altitude,
-          speed: pos.coords.speed,
-          bearing: pos.coords.heading,
-          time: pos.timestamp,
-        }).finally(() => { pushInFlightRef.current = false; });
-      },
-      (error) => console.warn("[BGTracking] heartbeat unavailable:", error.message),
-      { enableHighAccuracy: true, timeout: 20_000, maximumAge: 60_000 },
-    );
-    heartbeat();
-    heartbeatRef.current = setInterval(heartbeat, 120_000);
-  }
-
-  // ── Web fallback tracking ─────────────────────────────────────────────────
-  function startWebTracking(userId: string) {
-    let paused = false;
-
-    const send = async () => {
-      if (paused) return;
-      try {
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            timeout: 15000,
-            enableHighAccuracy: true,
-          })
-        );
-        await pushLocation(userId, {
-          latitude: pos.coords.latitude,
-          longitude: pos.coords.longitude,
-          accuracy: pos.coords.accuracy,
-          altitude: pos.coords.altitude,
-          speed: pos.coords.speed,
-          bearing: pos.coords.heading,
-          time: pos.timestamp,
+          if (location) void save(location);
         });
-      } catch (err: any) {
-        console.error("[BGTracking] Web GPS error:", err);
-        if (err?.code === 1) {
-          paused = true;
-          if (webIntervalRef.current) clearInterval(webIntervalRef.current);
-          toast.error("GPS Permission Denied! Live tracking paused.");
-        }
-      }
+        if (cancelled) await removeWatcher(id);
+        else watcherId = id;
+      } catch (error) {
+        nativeNeedsRestart = true;
+        console.error("[BGTracking] Could not start tracking:", error);
+        if (!cancelled) toast.error("Could not start background tracking. Reopen the app to retry.", { id: "tracking-start" });
+      } finally { starting = false; }
     };
 
-    send(); // immediate first update
-    webIntervalRef.current = setInterval(send, 60_000); // then every 60s
-  }
+    const sample = () => {
+      if (cancelled || requesting || permissionDenied || !navigator.geolocation) return;
+      requesting = true;
+      navigator.geolocation.getCurrentPosition(pos => {
+        requesting = false;
+        if (cancelled) return;
+        void save({ latitude: pos.coords.latitude, longitude: pos.coords.longitude,
+          accuracy: pos.coords.accuracy, altitude: pos.coords.altitude,
+          speed: pos.coords.speed, bearing: pos.coords.heading, time: pos.timestamp });
+      }, error => {
+        requesting = false;
+        if (cancelled) return;
+        if (error.code === 1) {
+          permissionDenied = true;
+          toast.error("GPS permission denied. Allow location and return to the app to resume tracking.", { id: "tracking-permission" });
+        } else {
+          toast.error("GPS update unavailable. Tracking will retry automatically.", { id: "tracking-gps" });
+        }
+      }, { timeout: 15000, enableHighAccuracy: true, maximumAge: 0 });
+    };
 
-  // ── Cleanup ───────────────────────────────────────────────────────────────
-  async function stopTracking() {
-    // Clear web interval
-    if (webIntervalRef.current) {
-      clearInterval(webIntervalRef.current);
-      webIntervalRef.current = null;
+    const resume = () => {
+      if (cancelled || document.visibilityState === "hidden") return;
+      permissionDenied = false;
+      if (isNative) void startNative();
+      sample();
+    };
+    const permissionChanged = () => { if (permission?.state === "granted") resume(); };
+    if (navigator.permissions?.query) {
+      void navigator.permissions.query({ name: "geolocation" }).then(status => {
+        if (cancelled) return;
+        permission = status;
+        status.addEventListener("change", permissionChanged);
+      }).catch(() => {}); // Permissions API is not supported by every WebView.
     }
-    if (heartbeatRef.current) {
-      clearInterval(heartbeatRef.current);
-      heartbeatRef.current = null;
-    }
-    // Remove native watcher
-    if (watcherIdRef.current && watcherIdRef.current !== "web-noop-watcher") {
-      try {
-        await BackgroundGeolocation.removeWatcher({ id: watcherIdRef.current });
-        console.log("[BGTracking] Native watcher removed:", watcherIdRef.current);
-      } catch (err) {
-        console.error("[BGTracking] Failed to remove watcher:", err);
-      }
-      watcherIdRef.current = null;
-    }
-  }
+    if (!isNative && !navigator.geolocation) toast.error("Location is unavailable in this browser.");
+    if (isNative) void startNative();
+    sample();
+    const timer = setInterval(sample, isNative ? 120_000 : 60_000);
+    window.addEventListener("focus", resume);
+    window.addEventListener("online", resume);
+    document.addEventListener("visibilitychange", resume);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", resume);
+      window.removeEventListener("online", resume);
+      document.removeEventListener("visibilitychange", resume);
+      permission?.removeEventListener("change", permissionChanged);
+      if (watcherId) void removeWatcher(watcherId);
+    };
+  }, [active, userId, isNative]);
 }

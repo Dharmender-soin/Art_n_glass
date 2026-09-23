@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import { resolveEmployeeNames, unavailableEmployeeName } from "@/lib/employeeNames";
 import { fetchAllRows } from "@/lib/fetchAllRows";
 import { withLocationTelemetryFallback } from "@/lib/locationTelemetry";
 
@@ -193,6 +194,7 @@ export const LiveTracking = () => {
   const [locationsLoading, setLocationsLoading] = useState(true);
   const [locationsRefreshing, setLocationsRefreshing] = useState(false);
   const [locationsError, setLocationsError] = useState<string | null>(null);
+  const [namesWarning, setNamesWarning] = useState(false);
   const [historyWarning, setHistoryWarning] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [, setClock] = useState(0);
@@ -222,6 +224,7 @@ export const LiveTracking = () => {
     setLastSyncAt(null);
     setLocationsError(null);
     setHistoryWarning(false);
+    setNamesWarning(false);
     const fetchLocations = async () => {
       if (disposed || inFlight) return;
       inFlight = true;
@@ -261,7 +264,7 @@ export const LiveTracking = () => {
         const { data: attendanceRows } = attendanceResult;
         const showroomMap = Object.fromEntries((showrooms || []).map(s => [s.id, s.name]));
 
-        let rolesList: { user_id: string; role: string; showroom_id: string | null; showroom_name: string }[] = [];
+        let rolesList: { user_id: string; role: string; showroom_id: string | null; showroom_name: string; full_name?: string }[] = [];
         const isManager = role === "manager";
 
         if (isManager && showroomIds && showroomIds.length > 0) {
@@ -269,9 +272,10 @@ export const LiveTracking = () => {
             showroomIds.map(async (sid) => {
               const { data, error } = await supabase.rpc("get_showroom_leaderboard", { p_showroom_id: sid });
               if (error) throw error;
-              return ((data || []) as { user_id: string; role: string }[]).map((item) => ({
+              return ((data || []) as { user_id: string; role: string; full_name: string }[]).map((item) => ({
                 user_id: item.user_id,
                 role: item.role,
+                full_name: item.full_name,
                 showroom_id: sid,
                 showroom_name: showroomMap[sid] || "—"
               }));
@@ -314,6 +318,10 @@ export const LiveTracking = () => {
           }
         });
 
+        const employeeNames = await resolveEmployeeNames([...currentLocations.keys()], [
+          ...rolesList.filter(r => r.full_name).map(r => ({ user_id: r.user_id, full_name: r.full_name! })),
+          ...(profiles || []),
+        ]);
         const enriched: ExecutiveLocation[] = ([...currentLocations.values()] as Array<{ user_id: string; lat: number; lng: number; updated_at: string; accuracy_m?: number | null; speed_mps?: number | null; bearing_deg?: number | null }>).map((loc) => {
           const profile = profiles?.find((p) => p.user_id === loc.user_id);
           const roleData = rolesList.find((r) => r.user_id === loc.user_id);
@@ -322,7 +330,7 @@ export const LiveTracking = () => {
             lat: loc.lat,
             lng: loc.lng,
             updated_at: loc.updated_at,
-            full_name: profile?.full_name || "Unknown",
+            full_name: employeeNames.names[loc.user_id] || unavailableEmployeeName(loc.user_id),
             showroom_id: roleData?.showroom_id || undefined,
             showroom_name: roleData?.showroom_name || "—",
             current_address: undefined,
@@ -343,6 +351,7 @@ export const LiveTracking = () => {
             : withoutAdmins.filter(e => e.showroom_id === showroomId);
         if (disposed) return;
         setLiveLocations(filtered);
+        setNamesWarning(filtered.some(loc => employeeNames.unresolvedIds.includes(loc.user_id)));
         setLocationsError(null);
         setHistoryWarning(historyFailed);
         setLastSyncAt(new Date().toISOString());
@@ -782,6 +791,10 @@ export const LiveTracking = () => {
         </div>
       )}
 
+      {namesWarning && <div role="status" className="rounded-lg border border-amber-500/30 p-3 text-xs text-amber-300 mb-3">
+        Some employee names are unavailable. Refresh or ask an admin to check employee profiles and name access.
+      </div>}
+
       {/* ── COMPACT FILTER BAR ─────────────────────────────────────────────── */}
       <div className="flex items-center gap-2 pb-2.5 flex-nowrap overflow-x-auto scrollbar-none">
         {/* Date */}
@@ -960,7 +973,7 @@ export const LiveTracking = () => {
                 <OverlayView key={loc.user_id} position={{ lat: loc.lat, lng: loc.lng }} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
                   <div className="relative -translate-x-1/2 -translate-y-[calc(100%+10px)] flex flex-col items-center cursor-pointer group"
                     onClick={() => setSelectedExecId(loc.user_id)}>
-                    <div className={`bg-[#0e0f12] border border-[#2a2d3a] group-hover:border-[#dc2626]/60 shadow-xl rounded-xl px-2.5 py-1.5 min-w-max mb-1 transition-all ${freshness === "live" ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+                    <div className={`bg-[#0e0f12] border border-[#2a2d3a] group-hover:border-[#dc2626]/60 shadow-xl rounded-xl px-2.5 py-1.5 min-w-max mb-1 transition-all`}>
                       <p className="text-[11px] font-bold text-[#f1f5f9]">{loc.full_name}</p>
                       {loc.current_address && (
                         <p className="text-[9px] text-[#6b7280] mt-0.5 max-w-[160px] truncate">📍 {loc.current_address}</p>
@@ -989,6 +1002,7 @@ export const LiveTracking = () => {
               <OverlayView position={{ lat: selectedExec.lat, lng: selectedExec.lng }} mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}>
                 <div className="relative -translate-x-1/2 -translate-y-[calc(100%+10px)] flex flex-col items-center">
                   <div className="bg-[#dc2626] text-white rounded-xl px-2.5 py-1 min-w-max mb-1 shadow-xl">
+                    <p className="text-[11px] font-bold">{selectedExec.full_name}</p>
                     <p className="text-[10px] font-bold">📍 {locationFreshness(selectedExec.updated_at) === "live" ? "Live" : "Last known"}</p>
                     {selectedExec.current_address && (
                       <p className="text-[8px] text-white/70 max-w-[150px] truncate">{selectedExec.current_address}</p>

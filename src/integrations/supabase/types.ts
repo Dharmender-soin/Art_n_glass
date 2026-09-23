@@ -856,6 +856,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_employee_display_names: {
+        Args: { p_user_ids: string[] }
+        Returns: { user_id: string; full_name: string | null }[]
+      }
       accountant_can_view_conveyance: {
         Args: { record_user_id: string }
         Returns: boolean

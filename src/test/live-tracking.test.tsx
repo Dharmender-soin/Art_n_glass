@@ -9,15 +9,16 @@ const state = vi.hoisted(() => ({
   errors: {} as Record<string, { message: string }>,
   rows: {} as Record<string, unknown[]>,
   mapError: undefined as Error | undefined,
+  mapLoaded: false,
   from: vi.fn(),
   rpc: vi.fn(),
 }));
 
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ role: state.role, showroomId: "room", showroomIds: state.showroomIds }) }));
 vi.mock("@react-google-maps/api", () => ({
-  useJsApiLoader: () => ({ isLoaded: false, loadError: state.mapError }),
-  GoogleMap: () => null,
-  OverlayView: () => null,
+  useJsApiLoader: () => ({ isLoaded: state.mapLoaded, loadError: state.mapError }),
+  GoogleMap: ({ children }: { children: React.ReactNode }) => <div data-testid="map">{children}</div>,
+  OverlayView: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
   DirectionsRenderer: () => null,
   TrafficLayer: () => null,
   Polyline: () => null,
@@ -39,6 +40,7 @@ beforeEach(() => {
   state.role = "admin";
   state.errors = {};
   state.mapError = undefined;
+  state.mapLoaded = false;
   state.rows = {
     live_locations: [{ user_id: "exec", lat: 28.6, lng: 77.2, updated_at: "2026-09-15T09:59:50Z" }],
     location_history: [],
@@ -134,4 +136,23 @@ it("shows executive status even if Google Maps fails to load", async () => {
   await openMap();
   expect(screen.getByRole("alert")).toHaveTextContent("The map could not load");
   expect(screen.getByText("Test Executive")).toBeInTheDocument();
+});
+
+it("keeps old GPS marker names visible without hover", async () => {
+  state.mapLoaded = true;
+  state.rows.live_locations[0] = { user_id: "exec", lat: 28.6, lng: 77.2, updated_at: "2026-09-15T08:00:00Z" };
+  await openMap();
+  const markerName = screen.getAllByText("Test Executive").find(el => screen.getByTestId("map").contains(el));
+  expect(markerName).toBeVisible();
+  expect(markerName?.parentElement?.className).not.toMatch(/opacity-0/);
+  expect(screen.getByTestId("map")).toHaveTextContent("Last known location");
+});
+
+it("uses the manager's showroom roster names when profile RLS omits employees", async () => {
+  state.role = "manager";
+  state.rows.profiles = [];
+  state.rpc.mockResolvedValue({ data: [{ user_id: "exec", role: "executive", full_name: "Roster name" }], error: null });
+  await openMap();
+  expect(screen.getByText("Roster name")).toBeInTheDocument();
+  expect(screen.queryByText("Unknown")).not.toBeInTheDocument();
 });

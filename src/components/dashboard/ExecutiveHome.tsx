@@ -816,40 +816,9 @@ export const ExecutiveHome = () => {
         });
     }, [ownVisits]);
 
-    const markDone = async (visit: Visit) => {
-        try {
-            // Block if day is already ended
-            const { data: dayEnded } = await supabase
-                .from("conveyance_records")
-                .select("id")
-                .eq("user_id", user?.id)
-                .eq("date", visit.visit_date)
-                .is("visit_id", null)
-                .maybeSingle();
-            if (dayEnded) throw new Error("This day has already been marked ended. Visits cannot be modified.");
-
-            let gpsLat: number | null = null;
-            let gpsLng: number | null = null;
-            try {
-                const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-                    navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000, enableHighAccuracy: true })
-                );
-                gpsLat = pos.coords.latitude;
-                gpsLng = pos.coords.longitude;
-            } catch { /* GPS optional */ }
-            const { error } = await supabase.from("visits").update({
-                status: "done",
-                done_at: new Date().toISOString(),
-                gps_latitude: gpsLat,
-                gps_longitude: gpsLng,
-            }).eq("id", visit.id);
-            if (error) throw error;
-            toast.success("Visit marked as done!");
-            refetchVisits();
-        } catch (e: unknown) {
-            if (e instanceof Error) toast.error(e.message);
-            else toast.error("An unknown error occurred");
-        }
+    const markDone = (visit: Visit) => {
+        // Use the same remarks, GPS and conveyance flow as the Visits page.
+        navigate(`/visits?complete=${encodeURIComponent(visit.id)}`);
     };
 
     const cancelVisit = async (visit: Visit) => {

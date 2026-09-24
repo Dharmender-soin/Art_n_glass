@@ -179,6 +179,20 @@ const Visits = () => {
     },
   });
 
+  useEffect(() => {
+    const completeId = searchParams.get("complete");
+    if (!completeId || isLoading || !user) return;
+    const visit = visits.find(v => v.id === completeId && v.created_by === user.id);
+    if (visit && ["planned", "in_progress"].includes(visit.status) && isToday(parseISO(visit.visit_date))) {
+      setDoneDialogId(visit.id);
+    } else {
+      toast.error("Only your own pending visits for today can be marked done.");
+    }
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete("complete");
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, visits, isLoading, user, setSearchParams]);
+
   const creatorUserIds = useMemo(() => [...new Set(visits.map(v => v.created_by).filter(Boolean))], [visits]);
   const { data: creatorProfilesMap = {} } = useQuery({
     queryKey: ["visit-creator-profiles", creatorUserIds],

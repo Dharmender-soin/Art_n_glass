@@ -231,6 +231,8 @@ const Admin = () => {
           email: email,
           full_name: userProfile?.full_name || authUser?.user_metadata?.full_name || "Unknown",
           phone: userProfile?.phone,
+          conveyance_type: userProfile?.conveyance_type ?? null,
+          conveyance_rate: userProfile?.conveyance_rate ?? null,
           role: r?.role || "executive",
           showroom_id: r?.showroom_id ?? null,
           reports_to: (r as any).reports_to ?? null,
@@ -796,7 +798,7 @@ const Admin = () => {
                                 full_name: u.full_name || "",
                                 phone: u.phone || "",
                                 conveyance_type: u.conveyance_type || "",
-                                conveyance_rate: u.conveyance_rate ? String(u.conveyance_rate) : "",
+                                conveyance_rate: u.conveyance_rate != null ? String(u.conveyance_rate) : "",
                               });
                               setEditProfileOpen(true);
                             }}

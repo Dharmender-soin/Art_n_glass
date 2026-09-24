@@ -44,8 +44,18 @@ const queryClient = new QueryClient({
   },
 });
 
+const AccountLoadError = ({ message }: { message: string }) => (
+  <div className="flex min-h-screen items-center justify-center bg-background p-6">
+    <div role="alert" className="max-w-md space-y-4 text-center">
+      <p className="text-sm text-muted-foreground">{message}</p>
+      <button className="rounded-md bg-primary px-5 py-2 text-primary-foreground" onClick={() => window.location.reload()}>Retry</button>
+    </div>
+  </div>
+);
+
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { user, loading } = useAuth();
+  const { user, loading, authError } = useAuth();
+  if (authError) return <AccountLoadError message={authError} />;
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
@@ -66,7 +76,8 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 const AuthRoute = () => {
-  const { user, loading, role } = useAuth();
+  const { user, loading, role, authError } = useAuth();
+  if (authError) return <AccountLoadError message={authError} />;
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-4">

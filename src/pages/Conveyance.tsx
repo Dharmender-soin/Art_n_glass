@@ -90,8 +90,9 @@ const Conveyance = () => {
     },
   });
 
-  const { data: userRoles = [] } = useQuery({
-    queryKey: ["conv2-roles", myShowroomId, showroomIds, selectedShowroom, role],
+  const { data: userRoles = [], isLoading: rolesLoading, error: rolesError, refetch: retryRoles } = useQuery({
+    queryKey: ["conv2-roles", user?.id, myShowroomId, showroomIds, selectedShowroom, role],
+    enabled: !!user && !!role,
     queryFn: async () => {
       if (isManager && showroomIds && showroomIds.length > 0) {
         const targetShowrooms = (selectedShowroom && selectedShowroom !== "all")
@@ -101,11 +102,12 @@ const Conveyance = () => {
         const results = await Promise.all(
           targetShowrooms.map(async (sid) => {
             const { data, error } = await supabase.rpc("get_showroom_leaderboard", { p_showroom_id: sid });
-            if (error) return [];
-            return ((data || []) as { user_id: string; role: string }[]).map((item) => ({
+            if (error) throw error;
+            return ((data || []) as { user_id: string; role: string; full_name: string | null }[]).map((item) => ({
               user_id: item.user_id,
               role: item.role,
-              showroom_id: sid
+              showroom_id: sid,
+              full_name: item.full_name,
             }));
           })
         );
@@ -113,27 +115,36 @@ const Conveyance = () => {
       }
 
       // Fallback for Admin/MD
-      let q = supabase.from("user_roles").select("user_id, role, showroom_id").in("role", ["executive", "backhand_executive", "tl"]);
+      let q = supabase.from("user_roles").select("user_id, role, showroom_id").in("role", ["executive", "backhand_executive", "tl", "manager"]);
+      if (isManager && !showroomIds?.length) return [];
       if (canSeeAll && selectedShowroom !== "all") {
         q = q.eq("showroom_id", selectedShowroom);
       }
-      const { data } = await q;
-      return data || [];
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data || []).map(item => ({ ...item, full_name: null as string | null }));
     },
   });
 
   const execUserIds = useMemo(() => [...new Set(userRoles.map((r) => r.user_id))], [userRoles]);
 
-  const { data: profiles = [] } = useQuery({
-    queryKey: ["conv2-profiles", execUserIds],
-    enabled: execUserIds.length > 0,
+  const { data: directProfiles = [] } = useQuery({
+    queryKey: ["conv2-profiles", user?.id, role, execUserIds],
+    enabled: execUserIds.length > 0 && !isManager,
     queryFn: async () => {
       const { data } = await supabase.from("profiles").select("user_id, full_name").in("user_id", execUserIds);
       return data || [];
     },
   });
 
-  const profileMap = useMemo(() => Object.fromEntries(profiles.map((p) => [p.user_id, p.full_name])), [profiles]);
+  // The scoped roster already supplies names to managers/accountants. A second
+  // profiles query can be restricted by RLS and must not hide these employees.
+  const profiles = useMemo(() => isManager
+    ? [...new Map(userRoles.map(item => [item.user_id, {
+      user_id: item.user_id,
+      full_name: item.full_name?.trim() || `Name unavailable (${item.user_id.slice(0, 8)})`,
+    }])).values()]
+    : directProfiles, [isManager, userRoles, directProfiles]);
   const showroomMap = useMemo(() => Object.fromEntries(showrooms.map((s) => [s.id, s.name])), [showrooms]);
   const execShowroomIdMap = useMemo(() => Object.fromEntries(userRoles.map((r) => [r.user_id, r.showroom_id])), [userRoles]);
 
@@ -144,11 +155,11 @@ const Conveyance = () => {
   }, [role, user, selectedExec, execUserIds]);
 
   // ── Conveyance records ────────────────────────────────────────────────────
-  const { data: rawRecords = [], isLoading } = useQuery({
-    queryKey: ["conv2-records", fromDate, toDate, targetUserIds, isManager],
-    enabled: targetUserIds.length > 0 || canSeeAll || isManager,
+  const { data: rawRecords = [], isLoading: recordsLoading, error: recordsError, refetch: retryRecords } = useQuery({
+    queryKey: ["conv2-records", user?.id, role, fromDate, toDate, targetUserIds, isManager],
+    enabled: !!user && !!role && !rolesLoading && !rolesError && (targetUserIds.length > 0 || canSeeAll || isManager),
     queryFn: async () => {
-      if (isManager && targetUserIds.length === 0) return [];
+      if (targetUserIds.length === 0) return [];
       return fetchAllRows<any>((from, to) => {
         let q = supabase
           .from("conveyance_records")
@@ -170,6 +181,8 @@ const Conveyance = () => {
       });
     },
   });
+  const isLoading = rolesLoading || recordsLoading;
+  const reportError = rolesError || recordsError;
 
   // Fetch profiles for all user IDs in rawRecords that are not yet in execUserIds
   const recordUserIds = useMemo(() => [...new Set(rawRecords.map((r) => r.user_id))], [rawRecords]);
@@ -330,7 +343,7 @@ const Conveyance = () => {
           <tr class="empty-row"><td colspan="12" class="empty-cell"></td></tr>
           <tr>
             <th style="width: 90px;">Date</th>
-            <th style="width: 150px;">Executive</th>
+            <th style="width: 150px;">Employee</th>
             <th style="width: 110px;">Showroom</th>
             <th style="width: 200px;">From</th>
             <th style="width: 200px;">To</th>
@@ -416,7 +429,7 @@ const Conveyance = () => {
             <Receipt className="h-6 w-6 text-primary" /> Conveyance Panel
           </h1>
           <p className="text-xs text-muted-foreground">
-            Executive travel &amp; conveyance records — formatted for accounts
+            Employee travel &amp; conveyance records — formatted for accounts
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -435,7 +448,7 @@ const Conveyance = () => {
               <LayoutList className="h-3.5 w-3.5" /> Table
             </button>
           </div>
-          <Button onClick={exportToExcel} size="sm" variant="outline" className="gap-2">
+          <Button onClick={exportToExcel} disabled={isLoading || !!reportError} size="sm" variant="outline" className="gap-2">
             <Download className="h-4 w-4" /> Export Excel
           </Button>
         </div>
@@ -451,7 +464,7 @@ const Conveyance = () => {
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 className="pl-8 h-8 text-sm bg-background"
-                placeholder="Search executive or location..."
+                placeholder="Search employee or location..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
@@ -480,8 +493,8 @@ const Conveyance = () => {
 
             {/* Showroom */}
             {(canSeeAll || (isManager && showroomIds && showroomIds.length > 1)) && showrooms.length > 0 && (
-              <Select value={selectedShowroom} onValueChange={setSelectedShowroom}>
-                <SelectTrigger className="h-8 text-xs w-[140px] bg-background"><SelectValue placeholder="All Showrooms" /></SelectTrigger>
+              <Select value={selectedShowroom} onValueChange={value => { setSelectedShowroom(value); setSelectedExec("all"); }}>
+              <SelectTrigger aria-label="Showroom" className="h-8 text-xs w-[140px] bg-background"><SelectValue placeholder="All Showrooms" /></SelectTrigger>
                 <SelectContent className="bg-popover">
                   <SelectItem value="all">All Showrooms</SelectItem>
                   {showrooms
@@ -494,9 +507,9 @@ const Conveyance = () => {
             {/* Executive */}
             {profiles.length > 1 && (
               <Select value={selectedExec} onValueChange={setSelectedExec}>
-                <SelectTrigger className="h-8 text-xs w-[130px] bg-background"><SelectValue placeholder="All Executives" /></SelectTrigger>
+                <SelectTrigger aria-label="Employee" className="h-8 text-xs w-[160px] bg-background"><SelectValue placeholder="All Employees" /></SelectTrigger>
                 <SelectContent className="bg-popover">
-                  <SelectItem value="all">All Executives</SelectItem>
+                  <SelectItem value="all">All Employees</SelectItem>
                   {profiles.map((p) => <SelectItem key={p.user_id} value={p.user_id}>{p.full_name}</SelectItem>)}
                 </SelectContent>
               </Select>
@@ -514,6 +527,11 @@ const Conveyance = () => {
           </div>
         </CardContent>
       </Card>
+
+      {reportError && <div role="alert" className="rounded-lg border border-destructive p-4 text-sm">
+        Conveyance could not be loaded. These totals are unavailable until the request succeeds.
+        <Button variant="outline" className="ml-3" onClick={() => { if (rolesError) void retryRoles(); else void retryRecords(); }}>Retry</Button>
+      </div>}
 
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
@@ -534,7 +552,7 @@ const Conveyance = () => {
             icon: MapPin, color: "text-purple-500", bg: "bg-purple-500/10",
           },
           {
-            label: "Executives", value: summary.execCount,
+            label: "Employees", value: summary.execCount,
             sub: summary.execCount > 0 ? `filed expense` : "—",
             icon: User, color: "text-orange-500", bg: "bg-orange-500/10",
           },
@@ -544,7 +562,7 @@ const Conveyance = () => {
             icon: Receipt, color: "text-teal-500", bg: "bg-teal-500/10",
           },
           {
-            label: "Avg / Executive", value: `₹${summary.avgPerExec.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`,
+            label: "Avg / Employee", value: `₹${summary.avgPerExec.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`,
             sub: "this period",
             icon: IndianRupee, color: "text-pink-500", bg: "bg-pink-500/10",
           },
@@ -553,15 +571,15 @@ const Conveyance = () => {
             <div className={`w-7 h-7 rounded-lg ${bg} ${color} flex items-center justify-center mb-2`}>
               <Icon className="h-3.5 w-3.5" />
             </div>
-            <p className="text-lg font-bold font-mono">{value}</p>
+            <p className="text-lg font-bold font-mono">{reportError || isLoading ? "—" : value}</p>
             <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider mt-0.5">{label}</p>
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{sub}</p>
+            <p className="text-[10px] text-muted-foreground/60 mt-0.5">{reportError ? "Unavailable" : isLoading ? "Loading…" : sub}</p>
           </CardContent></Card>
         ))}
       </div>
 
       {/* ════════════════════════════ SUMMARY VIEW ════════════════════════════ */}
-      {viewMode === "summary" && (
+      {viewMode === "summary" && !reportError && (
         isLoading ? (
           <div className="space-y-3">{[1, 2, 3].map((i) => <div key={i} className="h-16 rounded-xl animate-pulse bg-muted/40" />)}</div>
         ) : grouped.length === 0 ? (
@@ -769,7 +787,7 @@ const Conveyance = () => {
                 <CardContent className="p-4 flex items-center justify-between flex-wrap gap-4">
                   <div>
                     <span className="font-bold text-sm text-primary uppercase tracking-wider">Grand Total</span>
-                    <p className="text-xs text-muted-foreground mt-0.5">{summary.execCount} executives · {summary.tripCount} trips</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{summary.execCount} employees · {summary.tripCount} trips</p>
                   </div>
                   <div className="flex items-center gap-6">
                     <div className="text-right">
@@ -791,7 +809,7 @@ const Conveyance = () => {
       )}
 
       {/* ════════════════════════════ TABLE VIEW ══════════════════════════════ */}
-      {viewMode === "table" && (
+      {viewMode === "table" && !reportError && (
         isLoading ? (
           <div className="space-y-2">{[1, 2, 3, 4, 5].map((i) => <div key={i} className="h-10 rounded animate-pulse bg-muted/40" />)}</div>
         ) : tableRows.length === 0 ? (
@@ -807,7 +825,7 @@ const Conveyance = () => {
                   <tr className="bg-muted/60 border-b border-border">
                     {[
                       { label: "Date", field: "date" },
-                      { label: "Executive", field: "executive" },
+                      { label: "Employee", field: "executive" },
                       ...(canSeeAll ? [{ label: "Showroom", field: "showroom" }] : []),
                       { label: "From → To", field: "route" },
                       { label: "Vehicle", field: "vehicle" },

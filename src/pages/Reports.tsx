@@ -1,3 +1,6 @@
+import { progressLabels } from "@/components/WosProgress";
+import { LeadershipVisitReports } from "@/components/LeadershipVisitReports";
+import { visitDisplayName, isCountedVisit } from "@/lib/visitDisplay";
 import React, { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -81,7 +84,7 @@ class ReportsErrorBoundary extends React.Component<{ children: React.ReactNode }
 
 const Reports = () => {
   const { role, user } = useAuth();
-  const [activeTab, setActiveTab] = useState<"overview" | "dsr">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "dsr" | "leadership">("overview");
   const [dateFrom, setDateFrom] = useState(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [dateTo, setDateTo] = useState(format(new Date(), "yyyy-MM-dd"));
   const [filterExecutive, setFilterExecutive] = useState<string>("all");
@@ -245,7 +248,7 @@ const Reports = () => {
     return map;
   }, [dsrVisits]);
 
-  const dsrTotalPlanned = dsrVisits.filter(v => v.status === "planned" || v.status === "done").length;
+  const dsrTotalPlanned = dsrVisits.filter(v => isCountedVisit(v)).length;
   const dsrTotalDone = dsrVisits.filter(v => v.status === "done").length;
   const dsrSuccessRate = dsrTotalPlanned > 0 ? Math.round((dsrTotalDone / dsrTotalPlanned) * 100) : 0;
 
@@ -260,7 +263,7 @@ const Reports = () => {
     const generatedAt = format(new Date(), "dd-MMM-yyyy, hh:mm a");
 
     const daysHtml = Array.from(dsrByDate.entries()).map(([date, dayVisits]) => {
-      const plannedCount = dayVisits.filter((v: VisitWithRelations) => v.status === "planned" || v.status === "done").length;
+      const plannedCount = dayVisits.filter((v: VisitWithRelations) => isCountedVisit(v)).length;
       const doneCount = dayVisits.filter((v: VisitWithRelations) => v.status === "done").length;
       const dateLabel = format(parseISO(date), "EEEE, dd MMM yyyy");
 
@@ -269,7 +272,7 @@ const Reports = () => {
         .reduce((sum, r) => sum + (r.distance_km || 0), 0);
 
       const rowsHtml = dayVisits.map((v: VisitWithRelations, idx: number) => {
-        const name = v.clients?.name || v.partners?.name || "\u2014";
+        const name = visitDisplayName(v);
         const addr = v.address || v.clients?.address || v.partners?.address || "\u2014";
         const purpose = v.purpose || "\u2014";
         const remarks = v.remarks || "\u2014";
@@ -396,6 +399,12 @@ const Reports = () => {
     return Array.from(map.values()).sort((a, b) => b.count - a.count);
   };
 
+  const locationVisitList = Object.values(evrVisits.filter(v => !v.client_id && !v.partner_id).reduce((groups, visit) => {
+    const key = visit.showroom_id || visit.visit_with_type + ':' + (visit.address || visit.id);
+    groups[key] ||= { name: visitDisplayName(visit), address: visit.address || '—', count: 0 };
+    groups[key].count++;
+    return groups;
+  }, {} as Record<string, { name: string; address: string; count: number }>));
   const partnerVisitList = processVisits('partner');
   const clientVisitList = processVisits('client');
   const evrExecutiveName = evrExecutive === "all"
@@ -423,7 +432,7 @@ const Reports = () => {
       </tbody></table>`;
     win.document.write(`<!doctype html><html><head><title>EVR - ${evrExecutiveName}</title><style>
       body{font-family:Arial,sans-serif;color:#111;padding:18px}h1{text-align:center;font-size:20px;margin:0}p{text-align:center;color:#555;font-size:11px;margin:6px 0 18px}h2{font-size:14px;margin:18px 0 6px}table{width:100%;border-collapse:collapse;font-size:11px}th,td{border:1px solid #d1d5db;padding:6px;text-align:left}th{background:#f3f4f6}@page{margin:10mm}
-    </style></head><body><h1>EXECUTIVE VISIT REPORT</h1><p><strong>${escapeHtml(evrExecutiveName)}</strong> | ${escapeHtml(dateFrom)} to ${escapeHtml(dateTo)} | ${evrVisits.length} total visits</p>${rows("Partner Visits", partnerVisitList)}${rows("Client Visits", clientVisitList)}</body></html>`);
+    </style></head><body><h1>EXECUTIVE VISIT REPORT</h1><p><strong>${escapeHtml(evrExecutiveName)}</strong> | ${escapeHtml(dateFrom)} to ${escapeHtml(dateTo)} | ${evrVisits.length} total visits</p>${rows("Partner Visits", partnerVisitList)}${rows("Client Visits", clientVisitList)}${rows("Showroom / Other Location Visits", locationVisitList)}</body></html>`);
     win.document.close();
     win.focus();
     setTimeout(() => win.print(), 350);
@@ -494,8 +503,8 @@ const Reports = () => {
       </div>
 
       {/* Tabs - hidden on print */}
-      {isManager && (
-        <div className="flex gap-1 bg-muted/40 p-1 rounded-xl border border-border/50 w-fit print:hidden">
+      {(isManager || role === "tl") && (
+        <div className="flex flex-wrap gap-1 bg-muted/40 p-1 rounded-xl border border-border/50 w-fit print:hidden">
           <button
             onClick={() => setActiveTab("overview")}
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
@@ -507,7 +516,7 @@ const Reports = () => {
             <BarChart3Icon className="h-4 w-4" />
             Overview
           </button>
-          <button
+          {isManager && <button
             onClick={() => setActiveTab("dsr")}
             className={`px-5 py-2 rounded-lg text-sm font-semibold transition-all duration-200 flex items-center gap-2 ${
               activeTab === "dsr"
@@ -517,9 +526,12 @@ const Reports = () => {
           >
             <FileText className="h-4 w-4" />
             Employee DSR
-          </button>
+          </button>}
+          {["admin", "md", "manager", "tl"].includes(role || "") && <button onClick={() => setActiveTab("leadership")} className={`px-5 py-2 rounded-lg text-sm font-semibold ${activeTab === "leadership" ? "bg-background shadow-sm" : "text-muted-foreground"}`}>TL &amp; Manager Reports</button>}
         </div>
       )}
+
+      {activeTab === "leadership" && ["admin", "md", "manager", "tl"].includes(role || "") && <LeadershipVisitReports />}
 
       {/* ───────── DSR TAB ───────── */}
       {activeTab === "dsr" && isManager && (
@@ -674,7 +686,7 @@ const Reports = () => {
 
                 <div className="space-y-4">
                   {Array.from(dsrByDate.entries()).map(([date, dayVisits]) => {
-                    const planned = dayVisits.filter(v => v.status === "planned" || v.status === "done");
+                    const planned = dayVisits.filter(v => isCountedVisit(v));
                     const done = dayVisits.filter(v => v.status === "done");
                     return (
                       <div key={date} className="dsr-day-card overflow-hidden rounded-xl border border-border shadow-md">
@@ -733,7 +745,7 @@ const Reports = () => {
                             </thead>
                             <tbody>
                               {dayVisits.map((v, idx) => {
-                                const name = v.clients?.name || v.partners?.name || "—";
+                                const name = visitDisplayName(v);
                                 const addr = v.address || v.clients?.address || v.partners?.address || "—";
                                 const statusClass = v.status === "done" ? "dsr-status-done" : v.status === "cancelled" ? "dsr-status-cancelled" : "dsr-status-planned";
                                 const statusLabel = v.status === "done" ? "✓ Done" : v.status === "cancelled" ? "✗ Cancelled" : "⏳ Planned";
@@ -773,7 +785,7 @@ const Reports = () => {
       )}
 
       {/* ───────── OVERVIEW TAB ───────── */}
-      {(activeTab === "overview" || !isManager) && (
+      {(activeTab === "overview" || (!isManager && role !== "tl")) && (
       <div className="space-y-8">
       <motion.div
         initial={{ opacity: 0, scale: 0.9 }}
@@ -896,6 +908,7 @@ const Reports = () => {
                                 <div className="flex items-center gap-2">
                                   <div className={`w-2 h-2 rounded-full ${verified ? 'bg-[hsl(var(--status-converted))]' : 'bg-orange-400'}`} />
                                   <span className="font-semibold text-sm">{client?.name || "—"}</span>
+                                  <Badge variant="outline">{item.execution_status ? progressLabels[item.execution_status] : "Progress unavailable"}</Badge>
                                   <ArrowUpRight className="h-3 w-3 text-muted-foreground" />
                                   <span className="font-medium text-sm text-foreground/80">{wt?.sub_work || "Unknown"}</span>
                                 </div>
@@ -1051,6 +1064,12 @@ const Reports = () => {
         </motion.div>
       </motion.div>
 
+      <Card><CardHeader><CardTitle>Showroom / Other Location Visits</CardTitle></CardHeader><CardContent>
+        <Table><TableHeader><TableRow><TableHead>Visit</TableHead><TableHead>Address</TableHead><TableHead>Count</TableHead></TableRow></TableHeader><TableBody>
+          {locationVisitList.map((visit,index) => <TableRow key={index}><TableCell>{visit.name}</TableCell><TableCell>{visit.address}</TableCell><TableCell>{visit.count}</TableCell></TableRow>)}
+          {!locationVisitList.length && <TableRow><TableCell colSpan={3}>No location visits in this period.</TableCell></TableRow>}
+        </TableBody></Table>
+      </CardContent></Card>
       {/* Conveyance Audit Report */}
       {isManager && (
       <motion.div variants={containerVariants} className="space-y-6 mt-16 pt-8 border-t border-border/40">

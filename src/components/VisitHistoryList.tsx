@@ -11,6 +11,7 @@ import type { Database } from "@/integrations/supabase/types";
 type VisitStatus = Database["public"]["Enums"]["visit_status"];
 
 const visitStatusColors: Record<VisitStatus, string> = {
+  in_progress: "bg-blue-100 text-blue-800",
   planned: "bg-[hsl(var(--status-new))] text-white",
   done: "bg-[hsl(var(--status-converted))] text-white",
   cancelled: "bg-[hsl(var(--status-lost))] text-white",

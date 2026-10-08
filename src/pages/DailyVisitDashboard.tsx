@@ -1,3 +1,4 @@
+import { visitDisplayName, visitTypeLabel } from "@/lib/visitDisplay";
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -86,10 +87,10 @@ const DailyVisitDashboard = () => {
                 showroom_id: sid,
                 profiles: { full_name: item.full_name }
               };
-            }).filter((item) => item.role === "executive" || item.role === "tl" || item.role === "backhand_executive");
+            }).filter((item) => item.role === "executive" || item.role === "tl" || item.role === "manager" || item.role === "backhand_executive");
           })
         );
-        return results.flat();
+        return [...new Map(results.flat().map(item => [item.user_id, item])).values()];
       }
 
       // A Team Leader sees only their own record and direct-report team.
@@ -98,7 +99,7 @@ const DailyVisitDashboard = () => {
           .from("user_roles")
           .select("user_id, role, showroom_id")
           .or(`user_id.eq.${user.id},reports_to.eq.${user.id}`)
-          .in("role", ["executive", "tl", "backhand_executive"]);
+          .in("role", ["executive", "tl", "manager", "backhand_executive"]).eq("is_active", true);
         if (teamError) throw teamError;
         const teamUserIds = [...new Set((teamRoles || []).map((item) => item.user_id))];
         if (teamUserIds.length === 0) return [];
@@ -115,20 +116,13 @@ const DailyVisitDashboard = () => {
       let query = supabase
         .from("user_roles")
         .select("user_id, role, showroom_id")
-        .in("role", ["executive", "tl", "backhand_executive"]);
+        .in("role", ["executive", "tl", "manager", "backhand_executive"]).eq("is_active", true);
       if (filterShowroom && filterShowroom !== "all") {
         query = query.eq("showroom_id", filterShowroom);
       }
       const { data: roles, error: rolesError } = await query;
       if (rolesError) throw rolesError;
       const userIds = [...new Set((roles || []).map((r) => r.user_id))];
-
-      // Also include any user who has visits logged for yesterday/today
-      const { data: visitUsers } = await supabase
-        .from("visits")
-        .select("created_by")
-        .in("visit_date", [yesterday, today]);
-      (visitUsers || []).forEach(v => { if (v.created_by) userIds.push(v.created_by); });
 
       const uniqueUserIds = [...new Set(userIds)];
       if (uniqueUserIds.length === 0) return [];
@@ -223,7 +217,7 @@ const DailyVisitDashboard = () => {
     });
   }, [executives, visits, yesterday, today, searchExec]);
 
-  const getEntityName = (v: { clients?: { name: string } | null; partners?: { name: string } | null }) => v.clients?.name || v.partners?.name || "—";
+  const getEntityName = visitDisplayName;
   const getVisitWos = (visit: { client_id?: string | null; created_by: string; visit_date: string }) => {
     if (!visit.client_id) return [];
     return visitWosItems.filter((item) => item.client_id === visit.client_id
@@ -379,7 +373,7 @@ const DailyVisitDashboard = () => {
     const renderRows = (items: typeof visits, section: "planning" | "actual") => {
       const rows = items.map((visit) => {
         const address = visit.address || visit.clients?.address || visit.partners?.address || "—";
-        const entityType = visit.client_id ? "Client" : visit.partner_id ? "Partner" : "Unlinked";
+        const entityType = visitTypeLabel(visit);
         const wosItems = getVisitWos(visit);
         const wosText = visit.client_id
           ? wosItems.length

@@ -24,7 +24,7 @@ function ReportRow({ showroomId, report, enabled, ready }: {showroomId: string; 
       <div><p className="font-medium">{report.title}</p><p className="text-sm text-muted-foreground">{report.weekly ? 'Saturday' : 'Daily'} at {report.time} IST</p></div>
       <div className="flex items-center gap-2"><span className="text-sm">Auto-send</span><Switch aria-label={`${report.title} auto-send`} checked={enabled} disabled={!ready || save.isPending} onCheckedChange={v => save.mutate(v)} /></div>
     </div>
-    <p className="text-xs text-muted-foreground">{report.key === 'conveyance' ? 'Destination: active showroom managers’ personal numbers. Missing coordinates are flagged for review.' : 'Destination: saved showroom group, or active staff numbers when no group is saved.'}</p>
+    <p className="text-xs text-muted-foreground">{report.key === 'plan_actual' ? 'Destination: Director (MD) personal numbers only. One consolidated report covers all managers and showrooms. Enabling this in any showroom enables the consolidated schedule.' : report.key === 'conveyance' ? 'Destination: active showroom managers’ personal numbers. Missing coordinates are flagged for review.' : 'Destination: saved showroom group, or active staff numbers when no group is saved.'}</p>
     <div className="flex flex-wrap gap-2">
       <Button variant="outline" disabled={preview.isPending || !ready} onClick={() => preview.mutate()}>{preview.isPending ? 'Loading…' : 'Preview Report'}</Button>
       <Button variant="outline" disabled={test.isPending || !ready} onClick={() => test.mutate()}>{test.isPending ? 'Sending…' : 'Send Test Report'}</Button>
@@ -37,7 +37,7 @@ function ReportRow({ showroomId, report, enabled, ready }: {showroomId: string; 
 
 export function WhatsHubReports({showroomId}: {showroomId: string}) {
   const settings = useQuery({queryKey:['whatsapp-reports',showroomId],enabled:!!showroomId,queryFn:() => getReportSettings(showroomId),retry:false});
-  return <Card><CardHeader><CardTitle>WhatsApp Reports</CardTitle><CardDescription>Reports for the showroom selected above. Daily Planned Visits includes active Executives, Team Leaders and Managers. Other reports include active Executives. Toggles save immediately. Test sends the actual report even when auto-send is OFF.</CardDescription></CardHeader>
+  return <Card><CardHeader><CardTitle>WhatsApp Reports</CardTitle><CardDescription>Reports for the showroom selected above. Daily Planned Visits includes active Executives, Team Leaders and Managers. Plan vs Actual and Visit Outcomes include these three roles too. TL Outcome includes Team Leaders. Plan vs Actual is delivered only to the Director. Toggles save immediately. Test sends the actual report even when auto-send is OFF.</CardDescription></CardHeader>
     <CardContent className="space-y-4">
       {settings.error && <div role="alert" className="text-sm text-destructive">Could not load saved report settings: {settings.error.message}. Apply the report SQL migration and deploy the updated WhatsHub function. <Button variant="outline" onClick={() => settings.refetch()}>Retry</Button></div>}
       {settings.isLoading && <p>Loading saved schedules…</p>}

@@ -1,8 +1,10 @@
+import { visitDisplayName } from "../_shared/visit-display.ts";
 export const reportDefinitions = [
   { key: 'daily_planning', title: 'Daily Planned Visits', time: '10:30', weekly: false },
-  { key: 'plan_actual', title: 'Plan vs Actual', time: '19:00', weekly: false },
+  { key: 'plan_actual', title: 'Manager Daily Plan vs Actual', time: '19:00', weekly: false },
   { key: 'followups', title: 'Pending Follow-ups', time: '10:00', weekly: false },
   { key: 'outcomes', title: 'Visit Outcomes', time: '19:15', weekly: false },
+  { key: 'tl_outcomes', title: 'TL Outcome', time: '19:30', weekly: false },
   { key: 'weekly_summary', title: 'Weekly Showroom Summary', time: '18:00', weekly: true },
   { key: 'conveyance', title: 'Conveyance Review', time: '18:15', weekly: true },
 ] as const;
@@ -22,7 +24,7 @@ export function weekStart(date: string) {
 type Row = Record<string, any>;
 // Daily planning covers everyone responsible for showroom visits.
 export async function loadReportPeople(client: any, showroomId: string, reportKey: string): Promise<Row[]> {
-  const includedRoles = reportKey === 'daily_planning' ? ['executive', 'tl', 'manager'] : ['executive'];
+  const includedRoles = reportKey === 'tl_outcomes' ? ['tl'] : ['daily_planning', 'plan_actual', 'outcomes'].includes(reportKey) ? ['executive', 'tl', 'manager'] : ['executive'];
   const roles = await allRows(client.from('user_roles').select('user_id')
     .eq('showroom_id', showroomId).in('role', includedRoles).eq('is_active', true).order('id'));
   const userIds = [...new Set(roles.map(role => role.user_id))];
@@ -40,7 +42,7 @@ export function buildReport(key: string, showroom: string, date: string, people:
   const title = key === 'daily_planning' ? 'DAILY PLANNED VISITS REPORT' : `${definition.title.toUpperCase()} REPORT`;
   const sections = [...people].sort((a,b) => (a.full_name || '').localeCompare(b.full_name || '')).map((p, i) => {
     const rows = visits.filter(v => v.created_by === p.user_id);
-    const target = (v: Row) => v.clients?.name || v.partners?.name || 'Unlinked visit';
+    const target = visitDisplayName;
     let detail = '';
     if (key === 'daily_planning') detail = rows.map((v,j) => `${j+1}. ${target(v)} — ${v.purpose || 'Purpose not specified'}`).join('\n') || 'No planned visits';
     if (key === 'plan_actual' || key === 'weekly_summary') {
@@ -58,7 +60,7 @@ export function buildReport(key: string, showroom: string, date: string, people:
       }
     }
     if (key === 'followups') detail = rows.map((v,j) => `${j+1}. ${target(v)} — ${v.purpose}\nDue: ${v.visit_date}${v.visit_date < date ? ' (Overdue)' : ' (Today)'}`).join('\n') || 'No pending follow-ups';
-    if (key === 'outcomes') detail = rows.filter(v => v.status === 'done').map((v,j) => `${j+1}. ${target(v)} — ${v.purpose}\nRemarks: ${v.remarks || 'Not entered'}\nNext follow-up: ${v.next_followup || 'Not entered'}`).join('\n') || 'No completed visits';
+    if (key === 'outcomes' || key === 'tl_outcomes') detail = rows.filter(v => v.status === 'done').map((v,j) => `${j+1}. ${target(v)} — ${v.purpose}\nRemarks: ${v.remarks || 'Not entered'}\nNext follow-up: ${v.next_followup || 'Not entered'}`).join('\n') || 'No completed visits';
     if (key === 'conveyance') {
       const trips = claims.filter(c => c.user_id === p.user_id);
       const review = trips.filter(c => [c.from_lat,c.from_lng,c.to_lat,c.to_lng].some(x => x == null) || (c.from_lat === 0 && c.from_lng === 0) || (c.to_lat === 0 && c.to_lng === 0)).length;
@@ -66,7 +68,7 @@ export function buildReport(key: string, showroom: string, date: string, people:
     }
     return `*${i+1}. ${p.full_name || 'Staff member'}*\n\n${detail}`;
   });
-  const emptyMessage = key === 'daily_planning' ? 'No active executives, team leaders or managers found.' : 'No active executives found.';
+  const emptyMessage = key === 'tl_outcomes' ? 'No active team leaders found.' : ['daily_planning','plan_actual','outcomes'].includes(key) ? 'No active executives, team leaders or managers found.' : 'No active executives found.';
   return `*${title}*\n*Showroom:* ${showroom}\n*Date:* ${definition.weekly ? `${weekStart(date)} to ${date}` : date}\n\n${sections.join('\n\n') || emptyMessage}\n\n${key === 'daily_planning' ? `*Total planned visits: ${visits.length}*\n` : ''}${key === 'followups' ? 'Based on pending visits due today or earlier.\n' : ''}${key === 'plan_actual' ? 'Plan uses visit creation time with a 10:30 AM IST cutoff.\n' : ''}${key === 'weekly_summary' ? 'Conversions show current status of clients created in this period.\n' : ''}— Art N Glass`;
 }
 

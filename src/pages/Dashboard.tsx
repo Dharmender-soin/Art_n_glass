@@ -465,7 +465,7 @@ const AnalyticsDashboard = () => {
         return count || 0;
       };
 
-      const workCount = async (status?: Database["public"]["Enums"]["work_order_status"]) => {
+      const workCount = async (status?: Database["public"]["Enums"]["work_status"]) => {
         let q = supabase.from("work_scope_items").select("id", { count: "exact", head: true });
         if (countUserIds.length > 0) q = q.in("created_by", countUserIds);
         if (dateRange) q = q.gte("created_at", `${dateRange.from}T00:00:00Z`).lte("created_at", `${dateRange.to}T23:59:59Z`);

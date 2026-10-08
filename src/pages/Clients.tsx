@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { sharedOwnerFilter } from "@/lib/sharedOwnerScope";
+import { SearchablePartnerSelect } from "@/components/SearchablePartnerSelect";
+import { useState, useEffect, useId } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -45,18 +47,21 @@ const statusColors: Record<ClientStatus, string> = {
 
 // ─── Hoisted outside Clients so it never remounts on parent re-render ─────────
 interface ClientFormProps {
+  isNew?: boolean;
   values: typeof emptyForm;
   onChange: (v: typeof emptyForm) => void;
   onSubmit: () => void;
   isPending: boolean;
   submitLabel: string;
-  partners: { id: string; name: string; type: string }[];
+  partners: { id: string; name: string; type: string; address?: string | null; city?: string | null }[];
   primaryOwnerId: string | null;
   primaryOwnerName: string;
   teamMembers: AssignableUser[];
 }
 
-const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partners, primaryOwnerId, primaryOwnerName, teamMembers }: ClientFormProps) => (
+const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partners, primaryOwnerId, primaryOwnerName, teamMembers, isNew = false }: ClientFormProps) => {
+  const architectId = useId();
+  return (
   <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="space-y-4 pt-1">
 
     {/* ── Mandatory Fields ── */}
@@ -108,8 +113,8 @@ const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partne
     </div>
 
     <div className="space-y-1.5">
-      <Label className="text-xs font-semibold text-foreground">Architect Name <span className="text-[10px] text-muted-foreground font-normal">(optional)</span></Label>
-      <Input placeholder="Architect Name" value={values.architect_name} onChange={(e) => onChange({ ...values, architect_name: e.target.value })} className="h-9 text-sm" />
+      <Label htmlFor={architectId} className="text-xs font-semibold text-foreground">Architect Name {isNew && <span className="text-red-500">*</span>}</Label>
+      <Input id={architectId} required={isNew} placeholder={isNew ? "Architect Name *" : "Architect Name"} value={values.architect_name} onChange={(e) => onChange({ ...values, architect_name: e.target.value })} className="h-9 text-sm" />
     </div>
 
     {/* ── Status selector — pill buttons ── */}
@@ -144,15 +149,7 @@ const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partne
         </Label>
         <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/50 px-2 py-0.5 rounded-full">Recommended</span>
       </div>
-      <Select value={values.partner_id} onValueChange={(v) => onChange({ ...values, partner_id: v })}>
-        <SelectTrigger className="h-9 text-sm border-indigo-300 dark:border-indigo-700 bg-background font-semibold text-foreground">
-          <SelectValue placeholder="Select partner or architect..." />
-        </SelectTrigger>
-        <SelectContent className="bg-popover">
-          <SelectItem value="none">— Direct Client (No Partner) —</SelectItem>
-          {partners.map((p) => <SelectItem key={p.id} value={p.id}>{p.name} ({p.type})</SelectItem>)}
-        </SelectContent>
-      </Select>
+      <SearchablePartnerSelect value={values.partner_id} partners={partners} onChange={(partner_id) => onChange({ ...values, partner_id })} />
       <p className="text-[10px] text-indigo-700/80 dark:text-indigo-300/80 font-medium">
         💡 Selecting a Partner connects this client to the Partner's pipeline in Hierarchy.
       </p>
@@ -178,7 +175,8 @@ const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partne
       </Button>
     </div>
   </form>
-);
+  );
+};
 
 
 /* ─── Client Avatar (initials) ────────────────────────────────── */
@@ -442,6 +440,7 @@ const Clients = () => {
   const canDelete = role !== "executive" && role !== "tl";
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [filterStatus, setFilterStatus] = useState("");
   const [filterExecutive, setFilterExecutive] = useState<string>("all");
   const [filterArchitect, setFilterArchitect] = useState<string>("all");
@@ -497,9 +496,10 @@ const Clients = () => {
       }
       // MD / Admin: no filter
 
+      const ownerFilter = creatorIdsFilter ? await sharedOwnerFilter(creatorIdsFilter, user!.id, true) : null;
       const data = await fetchAllRows<any>((from, to) => {
         let q = supabase.from("clients").select("*, partners(name, type)");
-        if (creatorIdsFilter) q = q.in("created_by", creatorIdsFilter);
+        if (ownerFilter) q = q.or(ownerFilter);
         return q.order("created_at", { ascending: false }).range(from, to) as any;
       });
 
@@ -566,7 +566,7 @@ const Clients = () => {
   const { data: partners = [] } = useQuery({
     queryKey: ["partners", user?.id, role],
     queryFn: async () => {
-      let q = supabase.from("partners").select("id, name, type");
+      let q = supabase.from("partners").select("id, name, type, address, city");
 
       if (role === "executive" && user) {
         // RLS includes both records created by this user and records shared with them.
@@ -577,19 +577,17 @@ const Clients = () => {
           .eq("reports_to", user.id)
           .eq("role", "executive");
         const execIds = (myExecs || []).map((r: { user_id: string }) => r.user_id);
-        q = q.in("created_by", [user.id, ...execIds]);
+        q = q.or(`created_by.in.(${[user.id, ...execIds].join(",")}),secondary_owner_id.eq.${user.id}`);
       } else if (role === "manager") {
         const effectiveShowrooms = [...new Set([...showroomIds, ...(showroomId ? [showroomId] : [])])];
         if (effectiveShowrooms.length > 0) {
           const { data: teamRoles } = await supabase.from("user_roles").select("user_id").in("showroom_id", effectiveShowrooms);
           const teamIds = (teamRoles || []).map((r: { user_id: string }) => r.user_id);
-          if (teamIds.length > 0) q = q.in("created_by", teamIds);
+          q = q.or(`created_by.in.(${[user!.id,...teamIds].join(",")}),secondary_owner_id.eq.${user!.id}`);
         }
       }
 
-      const { data, error } = await q;
-      if (error) throw error;
-      return data;
+      return fetchAllRows<{ id: string; name: string; type: string; address: string | null; city: string | null }>((from,to) => q.order("id").range(from,to) as any);
     },
   });
 
@@ -622,7 +620,8 @@ const Clients = () => {
 
   const createClientMutation = useMutation({
     mutationFn: async () => {
-      const { partner_id, ...rest } = { ...form, created_by: user!.id };
+      if (!form.architect_name.trim()) throw new Error("Architect Name is required");
+      const { partner_id, ...rest } = { ...form, architect_name: form.architect_name.trim(), created_by: user!.id };
       const rawData = (!partner_id || partner_id === 'none')
         ? { ...rest, partner_id: null }
         : { ...rest, partner_id };
@@ -811,6 +810,11 @@ const Clients = () => {
     const matchArchitect = !filterArchitect || filterArchitect === "all" || c.architect_name === filterArchitect;
     return matchSearch && matchStatus && matchExec && matchArchitect;
   });
+  useEffect(() => setPage(1), [search, filterStatus, filterExecutive, filterArchitect]);
+  const pageSize = 48;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const visibleClients = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   return (
     <div className="space-y-4">
@@ -822,7 +826,7 @@ const Clients = () => {
           </DialogTrigger>
           <DialogContent className="bg-popover max-h-[85vh] overflow-y-auto">
             <DialogHeader><DialogTitle>New Client</DialogTitle></DialogHeader>
-            <ClientForm values={form} onChange={setForm} onSubmit={() => createClientMutation.mutate()} isPending={createClientMutation.isPending} submitLabel="Save Client" partners={partners} primaryOwnerId={user?.id || null} primaryOwnerName={currentOwnerName} teamMembers={teamMembers} />
+            <ClientForm isNew values={form} onChange={setForm} onSubmit={() => createClientMutation.mutate()} isPending={createClientMutation.isPending} submitLabel="Save Client" partners={partners} primaryOwnerId={user?.id || null} primaryOwnerName={currentOwnerName} teamMembers={teamMembers} />
           </DialogContent>
         </Dialog>
       </div>
@@ -871,7 +875,7 @@ const Clients = () => {
         <p className="text-muted-foreground text-center py-8">No clients found.</p>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((c) => {
+          {visibleClients.map((c) => {
             const lastVisit = (clientLastVisitsMap as Record<string, { visit_date: string; remarks: string | null; exec_name: string | null }>)[c.id] || null;
             const creatorName = (c as { _creator_name?: string | null })._creator_name || null;
             const creatorRole = (c as { _creator_role?: string | null })._creator_role || null;
@@ -899,6 +903,14 @@ const Clients = () => {
           })}
         </div>
       )}
+
+      {filtered.length > pageSize && <div className="flex items-center justify-between gap-3 text-sm">
+        <span>Page {currentPage} of {pageCount} · {filtered.length} clients</span>
+        <div className="flex gap-2">
+          <Button variant="outline" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)}>Previous</Button>
+          <Button variant="outline" disabled={currentPage === pageCount} onClick={() => setPage(currentPage + 1)}>Next</Button>
+        </div>
+      </div>}
 
       {/* Edit Dialog */}
       <Dialog open={!!editClient} onOpenChange={(open) => !open && setEditClient(null)}>

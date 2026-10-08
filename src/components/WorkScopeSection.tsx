@@ -1,3 +1,4 @@
+import { WosProgress } from "@/components/WosProgress";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -346,6 +347,7 @@ const WorkScopeSection = ({ clientId, createdByOverride, onChanged }: WorkScopeS
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1.5">
                       <p className="text-base font-bold text-foreground">{wt?.sub_work || "Unknown"}</p>
+                      <WosProgress id={item.id} value={item.execution_status} />
                       <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-background">{wt?.type_of_work}</Badge>
                       {/* Pipeline status badge */}
                       <span className={`inline-flex items-center text-[9px] font-bold px-1.5 py-0.5 rounded border ${pipelineBadge.cls}`}>

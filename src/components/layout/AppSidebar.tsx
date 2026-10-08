@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -40,7 +41,10 @@ type NavigationGroup = "Overview" | "Sales" | "Team" | "Operations" | "Administr
 const AppSidebar = () => {
   const { pathname } = useLocation();
   const { role, signOut } = useAuth();
-  const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
+  const { state, setOpen, isMobile, setOpenMobile } = useSidebar();
+  const [pinned, setPinned] = useState(false);
+  const pointerInside = useRef(false);
+  const focusInside = useRef(false);
 
   const isExpanded = isMobile || state === "expanded";
   const isManagerOrAdmin = role === "admin" || role === "manager" || role === "md";
@@ -66,6 +70,7 @@ const AppSidebar = () => {
         { to: "/visits",        label: "Visits",         icon: CalendarCheck, group: "Sales" as NavigationGroup },
         ...(role === "executive" ? [
           { to: "/my-pipeline", label: "My Pipeline", icon: TrendingUp, group: "Sales" as NavigationGroup },
+          { to: "/hierarchy", label: "Hierarchy", icon: Network, group: "Sales" as NavigationGroup },
         ] : []),
         ...(isManagerOrAdmin ? [
           { to: "/partner-visits",        label: "Partner Visits",        icon: Route, group: "Sales" as NavigationGroup },
@@ -100,6 +105,10 @@ const AppSidebar = () => {
   return (
     <Sidebar
       collapsible="icon"
+      onMouseEnter={() => { pointerInside.current = true; if (!isMobile) setOpen(true); }}
+      onMouseLeave={() => { pointerInside.current = false; if (!isMobile && !pinned && !focusInside.current) setOpen(false); }}
+      onFocusCapture={event => { focusInside.current = (event.target as HTMLElement).matches(":focus-visible"); if (!isMobile && focusInside.current) setOpen(true); }}
+      onBlurCapture={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) { focusInside.current = false; if (!isMobile && !pinned && !pointerInside.current) setOpen(false); } }}
       className="border-r border-red-950/20 overflow-hidden [&_[data-sidebar=sidebar]]:bg-gradient-to-b [&_[data-sidebar=sidebar]]:from-[#b31324] [&_[data-sidebar=sidebar]]:to-[#8f0f1e] [&_[data-sidebar=sidebar]]:text-white"
     >
 
@@ -148,14 +157,12 @@ const AppSidebar = () => {
           initial="hidden"
           animate="visible"
         >
-          <div className={isExpanded ? "space-y-4" : "space-y-1"}>
+          <div className="space-y-4">
           {(Object.entries(groupedLinks) as [NavigationGroup, typeof links][]).map(([group, groupLinks]) => (
             <div key={group}>
-              {isExpanded && (
-                <p className="px-3 pb-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-white/55">
-                  {group}
-                </p>
-              )}
+              <p aria-hidden={!isExpanded} className={`h-5 px-3 pb-1.5 text-[9px] font-bold uppercase tracking-[0.16em] text-white/55 ${isExpanded ? "" : "invisible"}`}>
+                {group}
+              </p>
               <SidebarMenu className="space-y-0.5">
             {groupLinks.map(({ to, label, icon: Icon }, index) => {
               const isActive = pathname === to;
@@ -288,8 +295,9 @@ const AppSidebar = () => {
           {!isMobile && (
             <SidebarMenuItem>
               <SidebarMenuButton
-                onClick={toggleSidebar}
-                tooltip={isExpanded ? "Collapse" : "Expand"}
+                aria-label={pinned ? "Unpin sidebar" : "Pin sidebar open"}
+                onClick={() => { setPinned(!pinned); setOpen(!pinned); }}
+                tooltip={pinned ? "Unpin sidebar" : "Pin sidebar open"}
                 className="relative group/tog rounded-xl overflow-hidden border border-transparent hover:border-white/10 transition-all duration-200"
               >
                 <div className="absolute inset-0 opacity-0 group-hover/tog:opacity-100 transition-opacity duration-200 bg-white/6 rounded-xl" />
@@ -307,7 +315,7 @@ const AppSidebar = () => {
                       {...labelMotion}
                       className="relative z-10 text-white/60 group-hover/tog:text-white overflow-hidden whitespace-nowrap transition-colors"
                     >
-                      Collapse
+                      {pinned ? "Unpin sidebar" : "Pin sidebar open"}
                     </motion.span>
                   )}
                 </AnimatePresence>
@@ -317,7 +325,7 @@ const AppSidebar = () => {
         </SidebarMenu>
       </SidebarFooter>
 
-      <SidebarRail />
+
     </Sidebar>
   );
 };

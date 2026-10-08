@@ -1,3 +1,4 @@
+import { reportDestination } from "./report-routing.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { parseTestTarget } from "./test-target.ts";
@@ -84,7 +85,8 @@ serve(async (req) => {
       const showroom = showroomResult.data;
       if (!showroom) throw new Error("Showroom not found");
       const groupJid = String(showroom.whatsapp_group_id || "").trim();
-      if (groupJid && messageType !== "conveyance") {
+      if (reportDestination(messageType) === "director") throw new Error("Director reports cannot be sent to a showroom");
+      if (groupJid && reportDestination(messageType) === "showroom") {
         if (!groupJid.endsWith("@g.us")) throw new Error("Invalid WhatsApp Group ID. Expected a Group JID ending in @g.us");
         const response = await sendMessage({ kind: "group", target: groupJid }, message);
         const providerResult = await response.json().catch(() => null);
@@ -157,7 +159,7 @@ serve(async (req) => {
           let query = admin.from("visits").select("*,clients(name),partners(name)").in("created_by",ids).neq("status","cancelled").lte("visit_date",today).order("id");
           query = key === "followups" ? query.eq("status","planned") : query.gte("visit_date",start);
           visits = await allRows(query);
-          if (key === "outcomes") {
+          if (key === "outcomes" || key === "tl_outcomes") {
             const upcoming = await allRows(admin.from("visits").select("created_by,client_id,partner_id,visit_date").in("created_by",ids).eq("status","planned").gt("visit_date",today).order("visit_date").order("id"));
             visits = visits.map(v => ({...v, next_followup: upcoming.find(n => n.created_by === v.created_by && ((v.client_id && n.client_id === v.client_id) || (v.partner_id && n.partner_id === v.partner_id)))?.visit_date}));
           }
@@ -168,6 +170,45 @@ serve(async (req) => {
         }
       }
       return buildReport(key,showroom.name,today,people,visits,claims,clients);
+    };
+    const directorReport = async () => {
+      if (!isCron && !["admin", "md"].includes(caller?.role || "")) throw new Error("Only Admin or Director can access the consolidated report");
+      const showrooms = await allRows(admin.from("showrooms").select("id,name").order("id"));
+      const assignments = await allRows(admin.from("user_roles").select("user_id,showroom_id").eq("role", "manager").eq("is_active", true).order("id"));
+      const managerIds = [...new Set(assignments.map(row => row.user_id))];
+      const managers = managerIds.length ? await allRows(admin.from("profiles").select("user_id,full_name").in("user_id", managerIds).order("user_id")) : [];
+      const names = new Map(managers.map(person => [person.user_id, person.full_name]));
+      const sections = [];
+      for (const showroom of showrooms) {
+        const ids = [...new Set(assignments.filter(row => row.showroom_id === showroom.id).map(row => row.user_id))];
+        if (!ids.length) continue;
+        sections.push('*Managers:* ' + ids.map(id => names.get(id) || 'Manager').join(', ') + '\n' + await loadReport(showroom.id, "plan_actual"));
+      }
+      const unassignedIds = managerIds.filter(id => !assignments.some(row => row.user_id === id && row.showroom_id));
+      if (unassignedIds.length) {
+        const people = managers.filter(person => unassignedIds.includes(person.user_id));
+        const visits = await allRows(admin.from("visits").select("*,clients(name),partners(name)").in("created_by", unassignedIds).eq("visit_date", indiaDate()).order("id"));
+        sections.push(buildReport("plan_actual", "Unassigned managers", indiaDate(), people, visits));
+      }
+      return '*DIRECTOR — ALL MANAGERS DAILY PLAN VS ACTUAL*\n\n' + (sections.join('\n\n────────────\n\n') || 'No active managers found.');
+    };
+    const sendToDirector = async (message: string) => {
+      const roles = await allRows(admin.from("user_roles").select("user_id").eq("role", "md").eq("is_active", true).order("id"));
+      const ids = [...new Set(roles.map(row => row.user_id))];
+      if (!ids.length) throw new Error("No active Director (MD) is configured");
+      const people = await allRows(admin.from("profiles").select("user_id,phone").in("user_id", ids).order("user_id"));
+      const phones = [...new Set(people.map(person => normalizePhone(person.phone || "")))];
+      if (people.length !== ids.length || phones.some(phone => phone.length < 11)) throw new Error("A Director's WhatsApp number is missing or invalid");
+      let sent = 0;
+      for (const phone of phones) {
+        const response = await sendMessage({ kind: "phone", target: phone }, message, isCron ? 'director-plan-' + indiaDate() + '-' + phone : undefined);
+        const result = await response.json().catch(() => null);
+        if (response.ok && result?.success !== false && result?.ok !== false && !result?.error) sent++;
+      }
+      const { error } = await admin.from("whatshub_message_logs").insert({showroom_id: null, message_type:"plan_actual", message, recipient_count:phones.length, success_count:sent, status:sent === phones.length ? "sent" : "partial", created_by:caller?.id || null});
+      if (error) throw error;
+      if (sent !== phones.length) throw new Error("Director report delivery incomplete");
+      return { recipients: phones.length, sent, deliveryMode: "director_personal" };
     };
     if (action === "report_settings" || action === "save_report_setting") {
       const showroomId = String(body.showroomId || "");
@@ -189,9 +230,10 @@ serve(async (req) => {
     if (action === "preview_report" || action === "send_report") {
       const showroomId = String(body.showroomId || "");
       const key = String(body.reportKey || "");
-      const message = await loadReport(showroomId,key);
+      const consolidated = key === "plan_actual" && (action === "send_report" || ["admin", "md"].includes(caller?.role || ""));
+      const message = consolidated ? await directorReport() : await loadReport(showroomId,key);
       if (action === "preview_report") return json({message});
-      return json(await sendToShowroom(showroomId,message,key));
+      return json(key === "plan_actual" ? await sendToDirector(message) : await sendToShowroom(showroomId,message,key));
     }
     if (action === "run_scheduled_reports" || action === "send_planning_summaries") {
       if (action === "run_scheduled_reports" && !isCron) return json({error:"Scheduler authentication required"},403);
@@ -204,7 +246,25 @@ serve(async (req) => {
       const settings = await allRows(admin.from("whatshub_report_settings").select("*").eq("enabled",true).order("showroom_id").order("report_key"));
       const results = [];
       const now = new Date();
+      if (settings.some(setting => setting.report_key === "plan_actual") && reportDue("plan_actual", now)) {
+        const run = { report_key: "plan_actual", report_date: indiaDate(now) };
+        const { error: claimError } = await admin.from("whatshub_director_report_runs").insert(run);
+        if (claimError && claimError.code !== "23505") throw claimError;
+        if (!claimError) {
+          try {
+            const delivery = await sendToDirector(await directorReport());
+            const { error } = await admin.from("whatshub_director_report_runs").update({ status: "sent" }).match(run);
+            if (error) throw error;
+            results.push(delivery);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            await admin.from("whatshub_director_report_runs").update({status: "failed", error: message}).match(run);
+            results.push({report: "plan_actual", error: message});
+          }
+        }
+      }
       for (const showroom of showrooms) for (const report of reportDefinitions) {
+        if (report.key === "plan_actual") continue;
         const enabled = report.key === "daily_planning" ? showroom.whatsapp_planning_enabled : settings.some(s => s.showroom_id === showroom.id && s.report_key === report.key);
         if (!enabled || !reportDue(report.key,now)) continue;
         const run = {showroom_id:showroom.id, report_key:report.key, report_date:indiaDate(now)};

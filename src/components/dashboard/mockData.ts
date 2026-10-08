@@ -23,6 +23,8 @@ export const mockOwnVisits: Visit[] = Array.from({ length: 14 }).map((_, i) => (
     partner_id: null,
     done_at: null,
     check_in_at: null,
+    showroom_id: null,
+    actual_address: null,
     check_in_lat: null,
     check_in_lng: null,
     gps_latitude: null,

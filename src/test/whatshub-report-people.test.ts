@@ -68,8 +68,16 @@ describe('Daily planning report staff', () => {
     await expect(loadReportPeople({ from: () => query }, 'gurgaon', 'daily_planning')).rejects.toThrow('Unable to load showroom staff');
   });
 
-  it.each(['plan_actual', 'followups', 'outcomes', 'weekly_summary', 'conveyance'])('preserves the existing participant scope for %s', async key => {
+  it.each(['followups', 'weekly_summary', 'conveyance'])('preserves the existing participant scope for %s', async key => {
     const people = await loadReportPeople(database(), 'gurgaon', key);
     expect(people.map(person => person.user_id).sort()).toEqual(['exec', 'tl']);
+  });
+  it.each(['plan_actual', 'outcomes'])('includes active managers and TLs, including zero-plan staff, for %s', async key => {
+    const people = await loadReportPeople(database(), 'gurgaon', key);
+    expect(people.map(person => person.user_id).sort()).toEqual(['exec','manager','tl','zero']);
+  });
+  it('generates the dedicated TL report only for active TLs', async () => {
+    const people = await loadReportPeople(database(), 'gurgaon', 'tl_outcomes');
+    expect(people.map(person => person.user_id)).toEqual(['tl']);
   });
 });

@@ -1,3 +1,5 @@
+import { sharedOwnerFilter } from "@/lib/sharedOwnerScope";
+import { resolveVisitAddress } from "@/lib/visitLocation";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -50,6 +52,7 @@ type InsertVisitData = {
   pooled_with_user_id: string | null;
   client_id?: string;
   partner_id?: string;
+  showroom_id?: string;
 };
 
 const visitStatusColors: Record<string, string> = {
@@ -230,23 +233,21 @@ const Visits = () => {
 
       if (role === "executive" && user) {
         const ids = [user.id, ...(reportsTo ? [reportsTo] : [])];
-        q = q.in("created_by", ids);
+        q = q.or(await sharedOwnerFilter(ids,user.id,true));
       } else if (role === "tl" && user) {
         const { data: myExecs } = await supabase
           .from("user_roles").select("user_id")
           .eq("reports_to", user.id).eq("role", "executive");
         const execIds = (myExecs || []).map((r: UserIdRow) => r.user_id);
-        q = q.in("created_by", [user.id, ...execIds]);
+        q = q.or(await sharedOwnerFilter([user.id,...execIds],user.id,true));
       } else if (role === "manager" && showroomIds.length > 0) {
         const { data: teamRoles } = await supabase
           .from("user_roles").select("user_id").in("showroom_id", showroomIds);
         const teamIds = (teamRoles || []).map((r: UserIdRow) => r.user_id);
-        if (teamIds.length > 0) q = q.in("created_by", teamIds);
+        if (teamIds.length > 0) q = q.or(await sharedOwnerFilter(teamIds,user!.id,true));
       }
 
-      const { data, error } = await q;
-      if (error) throw error;
-      return data;
+      return fetchAllRows<{id:string;name:string;address:string|null;city:string|null}>((from,to) => q.order("id").range(from,to) as any);
     },
   });
 
@@ -257,23 +258,21 @@ const Visits = () => {
 
       if (role === "executive" && user) {
         const ids = [user.id, ...(reportsTo ? [reportsTo] : [])];
-        q = q.in("created_by", ids);
+        q = q.or(`created_by.in.(${ids.join(",")}),secondary_owner_id.eq.${user.id}`);
       } else if (role === "tl" && user) {
         const { data: myExecs } = await supabase
           .from("user_roles").select("user_id")
           .eq("reports_to", user.id).eq("role", "executive");
         const execIds = (myExecs || []).map((r: UserIdRow) => r.user_id);
-        q = q.in("created_by", [user.id, ...execIds]);
+        q = q.or(`created_by.in.(${[user.id, ...execIds].join(",")}),secondary_owner_id.eq.${user.id}`);
       } else if (role === "manager" && showroomIds.length > 0) {
         const { data: teamRoles } = await supabase
           .from("user_roles").select("user_id").in("showroom_id", showroomIds);
         const teamIds = (teamRoles || []).map((r: UserIdRow) => r.user_id);
-        if (teamIds.length > 0) q = q.in("created_by", teamIds);
+        if (teamIds.length > 0) q = q.or(`created_by.in.(${teamIds.join(",")}),secondary_owner_id.eq.${user!.id}`);
       }
 
-      const { data, error } = await q;
-      if (error) throw error;
-      return data || [];
+      return fetchAllRows<{id:string;name:string;address:string|null;city:string|null}>((from,to) => q.order("id").range(from,to) as any);
     },
     enabled: !!user,
   });
@@ -331,7 +330,10 @@ const Visits = () => {
   });
 
   const checkIfDayEnded = async (date: string) => {
-    if (!user || role !== "executive") return false;
+    if (!user) return false;
+    const { data: attendance, error: attendanceError } = await supabase.from("daily_attendance").select("ended_at").eq("user_id", user.id).eq("date", date).maybeSingle();
+    if (attendanceError) throw attendanceError;
+    if (attendance?.ended_at) return true;
     const { data, error } = await supabase
       .from("conveyance_records")
       .select("id")
@@ -354,9 +356,11 @@ const Visits = () => {
         throw new Error("This day has already been marked ended. Visits cannot be added.");
       }
 
+      if (form.visit_with_type === "showroom" && !form.showroom_id) throw new Error("Select the showroom for this visit");
       const insertData: InsertVisitData = {
         visit_date: form.visit_date,
         visit_with_type: form.visit_with_type,
+        ...(form.visit_with_type === "showroom" ? { showroom_id: form.showroom_id } : {}),
         address: form.address,
         purpose_id: form.purpose_id,
         purpose: purposes.find(p => p.id === form.purpose_id)?.purpose_name || "Meeting",
@@ -428,6 +432,7 @@ const Visits = () => {
       }
       setGpsLoading(false);
 
+      const actualAddress = await resolveVisitAddress(gpsLat!, gpsLng!);
       let photoPath: string | null = null;
       if (photo) {
         const ext = photo.name.split(".").pop();
@@ -484,6 +489,7 @@ const Visits = () => {
           photo_url: photoPath,
           gps_latitude: gpsLat,
           gps_longitude: gpsLng,
+          actual_address: actualAddress,
           done_at: new Date().toISOString(),
         }).eq("id", visitId);
         if (error) throw error;
@@ -498,6 +504,7 @@ const Visits = () => {
         photo_url: photoPath,
         gps_latitude: gpsLat,
         gps_longitude: gpsLng,
+          actual_address: actualAddress,
         done_at: doneAt,
       }).eq("id", visitId);
       if (error) throw error;
@@ -769,7 +776,7 @@ const Visits = () => {
                           : "text-muted-foreground"
                       }`}>
                         {form.visit_with_type === "client"
-                          ? (form.client_id ? clients.find(e => e.id === form.client_id)?.name : "Select client...")
+                          ? (form.client_id ? [clients.find(e => e.id === form.client_id)?.name, clients.find(e => e.id === form.client_id)?.address, clients.find(e => e.id === form.client_id)?.city].filter(Boolean).join(" — ") : "Select client...")
                           : form.visit_with_type === "partner"
                           ? (form.partner_id ? partners.find(e => e.id === form.partner_id)?.name : "Select partner...")
                           : (form.showroom_id ? filteredShowrooms.find(e => e.id === form.showroom_id)?.name : "Select showroom...")}
@@ -807,7 +814,7 @@ const Visits = () => {
                         {/* List */}
                         <div className="overflow-y-auto" style={{ maxHeight: "200px" }}>
                           {(form.visit_with_type === "client" ? clients : form.visit_with_type === "partner" ? partners : filteredShowrooms)
-                            .filter(e => e.name.toLowerCase().includes(entitySearch.toLowerCase()))
+                            .filter(e => [e.name, "address" in e ? e.address : "", e.city].filter(Boolean).join(" ").toLowerCase().includes(entitySearch.toLowerCase().trim()))
                             .map(e => {
                               const currentId = form.visit_with_type === "client" ? form.client_id : form.visit_with_type === "partner" ? form.partner_id : form.showroom_id;
                               const isSelected = currentId === e.id;
@@ -826,12 +833,12 @@ const Visits = () => {
                                       : "hover:bg-accent text-foreground"}`}
                                 >
                                   {isSelected && <span className="text-primary text-xs">✓</span>}
-                                  <span className="truncate">{e.name} {'city' in e && e.city ? `(${e.city})` : ''}</span>
+                                  <span className="min-w-0"><span className="block font-medium">{e.name}</span><span className="block text-xs text-muted-foreground whitespace-normal">{["address" in e ? e.address : "", e.city].filter(Boolean).join(", ")}</span></span>
                                 </button>
                               );
                             })}
                           {(form.visit_with_type === "client" ? clients : form.visit_with_type === "partner" ? partners : filteredShowrooms)
-                            .filter(e => e.name.toLowerCase().includes(entitySearch.toLowerCase())).length === 0 && (
+                            .filter(e => [e.name, "address" in e ? e.address : "", e.city].filter(Boolean).join(" ").toLowerCase().includes(entitySearch.toLowerCase().trim())).length === 0 && (
                             <p className="text-center text-xs text-muted-foreground py-5">No results found</p>
                           )}
                         </div>

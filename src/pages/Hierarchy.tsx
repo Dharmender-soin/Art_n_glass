@@ -1,3 +1,5 @@
+import { sharedOwnerFilter } from "@/lib/sharedOwnerScope";
+import { WosProgress, progressLabels } from "@/components/WosProgress";
 import { useState, useMemo, useEffect, Fragment } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -23,13 +25,13 @@ type WorkStatus = "pending" | "submitted" | "won" | "lost" | "draft" | "rejected
 
 interface WOSRecord {
   id: string; client_id: string; work_type_id: string;
-  work_status: WorkStatus; created_at: string; submitted_at: string | null;
+  execution_status?: string; work_status: WorkStatus; created_at: string; submitted_at: string | null;
   verified_at: string | null; quantity: number | null;
   description: string | null; created_by: string;
 }
 interface RawWOS {
   id: string; client_id: string; work_type_id: string;
-  work_status: string; created_at: string; submitted_at: string | null;
+  execution_status?: string; work_status: string; created_at: string; submitted_at: string | null;
   verified_at: string | null; quantity: number | null;
   description: string | null; created_by: string;
   clients: { name: string; address: string | null; mobile: string; status: string; project_status: string | null; architect_name?: string | null; created_by?: string | null; partners: { id?: string; name: string; type?: string; company_name?: string | null } | null } | null;
@@ -105,11 +107,11 @@ const Badge = ({ rec, onClick }: { rec: WOSRecord; onClick: () => void }) => {
     hold:      `Hold status`,
   };
   return (
-    <button onClick={onClick} title={tooltipMap[rec.work_status] ?? ""}
+    <div><button onClick={onClick} title={tooltipMap[rec.work_status] ?? ""}
       className={`group inline-flex flex-col items-center justify-center gap-px px-1.5 py-1 rounded-md border text-[9px] font-semibold w-full transition-all hover:scale-105 active:scale-95 hover:shadow ${s.cls}`}>
       <span className="flex items-center gap-0.5">{s.icon}{s.label}</span>
       {d && <span className="opacity-55 font-normal tabular-nums">{d}</span>}
-    </button>
+    </button><WosProgress id={rec.id} value={rec.execution_status} /></div>
   );
 };
 
@@ -164,10 +166,10 @@ const PivotTable = ({
 }) => {
   return (
     <>
-      {/* ── DESKTOP LAYOUT (Hidden on mobile/tablet) ── */}
-      <div className="hidden lg:block rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+      {/* ── RESPONSIVE ROW LAYOUT ── */}
+      <div className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
         <div className="overflow-auto" style={{ maxHeight: isClosed ? "360px" : "calc(100vh - 340px)" }}>
-          <table className="w-full text-xs border-collapse table-fixed">
+          <table className="min-w-[1120px] w-full text-xs border-collapse table-fixed">
             <colgroup>
               <col style={{ width: viewGrouping === "executive" ? "46px" : "88px" }} />
               <col style={{ width: "76px" }} />
@@ -398,8 +400,10 @@ const PivotTable = ({
         </div>
       </div>
 
-      {/* ── MOBILE / TABLET LAYOUT (Hidden on desktop) ── */}
-      <div className="block lg:hidden space-y-3">
+      {/* Card layout removed: the same row-wise hierarchy is used on mobile,
+          inside the horizontal scroller above, so executives and TLs see the
+          same columns and status controls as desktop. */}
+      <div className="hidden">
         {pivotData.map(exec =>
           exec.clients.map(client => (
             <div key={`${exec.executive_id}-${client.client_id}`}
@@ -534,7 +538,7 @@ const Hierarchy = () => {
   const navigate = useNavigate();
   const { role, user, showroomIds } = useAuth();
   const queryClient = useQueryClient();
-  const canAccess = role==="admin"||role==="manager"||role==="md"||role==="tl";
+  const canAccess = role==="admin"||role==="manager"||role==="md"||role==="tl"||role==="executive";
   const isMdOrAdmin = role==="admin"||role==="md";
   const isManager = role==="manager"||role==="admin"||role==="md";
   const isTL = role==="tl";
@@ -553,7 +557,7 @@ const Hierarchy = () => {
     else if (q) setFSearch(q);
     if (ex) setFExec(ex);
   }, [searchParams]);
-  const [viewGrouping, setViewGrouping] = useState<"executive" | "architect" | "partner">("executive");
+  const [viewGrouping, setViewGrouping] = useState<"executive" | "architect" | "partner">("partner");
   const [expandedExecs, setExpandedExecs] = useState<Record<string, boolean>>({});
   const [selectedCell, setSelectedCell] = useState<WOSRecord|null>(null);
   const [updateStatus, setUpdateStatus] = useState<WorkStatus>("won");
@@ -592,7 +596,7 @@ const Hierarchy = () => {
   const { data: showrooms=[] } = useQuery({ queryKey:["sr-h3"], enabled:isMdOrAdmin || (role === "manager" && showroomIds && showroomIds.length > 1),
     queryFn: async()=>{ const{data}=await supabase.from("showrooms").select("id,name").order("name"); return data||[]; } });
   const { data: userRoles=[] } = useQuery({ queryKey:["ur-h3"], enabled:canAccess,
-    queryFn: async()=>{ const{data}=await supabase.from("user_roles").select("user_id,showroom_id"); return data||[]; } });
+    queryFn: async()=>{ const{data}=await supabase.from("user_roles").select("user_id,showroom_id,reports_to,role"); return data||[]; } });
   const { data: profiles=[] } = useQuery({ queryKey:["pr-h3"], enabled:canAccess,
     queryFn: async()=>{ const{data}=await supabase.from("profiles").select("user_id,full_name"); return data||[]; } });
   const { data: allWorkTypes=[] } = useQuery({ queryKey:["wt-h3"], enabled:canAccess,
@@ -622,7 +626,9 @@ const Hierarchy = () => {
     queryFn: async()=>{
       let creatorIds: string[] | null = null;
 
-      if (role === "tl" && user) {
+      if (role === "executive" && user) {
+        creatorIds = [user.id];
+      } else if (role === "tl" && user) {
         // TL: own WOS + all executives who report to this TL
         const { data: myExecs } = await supabase
           .from("user_roles")
@@ -640,11 +646,19 @@ const Hierarchy = () => {
         creatorIds = (teamRoles || []).map((r: any) => r.user_id);
       }
 
-      return fetchAllRows<RawWOS>((from, to) => {
+      const rows = await fetchAllRows<RawWOS>((from, to) => {
         let q = supabase.from("work_scope_items")
-          .select(`id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile,status,project_status,architect_name,created_by,partner_id,partners(id,name,type,company_name)),master_work_types(type_of_work,sub_work)`);
-        if (creatorIds) q = q.in("created_by", creatorIds);
+          .select(`*,clients(name,address,mobile,status,project_status,architect_name,created_by,secondary_owner_id,partner_id,partners(id,name,type,company_name,created_by,secondary_owner_id)),master_work_types(type_of_work,sub_work)`);
         return q.order("created_at", { ascending: false }).range(from, to) as any;
+      });
+      // Preserve the reporting-team scope while including shared client/partner work.
+      if (!creatorIds) return rows;
+      const team = new Set(creatorIds);
+      return rows.filter(row => {
+        const client = row.clients as any;
+        const partner = Array.isArray(client?.partners) ? client.partners[0] : client?.partners;
+        return team.has(row.created_by) || team.has(client?.created_by) || client?.secondary_owner_id === user?.id
+          || partner?.created_by === user?.id || partner?.secondary_owner_id === user?.id;
       });
     }
   });
@@ -661,7 +675,9 @@ const Hierarchy = () => {
     queryFn: async()=>{
       let creatorIds: string[] | null = null;
 
-      if (role === "tl" && user) {
+      if (role === "executive" && user) {
+        creatorIds = [user.id];
+      } else if (role === "tl" && user) {
         const { data: myExecs } = await supabase
           .from("user_roles")
           .select("user_id")
@@ -677,10 +693,11 @@ const Hierarchy = () => {
         creatorIds = (teamRoles || []).map((r: any) => r.user_id);
       }
 
+      const ownerFilter = creatorIds ? await sharedOwnerFilter(creatorIds,user!.id,true) : null;
       return fetchAllRows<any>((from, to) => {
         let q = supabase.from("clients")
           .select(`id, name, address, mobile, status, project_status, architect_name, created_by, partner_id, partners(id,name,type,company_name)`);
-        if (creatorIds) q = q.in("created_by", creatorIds);
+        if (ownerFilter) q = q.or(ownerFilter);
         return q.order("created_at", { ascending: false }).range(from, to) as any;
       });
     }
@@ -749,14 +766,15 @@ const Hierarchy = () => {
       // Architect/Partner views keep showing records from every executive.
       if (fShowroom !== "all" && creatorShowroom !== fShowroom) return;
       if (fExec !== "all" && creatorId !== fExec) return;
+      const partnerKey = c.partner_id || (Array.isArray(c.partners) ? c.partners[0]?.id : c.partners?.id);
       const builderName = getPartnerName((c as any).partners);
       const archName = getArchitectName(c);
       const groupKey = viewGrouping === "partner"
-        ? (builderName && builderName.trim() ? `Partner: ${builderName.trim()}` : "Direct / No Partner")
+        ? (partnerKey ? `partner:${partnerKey}` : "Direct / No Partner")
         : viewGrouping === "architect"
         ? (archName ? `Arch: ${archName}` : "Direct / No Architect")
         : creatorId;
-      const displayName = (viewGrouping === "architect" || viewGrouping === "partner") ? groupKey : (profileMap[groupKey] || "Unassigned User");
+      const displayName = viewGrouping === "partner" ? (partnerKey ? `Partner: ${builderName || "Unnamed Partner"}` : "Direct / No Partner") : viewGrouping === "architect" ? groupKey : (profileMap[groupKey] || "Unassigned User");
 
       if (!em.has(groupKey)) {
         em.set(groupKey, {
@@ -804,14 +822,15 @@ const Hierarchy = () => {
       if (fShowroom !== "all" && creatorShowroom !== fShowroom) return;
       if (fExec !== "all" && creatorId !== fExec) return;
 
+      const partnerKey = (clientObj as any).partner_id || (Array.isArray(clientObj.partners) ? clientObj.partners[0]?.id : clientObj.partners?.id);
       const builderName = getPartnerName(clientObj.partners);
       const archName = getArchitectName(clientObj);
       const groupKey = viewGrouping === "partner"
-        ? (builderName && builderName.trim() ? `Partner: ${builderName.trim()}` : "Direct / No Partner")
+        ? (partnerKey ? `partner:${partnerKey}` : "Direct / No Partner")
         : viewGrouping === "architect"
         ? (archName ? `Arch: ${archName}` : "Direct / No Architect")
         : creatorId;
-      const displayName = (viewGrouping === "architect" || viewGrouping === "partner") ? groupKey : (profileMap[groupKey] || "Unassigned User");
+      const displayName = viewGrouping === "partner" ? (partnerKey ? `Partner: ${builderName || "Unnamed Partner"}` : "Direct / No Partner") : viewGrouping === "architect" ? groupKey : (profileMap[groupKey] || "Unassigned User");
 
       if (!em.has(groupKey)) {
         em.set(groupKey, {
@@ -854,6 +873,7 @@ const Hierarchy = () => {
           client_id: r.client_id,
           work_type_id: r.work_type_id,
           work_status: newStatus,
+          execution_status: r.execution_status,
           created_at: r.created_at,
           submitted_at: r.submitted_at,
           verified_at: r.verified_at,
@@ -866,9 +886,10 @@ const Hierarchy = () => {
       if (pName && !cl.partners.includes(pName)) cl.partners.push(pName);
     });
     let res = Array.from(em.values()).map(item => item.exec).sort((a, b) => a.executive_name.localeCompare(b.executive_name));
+    res.forEach(group => group.clients.sort((a, b) => a.client_name.localeCompare(b.client_name) || a.client_address.localeCompare(b.client_address)));
     if (fShowroom !== "all" && viewGrouping === "executive") res = res.filter(e => e.showroom_id === fShowroom);
     if (fExec !== "all" && viewGrouping === "executive") res = res.filter(e => e.executive_id === fExec);
-    if (fStatus !== "all") res = res.map(e => ({ ...e, clients: e.clients.filter(c => fStatus === "hot" ? c.client_status === "hot" : Object.values(c.wos || {}).some(w => w && w.work_status === fStatus)) })).filter(e => e.clients.length > 0);
+    if (fStatus !== "all") res = res.map(e => ({ ...e, clients: e.clients.filter(c => fStatus === "hot" ? c.client_status === "hot" : Object.values(c.wos || {}).some(w => w && (w.work_status === fStatus || w.execution_status === fStatus))) })).filter(e => e.clients.length > 0);
     if (fSearch.trim()) {
       const q = fSearch.toLowerCase();
       res = res.map(e => ({
@@ -1211,6 +1232,7 @@ const Hierarchy = () => {
           const colName = wt ? `${wt.type_of_work} - ${wt.sub_work}` : id;
           const rec = client.wos[id];
           rowData[colName] = rec ? rec.work_status.charAt(0).toUpperCase() + rec.work_status.slice(1) : "-";
+          rowData[`${colName} Progress`] = rec ? progressLabels[rec.execution_status || "not_started"] : "-";
         });
 
         rowData["WOS Summary"] = client.partners.join(", ") || "-";
@@ -1311,7 +1333,7 @@ const Hierarchy = () => {
           </select>
           <select value={fStatus} onChange={e=>setFStatus(e.target.value)}
             className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-400 appearance-none cursor-pointer">
-            <option value="all">All Stages</option>
+            <option value="all">All Stages</option><option value="in_progress">In Progress</option><option value="completed">Completed</option>
             <option value="pending">🔵 WOS Added</option>
             <option value="submitted">🟡 Quotation</option>
             <option value="won">🟢 Won</option>

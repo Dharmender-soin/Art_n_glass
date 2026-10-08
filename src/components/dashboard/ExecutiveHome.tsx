@@ -1,3 +1,4 @@
+import { visitDisplayName } from "@/lib/visitDisplay";
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -204,6 +205,9 @@ export const ExecutiveHome = () => {
         queryKey: ["end-day-record", user?.id, dateStr],
         queryFn: async () => {
             if (!user) return null;
+            const { data: attendance, error: attendanceError } = await supabase.from("daily_attendance").select("id,ended_at").eq("user_id", user.id).eq("date", dateStr).maybeSingle();
+            if (attendanceError) throw attendanceError;
+            if (attendance?.ended_at) return attendance;
             const { data, error } = await supabase
                 .from("conveyance_records")
                 .select("id")
@@ -340,6 +344,11 @@ export const ExecutiveHome = () => {
             const gpsLat = pos.coords.latitude;
             const gpsLng = pos.coords.longitude;
             const endAt = new Date().toISOString();
+            const saveDayEnd = async () => {
+                const { error } = await supabase.rpc("end_attendance_day", { p_date: dateStr, p_lat: gpsLat, p_lng: gpsLng });
+                if (error) throw error;
+                await refetchAttendance();
+            };
 
             const { data: profile } = await supabase.from("profiles").select("conveyance_type, conveyance_rate").eq("user_id", user.id).single();
 
@@ -398,10 +407,12 @@ export const ExecutiveHome = () => {
                     amount: finalAmount
                 });
                 if (error) throw error;
+                await saveDayEnd();
                 toast.success(isCommute ? "Day Ended! (Commute trip home - ₹0 conveyance)" : `Day Ended! Return trip: ${distance} km (₹${amount})`);
                 refetchEndDay();
                 refetchConveyance();
             } else {
+                await saveDayEnd();
                 if (!profile?.conveyance_type) {
                     toast.warning("Day Ended. No conveyance recorded — conveyance type not set in profile.");
                 } else {
@@ -2017,7 +2028,7 @@ export const ExecutiveHome = () => {
                                         {kpiPopup.type === 'visits' && (
                                             <>
                                                 <div className="flex justify-between items-start">
-                                                    <p className="font-semibold text-sm text-foreground">{item.clients?.name || item.partners?.name || "Meeting"}</p>
+                                                    <p className="font-semibold text-sm text-foreground">{visitDisplayName(item)}</p>
                                                     <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase ${item.status === 'done' ? 'bg-emerald-500/15 text-emerald-400' : 'bg-blue-500/15 text-blue-400'}`}>{item.status.replace("_", " ")}</span>
                                                 </div>
                                                 <p className="text-[11px] text-muted-foreground dark:text-white/35">{item.purpose_masters?.purpose_name || "Follow up"} · {format(parseISO(item.visit_date), "dd MMM")}</p>
@@ -2567,7 +2578,7 @@ const VisitCard = ({ visit, onMarkDone, onCancel, onAddWOS, index, navigate }: V
                             </span>
                         </div>
                         <h3 className="text-sm font-bold text-foreground leading-tight truncate">
-                            {visit.clients?.name || visit.partners?.name || "Meeting"}
+                            {visitDisplayName(visit)}
                         </h3>
                         <p className="text-[11px] text-muted-foreground dark:text-white/45 font-medium truncate">
                             {visit.purpose_masters?.purpose_name || visit.purpose || "Follow-up"}

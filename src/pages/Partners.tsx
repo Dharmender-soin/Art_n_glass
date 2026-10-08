@@ -165,8 +165,8 @@ interface PartnerCardProps {
   lastVisitLoading: boolean;
   showClientForm: string | null;
   setShowClientForm: (id: string | null) => void;
-  clientForm: { name: string; mobile: string; address: string; city: string; notes: string; status: "new"; secondary_owner_id: string };
-  setClientForm: (form: { name: string; mobile: string; address: string; city: string; notes: string; status: "new"; secondary_owner_id: string }) => void;
+  clientForm: { name: string; mobile: string; address: string; city: string; architect_name: string; notes: string; status: "new"; secondary_owner_id: string };
+  setClientForm: (form: { name: string; mobile: string; address: string; city: string; architect_name: string; notes: string; status: "new"; secondary_owner_id: string }) => void;
   teamMembers: AssignableUser[];
   primaryOwnerId: string | null;
   primaryOwnerName: string;
@@ -389,6 +389,10 @@ const PartnerCard = ({
               <Input placeholder="Address" value={clientForm.address} onChange={(e) => setClientForm({ ...clientForm, address: e.target.value })} className="h-8 text-xs" />
               <Input placeholder="City" value={clientForm.city} onChange={(e) => setClientForm({ ...clientForm, city: e.target.value })} className="h-8 text-xs" />
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`client-architect-${p.id}`} className="text-xs font-semibold">Architect Name <span className="text-red-500">*</span></Label>
+              <Input id={`client-architect-${p.id}`} required placeholder="Architect Name *" value={clientForm.architect_name} onChange={e => setClientForm({ ...clientForm, architect_name: e.target.value })} className="h-8 text-xs" />
+            </div>
             <SharedOwnershipFields primaryOwnerId={primaryOwnerId} primaryOwnerName={primaryOwnerName} secondaryOwnerId={clientForm.secondary_owner_id} members={teamMembers} onSecondaryChange={(secondary_owner_id) => setClientForm({ ...clientForm, secondary_owner_id })} />
             <div className="flex gap-2">
               <Button size="sm" type="submit" disabled={createClientForPartner.isPending} className="flex-1 h-8 text-xs font-bold">
@@ -520,7 +524,7 @@ const Partners = () => {
   const [wosClient, setWosClient] = useState<{ id: string; name: string } | null>(null);
   const [form, setForm] = useState({ ...emptyForm });
   const [editForm, setEditForm] = useState({ ...emptyForm });
-  const [clientForm, setClientForm] = useState({ name: "", mobile: "", address: "", city: "", notes: "", status: "new" as const, secondary_owner_id: "" });
+  const [clientForm, setClientForm] = useState({ name: "", mobile: "", address: "", city: "", architect_name: "", notes: "", status: "new" as const, secondary_owner_id: "" });
   const { data: teamMembers = [], isSuccess: sharedOwnershipReady } = useAssignableUsers();
   const currentOwnerName = teamMembers.find((member) => member.user_id === user?.id)?.full_name || user?.user_metadata?.full_name || "Current user";
 
@@ -565,7 +569,7 @@ const Partners = () => {
 
       const data = await fetchAllRows<any>((from, to) => {
         let q = supabase.from("partners").select("*");
-        if (creatorIdsFilter) q = q.in("created_by", creatorIdsFilter);
+        if (creatorIdsFilter) q = q.or(`created_by.in.(${creatorIdsFilter.join(",")}),secondary_owner_id.eq.${user!.id}`);
         return q.order("created_at", { ascending: false }).range(from, to) as any;
       });
 
@@ -640,14 +644,15 @@ const Partners = () => {
 
   const createClientForPartner = useMutation({
     mutationFn: async (partnerId: string) => {
-      const { secondary_owner_id, ...clientValues } = clientForm;
+      if (!clientForm.architect_name.trim()) throw new Error("Architect Name is required");
+      const { secondary_owner_id, ...clientValues } = { ...clientForm, architect_name: clientForm.architect_name.trim() };
       const { error } = await supabase.from("clients").insert({ ...clientValues, ...(secondary_owner_id ? { secondary_owner_id } : {}), partner_id: partnerId, created_by: user!.id });
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       toast.success("Client created!");
-      setClientForm({ name: "", mobile: "", address: "", city: "", notes: "", status: "new", secondary_owner_id: "" });
+      setClientForm({ name: "", mobile: "", address: "", city: "", architect_name: "", notes: "", status: "new", secondary_owner_id: "" });
       setShowClientForm(null);
     },
     onError: (e: Error) => toast.error(e.message),

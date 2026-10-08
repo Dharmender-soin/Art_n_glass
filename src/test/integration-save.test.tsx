@@ -17,9 +17,9 @@ beforeEach(() => {
     const chain = { select: () => chain, order: () => chain, eq: () => chain, maybeSingle: () => Promise.resolve(result), then: (resolve: (value: unknown) => unknown) => Promise.resolve(result).then(resolve) };
     return chain as never;
   });
-  vi.mocked(supabase.rpc).mockImplementation(async (name) => name === "get_whatshub_integration_status"
+  vi.mocked(supabase.rpc).mockImplementation((name) => Promise.resolve(String(name) === "get_whatshub_integration_status"
     ? { data: null, error: { message: "Integration function missing" } } as never
-    : { data: null, error: null } as never);
+    : { data: null, error: null }) as never);
 });
 afterEach(cleanup);
 

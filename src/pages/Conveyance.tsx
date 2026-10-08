@@ -1,3 +1,6 @@
+import { useConveyanceDays } from "@/hooks/useConveyanceDays";
+import { buildConveyanceDays, dayDetailRows } from "@/lib/conveyanceDayDetails";
+import { ConveyanceDayDetails } from "@/components/ConveyanceDayDetails";
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -181,6 +184,8 @@ const Conveyance = () => {
       });
     },
   });
+  const dayQuery = useConveyanceDays(targetUserIds, fromDate, toDate, !!user && !!role && !rolesLoading && !rolesError);
+  const days = useMemo(() => buildConveyanceDays(dayQuery.data?.attendance || [], dayQuery.data?.visits || [], rawRecords), [dayQuery.data, rawRecords]);
   const isLoading = rolesLoading || recordsLoading;
   const reportError = rolesError || recordsError;
 
@@ -307,94 +312,28 @@ const Conveyance = () => {
 
   // ── Excel Export ───────────────────────────────────────────────────────────
   const exportToExcel = () => {
-    let html = `
-      <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-      <head>
-        <meta charset="utf-8" />
-        <!--[if gte mso 9]>
-        <xml>
-          <x:ExcelWorkbook>
-            <x:ExcelWorksheets>
-              <x:ExcelWorksheet>
-                <x:Name>Conveyance Report</x:Name>
-                <x:WorksheetOptions>
-                  <x:DisplayGridlines/>
-                </x:WorksheetOptions>
-              </x:ExcelWorksheet>
-            </x:ExcelWorksheets>
-          </x:ExcelWorkbook>
-        </xml>
-        <![endif]-->
-        <style>
-          table { border-collapse: collapse; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-          td { border: 1px solid #D1D5DB; padding: 8px 12px; font-size: 11px; color: #374151; }
-          th { border: 1px solid #D1D5DB; padding: 10px 12px; font-size: 11px; text-align: left; background-color: #1E293B; color: #FFFFFF; font-weight: bold; }
-          .title-row { font-size: 16px; font-weight: bold; color: #1E3A8A; height: 40px; }
-          .amount-cell { color: #059669; font-weight: bold; }
-          .empty-row { height: 18px; }
-          .empty-cell { border: none; background: transparent; }
-        </style>
-      </head>
-      <body>
-        <table>
-          <tr>
-            <td colspan="12" class="title-row" style="vertical-align: middle;">CONVEYANCE EXPENSES REPORT (FROM ${format(parseISO(fromDate), "dd MMM yyyy")} TO ${format(parseISO(toDate), "dd MMM yyyy")})</td>
-          </tr>
-          <tr class="empty-row"><td colspan="12" class="empty-cell"></td></tr>
-          <tr>
-            <th style="width: 90px;">Date</th>
-            <th style="width: 150px;">Employee</th>
-            <th style="width: 110px;">Showroom</th>
-            <th style="width: 200px;">From</th>
-            <th style="width: 200px;">To</th>
-            <th style="width: 80px;">Vehicle</th>
-            <th style="width: 95px; text-align: right;">Distance (KM)</th>
-            <th style="width: 95px; text-align: right;">Rate (INR/km)</th>
-            <th style="width: 95px; text-align: right;">Amount (INR)</th>
-            <th style="width: 100px;">Trip Category</th>
-            <th style="width: 180px;">Visited Client/Partner</th>
-            <th style="width: 150px;">Visit Purpose</th>
-          </tr>
-    `;
-
-    tableRows.forEach((r) => {
-      const rawRec = rawRecords.find(x => x.id === r.id);
-      const visitInfo = rawRec?.visits;
-      const visitedName = visitInfo?.clients?.name || visitInfo?.partners?.name || "-";
-      const purpose = visitInfo?.purpose || "-";
-
-      html += `
-        <tr>
-          <td>${format(new Date(r.date), "dd MMM yyyy")}</td>
-          <td>${r.execName}</td>
-          <td>${r.showroomName}</td>
-          <td>${r.from}</td>
-          <td>${r.to}</td>
-          <td style="text-transform: capitalize;">${r.vehicle}</td>
-          <td style="text-align: right;">${r.km.toFixed(2)}</td>
-          <td style="text-align: right;">${r.rate.toFixed(2)}</td>
-          <td style="text-align: right;" class="amount-cell">${r.amount.toFixed(2)}</td>
-          <td>${r.type}</td>
-          <td>${visitedName}</td>
-          <td>${purpose}</td>
-        </tr>
-      `;
+    if (dayQuery.isFetching || dayQuery.error) { toast.error("Wait for day details to load before exporting"); return; }
+    const details = dayDetailRows(days, mergedProfileMap);
+    const byDay = new Map(days.map(day => [day.key, day]));
+    const time = (value: string | null | undefined) => value ? new Date(value).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) : 'Not recorded';
+    const rows = tableRows.map(row => {
+      const raw = rawRecords.find(record => record.id === row.id);
+      const day = raw ? byDay.get(raw.user_id + ':' + raw.date) : undefined;
+      const visit = details.find(item => item['Visit ID'] === raw?.visit_id);
+      return { Date: row.date, Employee: row.execName, Showroom: row.showroomName,
+        'Start Day/Time (IST)': time(day?.start), 'End Day/Time (IST)': time(day?.end),
+        'Visits Done': day?.visits.length || 0, From: row.from, To: row.to, Vehicle: row.vehicle,
+        'Distance (KM)': row.km, 'Rate (INR/km)': row.rate, 'Amount (INR)': row.amount,
+        'Trip Category': row.type,
+        'Visited Client/Partner': visit?.Visit || raw?.visits?.clients?.name || raw?.visits?.partners?.name || '-',
+        'Visit Purpose': raw?.visits?.purpose || '-', 'Visit ID': raw?.visit_id || '',
+        'Actual Visit Address / GPS': visit?.['Actual Visit Address / GPS'] || '', Map: visit?.Map || '' };
     });
-
-    html += `
-        </table>
-      </body>
-      </html>
-    `;
-
-    const blob = new Blob([html], { type: "application/vnd.ms-excel;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `conveyance_${fromDate}_to_${toDate}.xls`;
-    a.click();
-    URL.revokeObjectURL(url);
-    toast.success("Conveyance report exported successfully ✓");
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(rows), 'Conveyance Trips');
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.json_to_sheet(details), 'Day and Visit Details');
+    XLSX.writeFile(workbook, 'conveyance_' + fromDate + '_to_' + toDate + '.xlsx');
+    toast.success('Conveyance and day details exported');
   };
 
   const toggleExec = (uid: string) => setExpandedExecs((prev) => {
@@ -532,6 +471,8 @@ const Conveyance = () => {
         Conveyance could not be loaded. These totals are unavailable until the request succeeds.
         <Button variant="outline" className="ml-3" onClick={() => { if (rolesError) void retryRoles(); else void retryRecords(); }}>Retry</Button>
       </div>}
+
+      <ConveyanceDayDetails days={days} names={mergedProfileMap} loading={dayQuery.isFetching} error={dayQuery.error} />
 
       {/* ── KPI Cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">

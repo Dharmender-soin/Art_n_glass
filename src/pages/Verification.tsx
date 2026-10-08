@@ -1,3 +1,4 @@
+import { WosProgress } from "@/components/WosProgress";
 import { useState, useMemo, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -566,6 +567,7 @@ const VerificationCard = ({ item, onVerify }: { item: any, onVerify: () => void 
           <Badge variant="outline" className={`shrink-0 capitalize gap-1 ${statusColors[status]} border shadow-sm`}>
             {statusIcon[status]} {status}
           </Badge>
+          <WosProgress id={item.id} value={item.execution_status} />
         </div>
 
         <div className="space-y-3">

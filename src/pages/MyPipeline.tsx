@@ -1,3 +1,4 @@
+import { WosProgress } from "@/components/WosProgress";
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,7 +19,7 @@ type WorkStatus = "pending" | "submitted" | "won" | "lost" | "draft" | "rejected
 
 interface WOSRecord {
   id: string; client_id: string; work_type_id: string;
-  work_status: WorkStatus; created_at: string; submitted_at: string | null;
+  execution_status?: string; work_status: WorkStatus; created_at: string; submitted_at: string | null;
   verified_at: string | null; quantity: number | null;
   description: string | null; created_by: string;
   subWork: string; typeOfWork: string;
@@ -65,14 +66,14 @@ const WOSBadge = ({ rec, onClick }: { rec: WOSRecord; onClick: () => void }) => 
   const cfg = STATUS_CFG[rec.work_status] ?? STATUS_CFG.pending;
   const date = displayDate(rec);
   return (
-    <button
+    <div><button
       onClick={onClick}
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl border text-[11px] font-bold transition-all active:scale-95 hover:shadow-sm ${cfg.badgeCls}`}
     >
       <span className={`w-1.5 h-1.5 rounded-full ${cfg.dotCls} shrink-0`} />
       <span>{rec.subWork}</span>
       <span className="opacity-60 font-normal">· {cfg.label}{date ? ` ${date}` : ""}</span>
-    </button>
+    </button><WosProgress id={rec.id} value={rec.execution_status} /></div>
   );
 };
 
@@ -198,11 +199,11 @@ const MyPipeline = () => {
       if (!user) return [];
       const { data, error } = await supabase
         .from("work_scope_items")
-        .select("id,client_id,work_type_id,work_status,created_at,submitted_at,verified_at,quantity,description,created_by,clients(name,address,mobile),master_work_types(type_of_work,sub_work)")
+        .select("*,clients(name,address,mobile),master_work_types(type_of_work,sub_work)")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data || []) as unknown as Array<{
-        id: string; client_id: string; work_type_id: string; work_status: string;
+        id: string; client_id: string; work_type_id: string; execution_status?: string; work_status: string;
         created_at: string; submitted_at: string | null; verified_at: string | null;
         quantity: number | null; description: string | null; created_by: string;
         clients: { name: string; address: string | null; mobile: string } | null;
@@ -246,6 +247,7 @@ const MyPipeline = () => {
       const newRec: WOSRecord = {
         id: r.id, client_id: r.client_id, work_type_id: r.work_type_id,
         work_status: r.work_status as WorkStatus,
+        execution_status: r.execution_status,
         created_at: r.created_at, submitted_at: r.submitted_at,
         verified_at: r.verified_at, quantity: r.quantity,
         description: r.description, created_by: r.created_by,

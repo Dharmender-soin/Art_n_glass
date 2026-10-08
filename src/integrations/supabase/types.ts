@@ -199,6 +199,9 @@ export type Database = {
       }
       daily_attendance: {
         Row: {
+          ended_at: string | null
+          end_latitude: number | null
+          end_longitude: number | null
           check_in_lat: number
           check_in_lng: number
           created_at: string
@@ -207,6 +210,9 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ended_at?: string | null
+          end_latitude?: number | null
+          end_longitude?: number | null
           check_in_lat: number
           check_in_lng: number
           created_at?: string
@@ -215,6 +221,9 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ended_at?: string | null
+          end_latitude?: number | null
+          end_longitude?: number | null
           check_in_lat?: number
           check_in_lng?: number
           created_at?: string
@@ -637,6 +646,8 @@ export type Database = {
       }
       visits: {
         Row: {
+          showroom_id: string | null
+          actual_address: string | null
           address: string | null
           check_in_at: string | null
           check_in_lat: number | null
@@ -663,6 +674,8 @@ export type Database = {
           visit_with_type: Database["public"]["Enums"]["visit_with_type"]
         }
         Insert: {
+          showroom_id?: string | null
+          actual_address?: string | null
           address?: string | null
           check_in_at?: string | null
           check_in_lat?: number | null
@@ -689,6 +702,8 @@ export type Database = {
           visit_with_type: Database["public"]["Enums"]["visit_with_type"]
         }
         Update: {
+          showroom_id?: string | null
+          actual_address?: string | null
           address?: string | null
           check_in_at?: string | null
           check_in_lat?: number | null
@@ -778,6 +793,9 @@ export type Database = {
       }
       work_scope_items: {
         Row: {
+          execution_status: string
+          execution_updated_at: string | null
+          execution_updated_by: string | null
           amount_in_lac: number | null
           client_id: string
           created_at: string
@@ -797,6 +815,9 @@ export type Database = {
           work_type_id: string
         }
         Insert: {
+          execution_status?: string
+          execution_updated_at?: string | null
+          execution_updated_by?: string | null
           amount_in_lac?: number | null
           client_id: string
           created_at?: string
@@ -816,6 +837,9 @@ export type Database = {
           work_type_id: string
         }
         Update: {
+          execution_status?: string
+          execution_updated_at?: string | null
+          execution_updated_by?: string | null
           amount_in_lac?: number | null
           client_id?: string
           created_at?: string
@@ -856,6 +880,9 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      set_wos_execution_status: { Args: { p_id: string; p_status: string }; Returns: undefined }
+      end_attendance_day: { Args: { p_date: string; p_lat: number; p_lng: number }; Returns: undefined }
+
       get_employee_display_names: {
         Args: { p_user_ids: string[] }
         Returns: { user_id: string; full_name: string | null }[]
@@ -932,7 +959,7 @@ export type Database = {
         | "backhand_executive"
       client_status: "new" | "hot" | "converted" | "lost"
       partner_type: "builder" | "architect" | "self"
-      visit_status: "planned" | "done" | "cancelled"
+      visit_status: "planned" | "in_progress" | "done" | "cancelled"
       visit_with_type: "client" | "partner" | "home" | "hotel" | "showroom"
       work_status:
         | "pending"
@@ -1083,7 +1110,7 @@ export const Constants = {
       ],
       client_status: ["new", "hot", "converted", "lost"],
       partner_type: ["builder", "architect", "self"],
-      visit_status: ["planned", "done", "cancelled"],
+      visit_status: ["planned", "in_progress", "done", "cancelled"],
       visit_with_type: ["client", "partner", "home", "hotel", "showroom"],
       work_status: [
         "pending",

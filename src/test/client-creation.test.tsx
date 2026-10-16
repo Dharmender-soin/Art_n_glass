@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   from: vi.fn(), insert: vi.fn(), update: vi.fn(), success: vi.fn(), error: vi.fn(),
   saveError: null as { message: string } | null,
   partnerType: "architect",
+  extraPartners: [] as Record<string, unknown>[],
   clients: [] as Record<string, unknown>[],
 }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { from: mocks.from } }));
@@ -28,13 +29,14 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.saveError = null;
   mocks.partnerType = "architect";
+  mocks.extraPartners = [];
   mocks.clients = [];
   mocks.from.mockImplementation((table: string) => {
     const data = table === "partners" ? [{
       id: "partner-1", name: "Test Partner", type: mocks.partnerType,
       mobile: "9000000001", city: "Ludhiana", address: "Test Road",
       company_name: "Test Office", created_by: "employee-1", secondary_owner_id: null,
-    }] : table === "clients" ? mocks.clients : [];
+    }, ...mocks.extraPartners] : table === "clients" ? mocks.clients : [];
     const chain = {
       select: () => chain, order: () => chain, eq: () => chain, in: () => chain,
       not: () => chain, or: () => chain, range: () => chain,
@@ -113,12 +115,73 @@ describe.each(["clients", "partners"] as const)("%s client creation", flow => {
   });
 });
 
-it("saves a quick client under an architect partner, matching the reported mobile flow", async () => {
+it("saves a quick client using the Architect partner without asking for the same name again", async () => {
   const { form, architect } = await openCreate("partners");
-  fireEvent.change(architect, { target: { value: "Test Partner" } });
+  expect(architect).toHaveValue("Test Partner");
   fireEvent.click(within(form).getByRole("button", { name: "Save Client" }));
   await waitFor(() => expect(mocks.success).toHaveBeenCalledWith("Client created!"));
   expect(mocks.insert).toHaveBeenCalledWith("clients", expect.objectContaining({
     architect_name: "Test Partner", partner_id: "partner-1",
   }));
+});
+
+async function selectLeadSource(name: string) {
+  fireEvent.click(screen.getByRole("combobox", { name: "Lead Source" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Search lead source" }), { target: { value: name } });
+  fireEvent.click(await screen.findByRole("option", { name: new RegExp(name) }));
+}
+
+it("saves a new client after selecting an Architect without separately typing the architect name", async () => {
+  const { form, architect } = await openCreate("clients");
+  await selectLeadSource("Test Partner");
+  expect(architect).toHaveValue("Test Partner");
+  fireEvent.click(within(form).getByRole("button", { name: "Save Client" }));
+  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith("Client created!"));
+  expect(mocks.insert).toHaveBeenCalledWith("clients", expect.objectContaining({
+    architect_name: "Test Partner", partner_id: "partner-1",
+  }));
+});
+
+it("updates an automatically filled name when changing Architects and clears it for a Builder", async () => {
+  mocks.extraPartners = [
+    { id: "partner-2", name: "Second Architect", type: "architect" },
+    { id: "partner-3", name: "Builder Referral", type: "builder" },
+  ];
+  const { form, architect } = await openCreate("clients");
+  await selectLeadSource("Test Partner");
+  await selectLeadSource("Second Architect");
+  expect(architect).toHaveValue("Second Architect");
+  await selectLeadSource("Builder Referral");
+  expect(architect).toHaveValue("");
+  fireEvent.submit(form);
+  await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("Architect Name is required"));
+  expect(mocks.insert).not.toHaveBeenCalled();
+});
+
+it("preserves an architect entered by the user when selecting or removing a lead source", async () => {
+  const { form, architect } = await openCreate("clients");
+  fireEvent.change(architect, { target: { value: "Project Architect" } });
+  await selectLeadSource("Test Partner");
+  expect(architect).toHaveValue("Project Architect");
+  await selectLeadSource("Direct Client");
+  expect(architect).toHaveValue("Project Architect");
+  fireEvent.click(within(form).getByRole("button", { name: "Save Client" }));
+  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith("Client created!"));
+  expect(mocks.insert).toHaveBeenCalledWith("clients", expect.objectContaining({
+    architect_name: "Project Architect", partner_id: null,
+  }));
+});
+
+it("clears an automatic architect when the user chooses a direct client", async () => {
+  const { architect } = await openCreate("clients");
+  await selectLeadSource("Test Partner");
+  await selectLeadSource("Direct Client");
+  expect(architect).toHaveValue("");
+});
+
+it("does not treat a Builder partner as an architect in the quick form", async () => {
+  mocks.partnerType = "builder";
+  const { architect } = await openCreate("partners");
+  expect(architect).toHaveValue("");
+  expect(architect).toHaveAccessibleDescription(/Enter the project's architect name/);
 });

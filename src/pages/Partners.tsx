@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
+import { suggestClientArchitect } from "@/lib/clientArchitect";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -165,6 +166,8 @@ interface PartnerCardProps {
   lastVisitLoading: boolean;
   showClientForm: string | null;
   setShowClientForm: (id: string | null) => void;
+  openClientForm: (partner: Partner) => void;
+  onArchitectChange: (name: string) => void;
   clientForm: { name: string; mobile: string; address: string; city: string; architect_name: string; notes: string; status: "new"; secondary_owner_id: string };
   setClientForm: (form: { name: string; mobile: string; address: string; city: string; architect_name: string; notes: string; status: "new"; secondary_owner_id: string }) => void;
   teamMembers: AssignableUser[];
@@ -190,6 +193,8 @@ const PartnerCard = ({
   lastVisitLoading,
   showClientForm,
   setShowClientForm,
+  openClientForm,
+  onArchitectChange,
   clientForm,
   setClientForm,
   teamMembers,
@@ -391,7 +396,8 @@ const PartnerCard = ({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor={`client-architect-${p.id}`} className="text-xs font-semibold">Architect Name <span className="text-red-500">*</span></Label>
-              <Input id={`client-architect-${p.id}`} required placeholder="Architect Name *" value={clientForm.architect_name} onChange={e => setClientForm({ ...clientForm, architect_name: e.target.value })} className="h-8 text-xs" />
+              <Input id={`client-architect-${p.id}`} required aria-describedby={`client-architect-help-${p.id}`} placeholder="Architect Name *" value={clientForm.architect_name} onChange={e => onArchitectChange(e.target.value)} className="h-8 text-xs" />
+              <p id={`client-architect-help-${p.id}`} className="text-xs text-muted-foreground">{p.type === "architect" ? "Filled from the Architect partner. You can edit the name if needed." : "Enter the project's architect name. Selecting a Builder or Partner does not supply an architect name."}</p>
             </div>
             <SharedOwnershipFields primaryOwnerId={primaryOwnerId} primaryOwnerName={primaryOwnerName} secondaryOwnerId={clientForm.secondary_owner_id} members={teamMembers} onSecondaryChange={(secondary_owner_id) => setClientForm({ ...clientForm, secondary_owner_id })} />
             <div className="flex gap-2">
@@ -408,7 +414,7 @@ const PartnerCard = ({
         {/* ── Section 7: Action buttons ── */}
         <div className="flex items-center gap-2 pt-1 mt-auto border-t border-gray-100 dark:border-white/5">
           <button
-            onClick={(e) => { e.stopPropagation(); setShowClientForm(showClientForm === p.id ? null : p.id); }}
+            onClick={(e) => { e.stopPropagation(); showClientForm === p.id ? setShowClientForm(null) : openClientForm(p); }}
             className="flex-1 flex items-center justify-center gap-1.5 h-9 rounded-xl border border-dashed border-primary/30 dark:border-primary/20 text-xs font-semibold text-primary hover:bg-primary/5 transition-all"
           >
             <Plus className="h-3.5 w-3.5" />
@@ -525,6 +531,17 @@ const Partners = () => {
   const [form, setForm] = useState({ ...emptyForm });
   const [editForm, setEditForm] = useState({ ...emptyForm });
   const [clientForm, setClientForm] = useState({ name: "", mobile: "", address: "", city: "", architect_name: "", notes: "", status: "new" as const, secondary_owner_id: "" });
+  const suggestedArchitect = useRef<string | null>(null);
+  const openClientForm = (partner: Partner) => {
+    const result = suggestClientArchitect(clientForm.architect_name, suggestedArchitect.current, partner);
+    suggestedArchitect.current = result.suggestedName;
+    setClientForm({ ...clientForm, architect_name: result.name });
+    setShowClientForm(partner.id);
+  };
+  const changeClientArchitect = (architect_name: string) => {
+    suggestedArchitect.current = null;
+    setClientForm({ ...clientForm, architect_name });
+  };
   const { data: teamMembers = [], isSuccess: sharedOwnershipReady } = useAssignableUsers();
   const currentOwnerName = teamMembers.find((member) => member.user_id === user?.id)?.full_name || user?.user_metadata?.full_name || "Current user";
 
@@ -607,7 +624,7 @@ const Partners = () => {
       toast.success("Partner created!");
       setForm({ ...emptyForm });
       setCreateOpen(false);
-      setShowClientForm(data.id);
+      openClientForm(data);
     },
     onError: (e: Error) => toast.error(e.message),
   });
@@ -653,6 +670,7 @@ const Partners = () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       toast.success("Client created!");
       setClientForm({ name: "", mobile: "", address: "", city: "", architect_name: "", notes: "", status: "new", secondary_owner_id: "" });
+      suggestedArchitect.current = null;
       setShowClientForm(null);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -854,6 +872,8 @@ const Partners = () => {
                 lastVisitLoading={partnerVisitsLoading}
                 showClientForm={showClientForm}
                 setShowClientForm={setShowClientForm}
+                openClientForm={openClientForm}
+                onArchitectChange={changeClientArchitect}
                 clientForm={clientForm}
                 setClientForm={setClientForm}
                 teamMembers={teamMembers}

@@ -1,6 +1,7 @@
 import { sharedOwnerFilter } from "@/lib/sharedOwnerScope";
 import { SearchablePartnerSelect } from "@/components/SearchablePartnerSelect";
-import { useState, useEffect, useId } from "react";
+import { useState, useEffect, useId, useRef } from "react";
+import { suggestClientArchitect } from "@/lib/clientArchitect";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
@@ -61,6 +62,16 @@ interface ClientFormProps {
 
 const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partners, primaryOwnerId, primaryOwnerName, teamMembers, isNew = false }: ClientFormProps) => {
   const architectId = useId();
+  const suggestedArchitect = useRef<string | null>(null);
+  const selectPartner = (partner_id: string) => {
+    if (!isNew) {
+      onChange({ ...values, partner_id });
+      return;
+    }
+    const result = suggestClientArchitect(values.architect_name, suggestedArchitect.current, partners.find(p => p.id === partner_id));
+    suggestedArchitect.current = result.suggestedName;
+    onChange({ ...values, partner_id, architect_name: result.name });
+  };
   return (
   <form onSubmit={(e) => { e.preventDefault(); onSubmit(); }} className="space-y-4 pt-1">
 
@@ -114,7 +125,8 @@ const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partne
 
     <div className="space-y-1.5">
       <Label htmlFor={architectId} className="text-xs font-semibold text-foreground">Architect Name {isNew && <span className="text-red-500">*</span>}</Label>
-      <Input id={architectId} required={isNew} placeholder={isNew ? "Architect Name *" : "Architect Name"} value={values.architect_name} onChange={(e) => onChange({ ...values, architect_name: e.target.value })} className="h-9 text-sm" />
+      <Input id={architectId} required={isNew} aria-describedby={isNew ? `${architectId}-help` : undefined} placeholder={isNew ? "Architect Name *" : "Architect Name"} value={values.architect_name} onChange={(e) => { suggestedArchitect.current = null; onChange({ ...values, architect_name: e.target.value }); }} className="h-9 text-sm" />
+      {isNew && <p id={`${architectId}-help`} className="text-xs text-muted-foreground">Select an Architect in Lead Source to fill this automatically, or enter the project's architect name. For Builder or Partner leads, enter the architect name here.</p>}
     </div>
 
     {/* ── Status selector — pill buttons ── */}
@@ -149,7 +161,7 @@ const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partne
         </Label>
         <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/50 px-2 py-0.5 rounded-full">Recommended</span>
       </div>
-      <SearchablePartnerSelect value={values.partner_id} partners={partners} onChange={(partner_id) => onChange({ ...values, partner_id })} />
+      <SearchablePartnerSelect value={values.partner_id} partners={partners} onChange={selectPartner} />
       <p className="text-[10px] text-indigo-700/80 dark:text-indigo-300/80 font-medium">
         💡 Selecting a Partner connects this client to the Partner's pipeline in Hierarchy.
       </p>

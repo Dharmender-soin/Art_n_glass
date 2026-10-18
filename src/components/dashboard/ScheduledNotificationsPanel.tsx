@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -52,7 +53,7 @@ export function ScheduledNotificationsPanel() {
         const roleObj = (roles || []).find((r) => r.user_id === profile.user_id);
         return {
           user_id: profile.user_id,
-          full_name: profile.full_name || "Unknown",
+          full_name: employeeName(profile.full_name) || "Unknown",
           role: roleObj?.role || "executive",
         };
       });
@@ -230,7 +231,7 @@ export function ScheduledNotificationsPanel() {
                   <SelectContent>
                     {employees.map((emp: any) => (
                       <SelectItem key={emp.user_id} value={emp.user_id}>
-                        {emp.full_name} ({emp.role.toUpperCase()})
+                        {employeeName(emp.full_name)} ({emp.role.toUpperCase()})
                       </SelectItem>
                     ))}
                   </SelectContent>

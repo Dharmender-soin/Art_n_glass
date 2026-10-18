@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -345,7 +346,7 @@ const AnalyticsDashboard = () => {
   });
 
   const profileMap = useMemo(
-    () => Object.fromEntries(profiles.map(p => [p.user_id, p.full_name])),
+    () => Object.fromEntries(profiles.map(p => [p.user_id, employeeName(p.full_name)])),
     [profiles]
   );
 

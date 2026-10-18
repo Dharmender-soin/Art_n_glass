@@ -47,10 +47,10 @@ function open() {
 
 it("includes manager trips under Zirakpur and never leaks them into an empty showroom", async () => {
   open();
-  await screen.findByRole("option", { name: "Mr. PRAVESH KUMAR" });
+  await screen.findByRole("option", { name: "PRAVESH KUMAR" });
   await waitFor(() => expect(screen.getAllByText("10.0 km").length).toBeGreaterThan(0));
   fireEvent.change(screen.getByDisplayValue("All Showrooms"), { target: { value: "zirakpur" } });
-  await waitFor(() => expect(screen.getAllByText("Mr. PRAVESH KUMAR").length).toBeGreaterThan(0));
+  await waitFor(() => expect(screen.getAllByText("PRAVESH KUMAR").length).toBeGreaterThan(0));
   expect(screen.queryByText("No conveyance records found")).not.toBeInTheDocument();
   fireEvent.change(screen.getByDisplayValue("Zirakpur"), { target: { value: "empty" } });
   expect(await screen.findByText("No conveyance records found")).toBeInTheDocument();
@@ -89,7 +89,7 @@ function asAccountant(showroomIds = ["zirakpur"]) {
 it("lets a Zirakpur accountant view manager, TL and executive names and manager conveyance without another profiles lookup", async () => {
   asAccountant();
   open();
-  await screen.findByRole("option", { name: "Mr. PRAVESH KUMAR" });
+  await screen.findByRole("option", { name: "PRAVESH KUMAR" });
   expect(screen.getByRole("option", { name: "Zirakpur Executive" })).toBeInTheDocument();
   expect(screen.getByRole("option", { name: "Zirakpur Team Leader" })).toBeInTheDocument();
   expect(screen.queryByRole("option", { name: "Other Employee" })).not.toBeInTheDocument();

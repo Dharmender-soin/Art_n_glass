@@ -18,8 +18,8 @@ describe('WhatsApp operational reports', () => {
   });
   it('preserves the requested WhatsApp planning format and zero-plan executives', () => {
     const message = buildReport('daily_planning','Gurgaon','2026-09-10',[...people,{user_id:'second',full_name:'Bina'}],visits);
-    expect(message).toContain('*1. Amit*\n\n1. Client A — Site visit');
-    expect(message).toContain('*2. Bina*\n\nNo planned visits');
+    expect(message).toContain('1. Amit\n\n1. Client A — Site visit');
+    expect(message).toContain('2. Bina\n\nNo planned visits');
   });
   it('shows actual outcome and linked future visit without treating TAT as follow-up', () => {
     const message = buildReport('outcomes','Gurgaon','2026-09-10',people,visits);
@@ -43,7 +43,7 @@ describe('WhatsApp operational reports', () => {
   });
   it('uses IST and sends weekly reports only on Saturday at their scheduled time', () => {
     expect(indiaDate(new Date('2026-09-10T19:00:00Z'))).toBe('2026-09-11');
-    expect(reportDue('daily_planning',new Date('2026-09-10T05:00:00Z'))).toBe(true);
+    expect(reportDue('daily_planning',new Date('2026-09-10T04:30:00Z'))).toBe(true);
     expect(reportDue('weekly_summary',new Date('2026-09-12T12:30:00Z'))).toBe(true);
     expect(reportDue('weekly_summary',new Date('2026-09-11T12:30:00Z'))).toBe(false);
     expect(reportDue('weekly_summary',new Date('2026-09-12T12:45:00Z'))).toBe(false);

@@ -419,7 +419,7 @@ type IntegrationShowroom = {
           <Card className="shadow-sm">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base"><MessageCircle className="h-5 w-5 text-emerald-600" /> Showroom WhatsApp Groups</CardTitle>
-              <CardDescription>Store a separate Group JID for every showroom and control its daily 10:30 report. Send Test uses the Group JID currently entered, even before saving, and sends one test message using the saved API key.</CardDescription>
+              <CardDescription>Store a separate Group JID for every showroom and control its daily 10:00 report. Send Test uses the Group JID currently entered, even before saving, and sends one test message using the saved API key.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {integrationShowrooms.map((showroom) => {
@@ -428,7 +428,7 @@ type IntegrationShowroom = {
                   <div key={showroom.id} className="grid gap-3 rounded-xl border p-3 lg:grid-cols-[140px_minmax(0,1fr)_auto_auto] lg:items-center">
                     <p className="text-sm font-bold">{showroom.name}</p>
                     <Input value={group.groupId} onChange={(event) => setShowroomGroups((current) => ({ ...current, [showroom.id]: { ...group, groupId: event.target.value } }))} placeholder="WhatsApp Group JID (12345@g.us)" />
-                    <div className="flex items-center gap-2"><Label className="text-xs">10:30 report</Label><Switch checked={group.planningEnabled} onCheckedChange={(checked) => setShowroomGroups((current) => ({ ...current, [showroom.id]: { ...group, planningEnabled: checked } }))} /></div>
+                    <div className="flex items-center gap-2"><Label className="text-xs">10:00 report</Label><Switch checked={group.planningEnabled} onCheckedChange={(checked) => setShowroomGroups((current) => ({ ...current, [showroom.id]: { ...group, planningEnabled: checked } }))} /></div>
                     <WhatsHubTestButton target={group.groupId} showroomId={showroom.id} />
                   </div>
                 );
@@ -505,14 +505,14 @@ type IntegrationShowroom = {
                   {sendPlanningMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />} Send Planning Now
                 </Button>
                 <Button type="button" variant="secondary" onClick={() => previewPlanningMutation.mutate()} disabled={!whatsHubShowroom || previewPlanningMutation.isPending} className="gap-2">
-                  {previewPlanningMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />} Preview 10:30 Summary
+                  {previewPlanningMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />} Preview 10:00 Summary
                 </Button>
               </div>
               {planningPreview && <pre className="whitespace-pre-wrap rounded-xl border bg-slate-950 p-4 text-xs leading-5 text-slate-100">{planningPreview}</pre>}
               {sendPlanningMutation.error && <p role="alert" className="text-sm text-destructive">{sendPlanningMutation.error.message}</p>}
               {sendPlanningMutation.isSuccess && <p role="status" className="text-sm text-emerald-600">WhatsHub accepted the planning report. Check the destination in WhatsApp to confirm receipt.</p>}
               <p className="rounded-xl bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
-                Automatic planning runs daily at 10:30 AM IST. A configured Group JID receives one group message; otherwise the same summary is delivered individually to showroom staff and logged centrally.
+                Automatic planning runs daily at 10:00 AM IST. A configured Group JID receives one group message; otherwise the same summary is delivered individually to showroom staff and logged centrally.
               </p>
               <p className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-300">
                 Admin can securely configure credentials and each showroom's Group ID from the <strong>Integrations</strong> tab.

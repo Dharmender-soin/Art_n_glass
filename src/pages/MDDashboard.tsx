@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { useState, useMemo, useCallback, useEffect, Component, ReactNode, ErrorInfo } from "react";
 
 // Safe date formatting helper to prevent RangeError crashes
@@ -1470,7 +1471,7 @@ const PartnerDetailModal = ({
                     <div key={v.id} className="bg-slate-800/40 border border-slate-800/60 rounded-xl p-3 flex items-center justify-between gap-3 hover:bg-slate-800/60 transition-colors">
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-slate-200 truncate">
-                          Visited by: <span onClick={() => onSelectEmp(v.created_by)} className="cursor-pointer hover:underline text-indigo-400 font-extrabold">{v.profiles?.full_name || "Unknown"}</span>
+                          Visited by: <span onClick={() => onSelectEmp(v.created_by)} className="cursor-pointer hover:underline text-indigo-400 font-extrabold">{employeeName(v.profiles?.full_name) || "Unknown"}</span>
                         </p>
                         <p className="text-[10px] text-slate-400 truncate capitalize">{v.purpose || "General Visit"}</p>
                         {v.remarks && <p className="text-[9px] text-slate-500 italic truncate mt-0.5">"{v.remarks}"</p>}
@@ -1958,7 +1959,7 @@ const MDDashboard = () => {
   const profileMap = useMemo(() => {
     const m: Record<string, string> = {};
     profiles.forEach(p => {
-      let name = p.full_name ? p.full_name.trim() : "";
+      let name = employeeName(p.full_name) ? employeeName(p.full_name).trim() : "";
       if (!name && p.email) {
         const prefix = p.email.split("@")[0];
         name = prefix

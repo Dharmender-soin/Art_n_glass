@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -692,7 +693,7 @@ const Admin = () => {
                     >
                       <div className="flex-1 space-y-1.5">
                         <div className="flex items-center gap-2">
-                          <span className={`font-medium text-base ${!u.is_active ? "line-through text-muted-foreground" : ""}`}>{u.full_name}</span>
+                          <span className={`font-medium text-base ${!u.is_active ? "line-through text-muted-foreground" : ""}`}>{employeeName(u.full_name)}</span>
                           <Badge className={`${roleColor[u.role] || ""} text-[10px] border-0 capitalize px-2 py-0.5 h-5 shadow-none`}>{u.role}</Badge>
                           {!u.is_active && (
                             <Badge variant="outline" className="text-[10px] px-2 py-0.5 h-5 text-orange-500 border-orange-400">Inactive</Badge>
@@ -769,7 +770,7 @@ const Admin = () => {
                                 </SelectItem>
                                 {supervisors.map((su: any) => (
                                   <SelectItem key={su.id} value={su.id}>
-                                    {su.full_name}
+                                    {employeeName(su.full_name)}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -818,8 +819,8 @@ const Admin = () => {
                           onClick={() => openAlert(
                             u.is_active ? "Deactivate Employee" : "Activate Employee",
                             u.is_active
-                              ? `Deactivate ${u.full_name}? This user will be hidden from the Command Center and leaderboard.`
-                              : `Reactivate ${u.full_name}?`,
+                              ? `Deactivate ${employeeName(u.full_name)}? This user will be hidden from the Command Center and leaderboard.`
+                              : `Reactivate ${employeeName(u.full_name)}?`,
                             () => toggleUserActive.mutate({ roleId: u.role_id, is_active: u.is_active })
                           )}
                         >
@@ -833,7 +834,7 @@ const Admin = () => {
                           title="Delete User"
                           onClick={() => openAlert(
                             "Delete User",
-                            `Delete ${u.full_name}? This action cannot be undone and will remove all their data.`,
+                            `Delete ${employeeName(u.full_name)}? This action cannot be undone and will remove all their data.`,
                             () => deleteUser.mutate(u.id)
                           )}
                         >
@@ -863,7 +864,7 @@ const Admin = () => {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Reset Password</DialogTitle>
-            <CardDescription>Changing password for <b>{selectedUser?.full_name}</b></CardDescription>
+            <CardDescription>Changing password for <b>{employeeName(selectedUser?.full_name)}</b></CardDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -897,7 +898,7 @@ const Admin = () => {
         <DialogContent className="bg-popover sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Edit Employee Profile</DialogTitle>
-            <CardDescription>Editing profile for <b>{editProfileUser?.full_name}</b></CardDescription>
+            <CardDescription>Editing profile for <b>{employeeName(editProfileUser?.full_name)}</b></CardDescription>
           </DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); updateProfile.mutate(); }} className="space-y-4 py-2">
             <div className="space-y-1.5">

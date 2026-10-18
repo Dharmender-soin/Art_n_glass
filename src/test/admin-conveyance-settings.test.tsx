@@ -43,5 +43,5 @@ it("preserves a deliberately configured zero rate", async () => {
   const dialog = await openEditor();
   expect(within(dialog).getByRole("spinbutton")).toHaveValue(0);
   fireEvent.click(within(dialog).getByRole("button", { name: "Save Changes" }));
-  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ conveyance_type: "car", conveyance_rate: 0 })));
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ full_name: "Mr. PRAVESH KUMAR", conveyance_type: "car", conveyance_rate: 0 })));
 });

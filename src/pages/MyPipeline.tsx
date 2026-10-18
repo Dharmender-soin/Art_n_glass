@@ -294,6 +294,11 @@ const MyPipeline = () => {
   const updateMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: WorkStatus }) => {
       const upd: Record<string, unknown> = { work_status: status };
+      if (status === 'lost' || status === 'hold') {
+        const reason = window.prompt(`Reason for ${status === 'lost' ? 'Lost' : 'Hold'} (required):`);
+        if (!reason?.trim()) throw new Error('A reason is required for Lost or Hold');
+        upd.last_status_change_reason = reason.trim();
+      }
       if (status === "won" || status === "lost" || status === "rejected") {
         upd.verified_at = new Date().toISOString();
         upd.is_verified = status === "won";

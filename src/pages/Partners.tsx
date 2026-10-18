@@ -1,3 +1,5 @@
+import { employeeName } from "@/lib/employeeDisplay";
+import { RecordActions } from "@/components/RecordActions";
 import { useState, useRef } from "react";
 import { suggestClientArchitect } from "@/lib/clientArchitect";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -543,7 +545,7 @@ const Partners = () => {
     setClientForm({ ...clientForm, architect_name });
   };
   const { data: teamMembers = [], isSuccess: sharedOwnershipReady } = useAssignableUsers();
-  const currentOwnerName = teamMembers.find((member) => member.user_id === user?.id)?.full_name || user?.user_metadata?.full_name || "Current user";
+  const currentOwnerName = employeeName(teamMembers.find((member) => member.user_id === user?.id)?.full_name) || employeeName(user?.user_metadata?.full_name) || "Current user";
 
   const { data: executivesList = [] } = useQuery({
     queryKey: ["executives-list-partners"],
@@ -600,7 +602,7 @@ const Partners = () => {
           ? supabase.from("user_roles").select("user_id, role").in("user_id", creatorIds)
           : Promise.resolve({ data: [] }),
       ]);
-      const profileMap = Object.fromEntries((profilesData || []).map(pr => [pr.user_id, pr.full_name]));
+      const profileMap = Object.fromEntries((profilesData || []).map(pr => [pr.user_id, employeeName(pr.full_name)]));
       const roleMap = Object.fromEntries((rolesData || []).map(r => [r.user_id, r.role]));
 
       return data.map(p => ({
@@ -633,7 +635,7 @@ const Partners = () => {
     mutationFn: async () => {
       if (!editPartner) return;
       const { secondary_owner_id, ...partnerValues } = editForm;
-      const { error } = await supabase.from("partners").update({ ...partnerValues, ...(sharedOwnershipReady ? { secondary_owner_id: secondary_owner_id || null } : {}) }).eq("id", editPartner.id);
+      const { error } = await supabase.from("partners").update({ ...partnerValues, ...(sharedOwnershipReady ? { secondary_owner_id: secondary_owner_id || null } : {}) }).eq("id", editPartner.id).select("id").single();
       if (error) throw error;
     },
     onSuccess: () => {
@@ -754,7 +756,7 @@ const Partners = () => {
       const { data: profilesData } = creatorIds.length > 0
         ? await supabase.from("profiles").select("user_id, full_name").in("user_id", creatorIds)
         : { data: [] };
-      const profileMap = Object.fromEntries((profilesData || []).map(pr => [pr.user_id, pr.full_name]));
+      const profileMap = Object.fromEntries((profilesData || []).map(pr => [pr.user_id, employeeName(pr.full_name)]));
 
       // keep only most recent per partner
       const seen = new Set<string>();
@@ -777,7 +779,7 @@ const Partners = () => {
         <div>
           <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white leading-none">Partners</h1>
           <p className="text-xs text-gray-400 dark:text-white/30 mt-0.5 font-medium">
-            {partners.length} partner{partners.length !== 1 ? "s" : ""} in your network
+            Showing {sortedFiltered.length} of {partners.length} partners
           </p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -831,7 +833,7 @@ const Partners = () => {
             <SelectContent className="bg-popover">
               <SelectItem value="all">All Executives</SelectItem>
               {executivesList.map((ex) => (
-                <SelectItem key={ex.user_id} value={ex.user_id}>{ex.full_name}</SelectItem>
+                <SelectItem key={ex.user_id} value={ex.user_id}>{employeeName(ex.full_name)}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -852,14 +854,14 @@ const Partners = () => {
         <EmptyState isFiltered={isFiltered} onAdd={() => setCreateOpen(true)} />
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {sortedFiltered.map((p) => {
+          {sortedFiltered.map((p, index) => {
             const execName = (p as { _creator_name?: string | null })._creator_name || null;
             const execRole = (p as { _creator_role?: string | null })._creator_role || null;
             const stats = statsMap[p.id] || { clients: 0, total: 0, won: 0, lost: 0 };
             const lastVisit = (partnerVisits as Record<string, { visit_date: string; remarks: string | null; exec_name: string | null }>)[p.id] || null;
 
             return (
-              <PartnerCard
+              <div key={p.id} className="space-y-1"><p className="text-xs text-muted-foreground">#{index + 1}</p><PartnerCard
                 key={p.id}
                 p={p}
                 execName={execName}
@@ -884,7 +886,7 @@ const Partners = () => {
                 setDeletePartner={setDeletePartner}
                 setSelectedPartner={setSelectedPartner}
                 canDelete={canDelete}
-              />
+              /><RecordActions kind="partner" id={p.id} name={p.name} ownerId={p.created_by} /></div>
             );
           })}
         </div>

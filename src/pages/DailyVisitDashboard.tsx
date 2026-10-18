@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { visitDisplayName, visitTypeLabel } from "@/lib/visitDisplay";
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -85,7 +86,7 @@ const DailyVisitDashboard = () => {
                 user_id: item.user_id,
                 role: item.role as "executive" | "manager" | "tl" | "admin" | "accountant" | "backhand_executive",
                 showroom_id: sid,
-                profiles: { full_name: item.full_name }
+                profiles: { full_name: employeeName(item.full_name) }
               };
             }).filter((item) => item.role === "executive" || item.role === "tl" || item.role === "manager" || item.role === "backhand_executive");
           })
@@ -195,7 +196,7 @@ const DailyVisitDashboard = () => {
   const execData = useMemo(() => {
     const filtered = searchExec
       ? executives.filter((e) =>
-        ((e as { profiles?: { full_name: string } }).profiles?.full_name || "").toLowerCase().includes(searchExec.toLowerCase())
+        (employeeName((e as { profiles?: { full_name: string } }).profiles?.full_name) || "").toLowerCase().includes(searchExec.toLowerCase())
       )
       : executives;
 
@@ -205,7 +206,7 @@ const DailyVisitDashboard = () => {
       const todayAll = execVisits.filter((v) => v.visit_date === today);
       return {
         userId: exec.user_id,
-        name: (exec as { profiles?: { full_name: string } }).profiles?.full_name || "Unknown",
+        name: employeeName((exec as { profiles?: { full_name: string } }).profiles?.full_name) || "Unknown",
         showroomId: exec.showroom_id,
         ydayPlanned: ydayAll.length,
         ydayDone: ydayAll.filter((v) => v.status === "done").length,

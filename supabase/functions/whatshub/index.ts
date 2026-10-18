@@ -1,4 +1,5 @@
 import { reportDestination } from "./report-routing.ts";
+import { employeeName } from '../_shared/employee-name.ts';
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { parseTestTarget } from "./test-target.ts";
@@ -83,6 +84,7 @@ serve(async (req) => {
       ]);
       if (showroomResult.error) throw showroomResult.error;
       const showroom = showroomResult.data;
+      if (messageType === 'pending_partners' && !showroom?.whatsapp_group_id?.trim()) throw new Error('Save the showroom WhatsApp group before sending the pending-partner report');
       if (!showroom) throw new Error("Showroom not found");
       const groupJid = String(showroom.whatsapp_group_id || "").trim();
       if (reportDestination(messageType) === "director") throw new Error("Director reports cannot be sent to a showroom");
@@ -150,14 +152,25 @@ serve(async (req) => {
       const people = await loadReportPeople(admin, showroomId, key);
       const ids = people.map(person => person.user_id);
       const today = indiaDate();
+      if (key === 'pending_partners') {
+        const partners = ids.length ? await allRows(admin.from('partners').select('id,name,type,address,city,created_by').in('created_by',ids).order('id')) : [];
+        const history:any[]=[];
+        for(let offset=0;offset<partners.length;offset+=100) {
+          history.push(...await allRows(admin.from('visits').select('partner_id,status,done_at,visit_date').in('partner_id',partners.slice(offset,offset+100).map(p=>p.id)).eq('status','done').order('id')));
+        }
+        return buildReport(key,showroom.name,today,people,history,[],[],partners);
+      }
       const start = definition.weekly ? weekStart(today) : today;
       let visits: any[] = [], claims: any[] = [], clients: any[] = [];
       if (ids.length) {
         if (key === "conveyance") {
           claims = await allRows(admin.from("conveyance_records").select("*").in("user_id",ids).gte("date",start).lte("date",today).order("id"));
         } else {
-          let query = admin.from("visits").select("*,clients(name),partners(name)").in("created_by",ids).neq("status","cancelled").lte("visit_date",today).order("id");
-          query = key === "followups" ? query.eq("status","planned") : query.gte("visit_date",start);
+          let query = admin.from("visits").select("*,clients(name,address),partners(name,address)").in("created_by",ids).neq("status","cancelled").order("id");
+          if (key === 'outcomes' || key === 'tl_outcomes') {
+            const end=new Date(Date.parse(today+'T00:00:00+05:30')+86400000).toISOString();
+            query=query.eq('status','done').or(`and(done_at.gte.${today}T00:00:00+05:30,done_at.lt.${end}),and(done_at.is.null,visit_date.eq.${today})`);
+          } else query = key === "followups" ? query.eq("status","planned").lte('visit_date',today) : query.gte("visit_date",start).lte('visit_date',today);
           visits = await allRows(query);
           if (key === "outcomes" || key === "tl_outcomes") {
             const upcoming = await allRows(admin.from("visits").select("created_by,client_id,partner_id,visit_date").in("created_by",ids).eq("status","planned").gt("visit_date",today).order("visit_date").order("id"));
@@ -165,7 +178,7 @@ serve(async (req) => {
           }
           if (key === "weekly_summary") {
             const end = new Date(Date.parse(today+"T00:00:00+05:30")+86400000).toISOString();
-            clients = await allRows(admin.from("clients").select("created_by,status").in("created_by",ids).gte("created_at",start+"T00:00:00+05:30").lt("created_at",end).order("id"));
+            clients = (await allRows(admin.from("clients").select("original_created_by,status").in("original_created_by",ids).gte("created_at",start+"T00:00:00+05:30").lt("created_at",end).order("id"))).map(c=>({...c,created_by:c.original_created_by}));
           }
         }
       }
@@ -177,7 +190,7 @@ serve(async (req) => {
       const assignments = await allRows(admin.from("user_roles").select("user_id,showroom_id").eq("role", "manager").eq("is_active", true).order("id"));
       const managerIds = [...new Set(assignments.map(row => row.user_id))];
       const managers = managerIds.length ? await allRows(admin.from("profiles").select("user_id,full_name").in("user_id", managerIds).order("user_id")) : [];
-      const names = new Map(managers.map(person => [person.user_id, person.full_name]));
+      const names = new Map(managers.map(person => [person.user_id, employeeName(person.full_name)]));
       const sections = [];
       for (const showroom of showrooms) {
         const ids = [...new Set(assignments.filter(row => row.showroom_id === showroom.id).map(row => row.user_id))];
@@ -224,8 +237,8 @@ serve(async (req) => {
       }
       const {data: showroom,error} = await admin.from("showrooms").select("whatsapp_planning_enabled").eq("id",showroomId).single();
       if (error) throw error;
-      const settings = await allRows(admin.from("whatshub_report_settings").select("report_key,enabled").eq("showroom_id",showroomId).order("report_key"));
-      return json({reports:reportDefinitions.map(r => ({...r,enabled:r.key === "daily_planning" ? showroom.whatsapp_planning_enabled : settings.find(s => s.report_key === r.key)?.enabled === true}))});
+      const settings = await allRows(admin.from("whatshub_report_settings").select("report_key,enabled,schedule_start_date").eq("showroom_id",showroomId).order("report_key"));
+      return json({reports:reportDefinitions.map(r => ({...r,scheduleStart:settings.find(s=>s.report_key===r.key)?.schedule_start_date,enabled:r.key === "daily_planning" ? showroom.whatsapp_planning_enabled : settings.find(s => s.report_key === r.key)?.enabled === true}))});
     }
     if (action === "preview_report" || action === "send_report") {
       const showroomId = String(body.showroomId || "");
@@ -266,7 +279,7 @@ serve(async (req) => {
       for (const showroom of showrooms) for (const report of reportDefinitions) {
         if (report.key === "plan_actual") continue;
         const enabled = report.key === "daily_planning" ? showroom.whatsapp_planning_enabled : settings.some(s => s.showroom_id === showroom.id && s.report_key === report.key);
-        if (!enabled || !reportDue(report.key,now)) continue;
+        if (!enabled || !reportDue(report.key,now,settings.find(s=>s.showroom_id===showroom.id&&s.report_key===report.key)?.schedule_start_date)) continue;
         const run = {showroom_id:showroom.id, report_key:report.key, report_date:indiaDate(now)};
         const {error: claimError} = await admin.from("whatshub_report_runs").insert(run);
         if (claimError?.code === "23505") continue;

@@ -1,3 +1,5 @@
+import { employeeName } from "@/lib/employeeDisplay";
+import { RecordActions } from "@/components/RecordActions";
 import { sharedOwnerFilter } from "@/lib/sharedOwnerScope";
 import { WosProgress, progressLabels } from "@/components/WosProgress";
 import { useState, useMemo, useEffect, Fragment } from "react";
@@ -314,8 +316,10 @@ const PivotTable = ({
                           </button>
                         </td>
                         <td className="px-2 py-2 border-r border-slate-100 dark:border-slate-800">
-                          <div className="flex items-center gap-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-1 min-w-0">
                             <p className="font-semibold text-slate-800 dark:text-slate-200 truncate" title={client.client_name}>{client.client_name}</p>
+                            <RecordActions kind="client" id={client.client_id} name={client.client_name} ownerId={client.created_by} allowDelete compact />
+                            {client.partner_id && <RecordActions kind="partner" id={client.partner_id} name={client.partner_name || 'Partner'} allowDelete compact />}
                             {client.client_status === "hot" && <span className="shrink-0 rounded-full bg-orange-100 px-1.5 py-0.5 text-[8px] font-extrabold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">🔥 HOT</span>}
                           </div>
                         </td>
@@ -457,6 +461,8 @@ const PivotTable = ({
                   <p className="font-semibold text-slate-800 dark:text-slate-200 mt-0.5">
                     {client.client_name} {client.client_status === "hot" && <span className="ml-1 rounded-full bg-orange-100 px-1.5 py-0.5 text-[8px] font-extrabold text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">🔥 HOT</span>}
                   </p>
+                  <RecordActions kind="client" id={client.client_id} name={client.client_name} ownerId={client.created_by} allowDelete compact />
+                  {client.partner_id && <RecordActions kind="partner" id={client.partner_id} name={client.partner_name || 'Partner'} allowDelete compact />}
                 </div>
                 <div>
                   <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Partner</p>
@@ -715,7 +721,7 @@ const Hierarchy = () => {
     }
   }, [rawWOS]);
 
-  const profileMap = useMemo(()=>{ const m:Record<string,string>={}; profiles.forEach(p=>{ m[p.user_id]=p.full_name||"Unknown"; }); return m; },[profiles]);
+  const profileMap = useMemo(()=>{ const m:Record<string,string>={}; profiles.forEach(p=>{ m[p.user_id]=employeeName(p.full_name)||"Unknown"; }); return m; },[profiles]);
   const showroomMap = useMemo(()=>{ const m:Record<string,string|null>={}; userRoles.forEach(r=>{ m[r.user_id]=r.showroom_id; }); return m; },[userRoles]);
 
   const workTypeGroups = useMemo(():WorkTypeGroup[]=>{
@@ -1333,7 +1339,7 @@ const Hierarchy = () => {
           </select>
           <select value={fStatus} onChange={e=>setFStatus(e.target.value)}
             className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs font-medium text-slate-700 dark:text-slate-300 outline-none focus:border-indigo-400 appearance-none cursor-pointer">
-            <option value="all">All Stages</option><option value="in_progress">In Progress</option><option value="completed">Completed</option>
+            <option value="all">All Stages</option>{Object.entries(progressLabels).map(([value,label])=><option key={value} value={value}>{label}</option>)}
             <option value="pending">🔵 WOS Added</option>
             <option value="submitted">🟡 Quotation</option>
             <option value="won">🟢 Won</option>
@@ -1600,7 +1606,7 @@ const Hierarchy = () => {
                           </span>
                           <span className="shrink-0 text-slate-400">{safeFormatDate(entry.changed_at, "d MMM yyyy, h:mm a")}</span>
                         </div>
-                        <p className="mt-1 text-slate-500">By {entry.changed_by_name || "User"}</p>
+                        <p className="mt-1 text-slate-500">By {employeeName(entry.changed_by_name) || "User"}</p>
                         {entry.reason && <p className="mt-1 font-medium text-slate-600 dark:text-slate-300">Reason: {entry.reason}</p>}
                       </div>
                     ))}

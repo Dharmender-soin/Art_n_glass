@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { useConveyanceDays } from "@/hooks/useConveyanceDays";
 import { buildConveyanceDays, dayDetailRows } from "@/lib/conveyanceDayDetails";
 import { ConveyanceDayDetails } from "@/components/ConveyanceDayDetails";
@@ -110,7 +111,7 @@ const Conveyance = () => {
               user_id: item.user_id,
               role: item.role,
               showroom_id: sid,
-              full_name: item.full_name,
+              full_name: employeeName(item.full_name),
             }));
           })
         );
@@ -145,7 +146,7 @@ const Conveyance = () => {
   const profiles = useMemo(() => isManager
     ? [...new Map(userRoles.map(item => [item.user_id, {
       user_id: item.user_id,
-      full_name: item.full_name?.trim() || `Name unavailable (${item.user_id.slice(0, 8)})`,
+      full_name: employeeName(item.full_name)?.trim() || `Name unavailable (${item.user_id.slice(0, 8)})`,
     }])).values()]
     : directProfiles, [isManager, userRoles, directProfiles]);
   const showroomMap = useMemo(() => Object.fromEntries(showrooms.map((s) => [s.id, s.name])), [showrooms]);
@@ -206,8 +207,8 @@ const Conveyance = () => {
 
   // Merge both profile sources into one map
   const mergedProfileMap = useMemo(() => ({
-    ...Object.fromEntries(profiles.map((p) => [p.user_id, p.full_name])),
-    ...Object.fromEntries(fallbackProfiles.map((p) => [p.user_id, p.full_name])),
+    ...Object.fromEntries(profiles.map((p) => [p.user_id, employeeName(p.full_name)])),
+    ...Object.fromEntries(fallbackProfiles.map((p) => [p.user_id, employeeName(p.full_name)])),
   }), [profiles, fallbackProfiles]);
 
   // ── Client-side filter ────────────────────────────────────────────────────
@@ -449,7 +450,7 @@ const Conveyance = () => {
                 <SelectTrigger aria-label="Employee" className="h-8 text-xs w-[160px] bg-background"><SelectValue placeholder="All Employees" /></SelectTrigger>
                 <SelectContent className="bg-popover">
                   <SelectItem value="all">All Employees</SelectItem>
-                  {profiles.map((p) => <SelectItem key={p.user_id} value={p.user_id}>{p.full_name}</SelectItem>)}
+                  {profiles.map((p) => <SelectItem key={p.user_id} value={p.user_id}>{employeeName(p.full_name)}</SelectItem>)}
                 </SelectContent>
               </Select>
             )}

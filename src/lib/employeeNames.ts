@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { supabase } from "@/integrations/supabase/client";
 
 type EmployeeName = { user_id: string; full_name: string | null };
@@ -9,7 +10,7 @@ export async function resolveEmployeeNames(userIds: string[], profiles: Employee
   const ids = [...new Set(userIds.filter(Boolean))];
   const names: Record<string, string> = {};
   for (const profile of profiles) {
-    if (profile.full_name?.trim()) names[profile.user_id] = profile.full_name.trim();
+    if (employeeName(profile.full_name)?.trim()) names[profile.user_id] = employeeName(profile.full_name).trim();
   }
   const missing = ids.filter(id => !names[id]);
   for (let offset = 0; offset < missing.length; offset += 100) {
@@ -18,7 +19,7 @@ export async function resolveEmployeeNames(userIds: string[], profiles: Employee
     const { data, error } = await supabase.rpc("get_employee_display_names", { p_user_ids: requested });
     if (error) continue; // Keep known names usable while the database migration is pending.
     for (const row of (data || []) as EmployeeName[]) {
-      if (requested.includes(row.user_id) && row.full_name?.trim()) names[row.user_id] = row.full_name.trim();
+      if (requested.includes(row.user_id) && employeeName(row.full_name)?.trim()) names[row.user_id] = employeeName(row.full_name).trim();
     }
   }
   return { names, unresolvedIds: ids.filter(id => !names[id]) };

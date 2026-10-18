@@ -1,3 +1,5 @@
+import { employeeName } from "@/lib/employeeDisplay";
+import { dsrActivityDate, dsrRows, dsrPlanTotals } from "@/lib/dsrReport";
 import { progressLabels } from "@/components/WosProgress";
 import { LeadershipVisitReports } from "@/components/LeadershipVisitReports";
 import { visitDisplayName, isCountedVisit } from "@/lib/visitDisplay";
@@ -111,6 +113,7 @@ const Reports = () => {
   const [dsrCustomFrom, setDsrCustomFrom] = useState<string>(format(startOfMonth(new Date()), "yyyy-MM-dd"));
   const [dsrCustomTo, setDsrCustomTo] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [isReportDialogOpen, setIsReportDialogOpen] = useState(false);
+  const [dsrIncludePlanned, setDsrIncludePlanned] = useState(false);
 
   // Fetch WON & LOST clients for Report Dialog
   const { data: reportClients = [] } = useQuery({
@@ -219,7 +222,7 @@ const Reports = () => {
     return { dsrFrom: from, dsrTo: to };
   }, [dsrFilterMode, dsrMonth, dsrYear, dsrCustomFrom, dsrCustomTo]);
 
-  const { data: dsrVisits = [], isLoading: dsrLoading } = useQuery({
+  const { data: dsrSourceVisits = [], isLoading: dsrLoading } = useQuery({
     queryKey: ["dsr-visits", dsrEmployee, dsrFrom, dsrTo],
     enabled: isManager && !!dsrEmployee,
     queryFn: async () => {
@@ -227,30 +230,31 @@ const Reports = () => {
         .from("visits")
         .select("*, clients(name, address), partners(name, address)")
         .eq("created_by", dsrEmployee)
-        .gte("visit_date", dsrFrom)
-        .lte("visit_date", dsrTo)
+        .or(`and(visit_date.gte.${dsrFrom},visit_date.lte.${dsrTo}),and(done_at.gte.${dsrFrom}T00:00:00+05:30,done_at.lt.${new Date(Date.parse(dsrTo+'T00:00:00+05:30')+86400000).toISOString()})`)
         .order("visit_date", { ascending: true })
         .order("created_at", { ascending: true })
         .range(from, to) as any);
     },
   });
 
-  const dsrEmployeeName = executivesList.find(e => e.user_id === dsrEmployee)?.full_name || "";
+  const dsrVisits = useMemo(()=>dsrRows(dsrSourceVisits,dsrFrom,dsrTo,dsrIncludePlanned),[dsrSourceVisits,dsrFrom,dsrTo,dsrIncludePlanned]);
+  const {data: dsrAttendance = []} = useQuery({queryKey:['dsr-attendance',dsrEmployee,dsrFrom,dsrTo],enabled:isManager&&!!dsrEmployee,
+    queryFn:()=>fetchAllRows<{date:string;created_at:string;ended_at:string|null}>((from,to)=>supabase.from('daily_attendance').select('date,created_at,ended_at').eq('user_id',dsrEmployee).gte('date',dsrFrom).lte('date',dsrTo).order('date').range(from,to) as any)});
+  const dsrAttendanceMap = new Map(dsrAttendance.map(day=>[day.date,day]));
+  const dsrEmployeeName = employeeName(executivesList.find(e => e.user_id === dsrEmployee)?.full_name) || "";
 
   // Group DSR visits by date
   const dsrByDate = useMemo(() => {
     const map = new Map<string, typeof dsrVisits>();
     dsrVisits.forEach(v => {
-      const d = v.visit_date;
+      const d = dsrActivityDate(v);
       if (!map.has(d)) map.set(d, []);
       map.get(d)!.push(v);
     });
     return map;
   }, [dsrVisits]);
 
-  const dsrTotalPlanned = dsrVisits.filter(v => isCountedVisit(v)).length;
-  const dsrTotalDone = dsrVisits.filter(v => v.status === "done").length;
-  const dsrSuccessRate = dsrTotalPlanned > 0 ? Math.round((dsrTotalDone / dsrTotalPlanned) * 100) : 0;
+  const {planned:dsrTotalPlanned,done:dsrTotalDone,rate:dsrSuccessRate}=dsrPlanTotals(dsrSourceVisits,dsrFrom,dsrTo);
 
   const printDSR = () => {
     const win = window.open("", "_blank", "width=900,height=700");
@@ -263,7 +267,7 @@ const Reports = () => {
     const generatedAt = format(new Date(), "dd-MMM-yyyy, hh:mm a");
 
     const daysHtml = Array.from(dsrByDate.entries()).map(([date, dayVisits]) => {
-      const plannedCount = dayVisits.filter((v: VisitWithRelations) => isCountedVisit(v)).length;
+      const plannedCount = dsrSourceVisits.filter(v=>v.visit_date===date&&isCountedVisit(v)).length;
       const doneCount = dayVisits.filter((v: VisitWithRelations) => v.status === "done").length;
       const dateLabel = format(parseISO(date), "EEEE, dd MMM yyyy");
 
@@ -280,7 +284,7 @@ const Reports = () => {
         const planningDate = v.created_at ? format(parseISO(v.created_at), "dd-MMM-yyyy") : format(parseISO(v.visit_date), "dd-MMM-yyyy");
         const statusColor = v.status === "done" ? "#16a34a" : v.status === "cancelled" ? "#dc2626" : "#d97706";
         const statusLabel = v.status === "done" ? "\u2713 Done" : v.status === "cancelled" ? "\u2717 Cancelled" : "\u23f3 Planned";
-        const startTime = v.created_at ? format(parseISO(v.created_at), "hh:mm a") : "\u2014";
+        const startTime = v.check_in_at ? format(parseISO(v.check_in_at), "hh:mm a") : "Not checked in";
         const endTime = (v.done_at && v.status === "done") ? format(parseISO(v.done_at), "hh:mm a") : null;
         return `<tr style="border-bottom:1px solid #e5e7eb;">
           <td style="padding:5px 7px;border:1px solid #e5e7eb;color:#888;font-size:10px;">${idx + 1}</td>
@@ -298,17 +302,15 @@ const Reports = () => {
       }).join("");
 
       // Day-level start/end time
-      const validCreatedAts = dayVisits.filter((v: VisitWithRelations) => v.created_at).map((v: VisitWithRelations) => v.created_at as string);
-      const validDoneAts = dayVisits.filter((v: VisitWithRelations) => v.done_at && v.status === "done").map((v: VisitWithRelations) => v.done_at as string);
-      const dayStartTime = validCreatedAts.length > 0 ? format(parseISO(validCreatedAts.sort()[0]), "hh:mm a") : "\u2014";
-      const dayEndTime = validDoneAts.length > 0 ? format(parseISO(validDoneAts.sort().reverse()[0]), "hh:mm a") : "\u2014";
+      const dayStartTime = safeFormatTime(dsrAttendanceMap.get(date)?.created_at);
+      const dayEndTime = safeFormatTime(dsrAttendanceMap.get(date)?.ended_at);
 
       return `<div style="border:1px solid #d1d5db;margin-bottom:12px;page-break-inside:avoid;">
         <div style="background:#f3f4f6;padding:7px 12px;border-bottom:1px solid #d1d5db;">
           <div style="display:flex;justify-content:space-between;align-items:center;">
             <div><strong style="font-size:12px;">${dateLabel}</strong><span style="font-size:10px;color:#6b7280;margin-left:8px;">${plannedCount} planned \u2022 ${doneCount} done</span></div>
             <div style="text-align:right;">
-              <span style="font-size:10px;font-weight:bold;color:#16a34a;margin-right:10px;">${doneCount}/${plannedCount} Done</span>
+              <span style="font-size:10px;font-weight:bold;color:#16a34a;margin-right:10px;">${doneCount} completed</span>
               <span style="font-size:10px;font-weight:bold;color:#2563eb;background:#dbeafe;padding:2px 6px;border-radius:4px;">🚗 ${dayKm.toFixed(1)} KM</span>
             </div>
           </div>
@@ -340,7 +342,7 @@ const Reports = () => {
     <div style="text-align:center;border-bottom:2px solid #222;padding-bottom:10px;margin-bottom:18px;">
       <h1 style="margin:0;font-size:18px;font-weight:bold;">DAILY VISIT REPORT \u2014 ${monthLabel}</h1>
       <p style="margin:4px 0 0;font-size:11px;"><strong>Employee:</strong> ${dsrEmployeeName} &nbsp;|&nbsp; <strong>Generated:</strong> ${generatedAt}</p>
-      <p style="margin:3px 0 0;font-size:11px;">Total Visits: <strong>${dsrTotalPlanned}</strong> &nbsp;|&nbsp; Done: <strong>${dsrTotalDone}</strong> &nbsp;|&nbsp; Success Rate: <strong>${dsrSuccessRate}%</strong></p>
+      <p style="margin:3px 0 0;font-size:11px;">Planned: <strong>${dsrTotalPlanned}</strong> &nbsp;|&nbsp; Done: <strong>${dsrTotalDone}</strong> &nbsp;|&nbsp; Plan Completion: <strong>${dsrSuccessRate}%</strong></p>
     </div>
     ${daysHtml}
     </body></html>`;
@@ -364,7 +366,7 @@ const Reports = () => {
   const execSummaryMap = new Map<string, { name: string; km: number; amount: number; trips: number }>();
   conveyanceRecords.forEach((r) => {
     const matchedExec = executivesList.find(e => e.user_id === r.user_id);
-    const name = matchedExec ? matchedExec.full_name : "Unknown";
+    const name = matchedExec ? employeeName(matchedExec.full_name) : "Unknown";
     const existing = execSummaryMap.get(r.user_id);
     if (existing) {
       existing.km += (r.distance_km || 0);
@@ -409,7 +411,7 @@ const Reports = () => {
   const clientVisitList = processVisits('client');
   const evrExecutiveName = evrExecutive === "all"
     ? "All Executives"
-    : executivesList.find((item) => item.user_id === evrExecutive)?.full_name || (role === "executive" ? "My" : "Executive");
+    : employeeName(executivesList.find((item) => item.user_id === evrExecutive)?.full_name) || (role === "executive" ? "My" : "Executive");
 
   const applyEvrRange = (range: "weekly" | "15_days" | "monthly") => {
     const today = new Date();
@@ -555,7 +557,7 @@ const Reports = () => {
                       </SelectTrigger>
                       <SelectContent>
                         {executivesList.map(e => (
-                          <SelectItem key={e.user_id} value={e.user_id}>{e.full_name}</SelectItem>
+                          <SelectItem key={e.user_id} value={e.user_id}>{employeeName(e.full_name)}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -623,12 +625,13 @@ const Reports = () => {
             </Card>
 
             {/* DSR Summary - hidden on print */}
+            <div className="space-y-1 print:hidden"><label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={dsrIncludePlanned} onChange={event=>setDsrIncludePlanned(event.target.checked)}/>Include pending plans in the table</label><p className="text-xs text-muted-foreground">Actual DSR shows completed visits on their completion date (IST). Planning alone does not count as a completed visit. Older completed records without a completion timestamp retain their recorded visit date.</p></div>
             {dsrEmployee && !dsrLoading && (
               <div className="grid grid-cols-3 gap-4 print:hidden">
                 {[
                   { label: "Total Planned", value: dsrTotalPlanned, color: "text-blue-500", bg: "bg-blue-500/10" },
                   { label: "Total Done", value: dsrTotalDone, color: "text-emerald-500", bg: "bg-emerald-500/10" },
-                  { label: "Success Rate", value: `${dsrSuccessRate}%`, color: "text-amber-500", bg: "bg-amber-500/10" },
+                  { label: "Plan Completion", value: `${dsrSuccessRate}%`, color: "text-amber-500", bg: "bg-amber-500/10" },
                 ].map(s => (
                   <Card key={s.label} className="border-none shadow-sm">
                     <CardContent className="p-4 flex items-center gap-3">
@@ -681,12 +684,12 @@ const Reports = () => {
                     }
                   </h1>
                   <p style={{fontSize: "11px", marginTop: "4px"}}>Employee: <strong>{dsrEmployeeName}</strong> &nbsp;|&nbsp; Generated: {format(new Date(), "dd-MMM-yyyy, hh:mm a")}</p>
-                  <p style={{fontSize: "11px"}}>Total Visits: <strong>{dsrTotalPlanned}</strong> &nbsp;|&nbsp; Done: <strong>{dsrTotalDone}</strong> &nbsp;|&nbsp; Success Rate: <strong>{dsrSuccessRate}%</strong></p>
+                  <p style={{fontSize: "11px"}}>Planned: <strong>{dsrTotalPlanned}</strong> &nbsp;|&nbsp; Done: <strong>{dsrTotalDone}</strong> &nbsp;|&nbsp; Plan Completion: <strong>{dsrSuccessRate}%</strong></p>
                 </div>
 
                 <div className="space-y-4">
                   {Array.from(dsrByDate.entries()).map(([date, dayVisits]) => {
-                    const planned = dayVisits.filter(v => isCountedVisit(v));
+                    const planned = dsrSourceVisits.filter(v=>v.visit_date===date&&isCountedVisit(v));
                     const done = dayVisits.filter(v => v.status === "done");
                     return (
                       <div key={date} className="dsr-day-card overflow-hidden rounded-xl border border-border shadow-md">
@@ -702,18 +705,16 @@ const Reports = () => {
                               </div>
                             </div>
                             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 print:hidden">
-                              {done.length}/{planned.length} Done
+                              {done.length} completed
                             </span>
                             <span className="hidden print:inline text-[11px] font-bold text-green-700">
-                              {done.length}/{planned.length} Done
+                              {done.length} completed
                             </span>
                           </div>
                           {/* Day-level start/end time */}
                           {(() => {
-                            const validCreated = dayVisits.filter(v => v.created_at).map(v => v.created_at as string);
-                            const validDone = dayVisits.filter(v => v.done_at && v.status === "done").map(v => v.done_at as string);
-                            const dayStart = validCreated.length > 0 ? safeFormatTime([...validCreated].sort()[0], "hh:mm a") : "—";
-                            const dayEnd = validDone.length > 0 ? safeFormatTime([...validDone].sort().reverse()[0], "hh:mm a") : "—";
+                            const dayStart = safeFormatTime(dsrAttendanceMap.get(date)?.created_at);
+                            const dayEnd = safeFormatTime(dsrAttendanceMap.get(date)?.ended_at);
                             return (
                               <div className="flex items-center gap-4 text-[11px] pl-10 print:pl-0">
                                 <span className="flex items-center gap-1">
@@ -749,7 +750,7 @@ const Reports = () => {
                                 const addr = v.address || v.clients?.address || v.partners?.address || "—";
                                 const statusClass = v.status === "done" ? "dsr-status-done" : v.status === "cancelled" ? "dsr-status-cancelled" : "dsr-status-planned";
                                 const statusLabel = v.status === "done" ? "✓ Done" : v.status === "cancelled" ? "✗ Cancelled" : "⏳ Planned";
-                                const startTime = safeFormatTime(v.created_at, "hh:mm a");
+                                const startTime = v.check_in_at ? safeFormatTime(v.check_in_at, "hh:mm a") : 'Not checked in';
                                 const endTime = (v.done_at && v.status === "done") ? safeFormatTime(v.done_at, "hh:mm a") : null;
                                 return (
                                   <tr key={v.id} className="border-b hover:bg-muted/10">
@@ -764,7 +765,8 @@ const Reports = () => {
                                       <span className={`text-[10px] font-bold ${statusClass}`}>{statusLabel}</span>
                                     </td>
                                     <td className="py-2 px-3 whitespace-nowrap text-xs text-muted-foreground">
-                                      <span className="font-semibold text-foreground">{startTime}</span>
+                                      <span className="font-semibold text-foreground">Check-in: {startTime}</span>
+                                      {v.status==='done'&&!v.done_at&&<span className="block text-[10px]">Completion time not recorded</span>}
                                       {endTime && <span className="block text-[10px] text-amber-500 font-medium">Done: {endTime}</span>}
                                     </td>
                                     <td className="text-xs text-muted-foreground py-2 px-3 max-w-[160px]">{v.remarks || "—"}</td>
@@ -956,7 +958,7 @@ const Reports = () => {
                 <SelectTrigger className="h-9 w-[180px]"><SelectValue placeholder="All Executives" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Executives</SelectItem>
-                  {executivesList.map((executive) => <SelectItem key={executive.user_id} value={executive.user_id}>{executive.full_name}</SelectItem>)}
+                  {executivesList.map((executive) => <SelectItem key={executive.user_id} value={executive.user_id}>{employeeName(executive.full_name)}</SelectItem>)}
                 </SelectContent>
               </Select>
             )}
@@ -1087,7 +1089,7 @@ const Reports = () => {
               >
                 <option value="all">All Executives</option>
                 {executivesList.map((ex) => (
-                  <option key={ex.user_id} value={ex.user_id}>{ex.full_name}</option>
+                  <option key={ex.user_id} value={ex.user_id}>{employeeName(ex.full_name)}</option>
                 ))}
               </select>
               <Badge variant="outline" className="px-3 py-1 bg-green-500/10 text-green-600 border-none whitespace-nowrap">
@@ -1103,7 +1105,7 @@ const Reports = () => {
                 <button
                   key={exec.name}
                   onClick={() => {
-                    const found = executivesList.find((e) => e.full_name === exec.name);
+                    const found = executivesList.find((e) => employeeName(e.full_name) === exec.name);
                     if (found) setFilterExecutive(found.user_id);
                   }}
                   className="bg-card border border-border rounded-xl p-4 text-left hover:border-primary/40 hover:shadow-md transition-all group"
@@ -1144,7 +1146,7 @@ const Reports = () => {
                              Trip by Trip Breakdown
                              {filterExecutive !== "all" && (
                                <Badge variant="secondary" className="ml-1 text-[10px]">
-                                 {executivesList.find(e => e.user_id === filterExecutive)?.full_name}
+                                 {employeeName(executivesList.find(e => e.user_id === filterExecutive)?.full_name)}
                                </Badge>
                              )}
                          </CardTitle>
@@ -1174,7 +1176,7 @@ const Reports = () => {
                         <TableBody>
                             {filteredConveyance.map((r) => {
                                const matchedExec = executivesList.find(e => e.user_id === r.user_id);
-                               const execName = matchedExec ? matchedExec.full_name : "Unknown";
+                               const execName = matchedExec ? employeeName(matchedExec.full_name) : "Unknown";
                                return (
                                <TableRow key={r.id}>
                                    <TableCell className="whitespace-nowrap font-medium text-xs">{format(parseISO(r.date), "dd MMM yyyy")}</TableCell>

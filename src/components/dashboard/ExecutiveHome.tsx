@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { visitDisplayName } from "@/lib/visitDisplay";
 import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -65,7 +66,7 @@ export const ExecutiveHome = () => {
     const monthEnd = format(endOfMonth(selectedDate), "yyyy-MM-dd");
 
     const roleLabel = role === 'tl' ? 'Team Leader' : role === 'manager' ? 'Showroom Manager' : 'Executive';
-    const fullName: string = user?.user_metadata?.full_name || roleLabel;
+    const fullName: string = employeeName(user?.user_metadata?.full_name) || roleLabel;
     const firstName = (fullName.split(" ")[0] || roleLabel).charAt(0).toUpperCase() + (fullName.split(" ")[0] || "").slice(1);
 
     // ── Fetch profile avatar ──
@@ -565,7 +566,7 @@ export const ExecutiveHome = () => {
             details: { name: string; info: string; actionText?: string; actionRoute?: string }[];
         }[] = [];
 
-        const profileMap = Object.fromEntries(allProfiles.map(p => [p.user_id, p.full_name || "Unknown"]));
+        const profileMap = Object.fromEntries(allProfiles.map(p => [p.user_id, employeeName(p.full_name) || "Unknown"]));
 
         // 1. Inactive Employees
         const inactiveDetails: typeof alertsList[number]["details"] = [];
@@ -762,7 +763,7 @@ export const ExecutiveHome = () => {
         if (!showroomLeaderboard.length) return { visits: [], wosCount: [], wosWon: [] };
         const stats = showroomLeaderboard.map((exec: any) => ({
             user_id: exec.user_id,
-            full_name: exec.full_name,
+            full_name: employeeName(exec.full_name),
             role: exec.role || 'executive',
             visits: Number(exec.visits_count ?? 0),
             wosCount: Number(exec.wos_count ?? 0),
@@ -1202,7 +1203,7 @@ export const ExecutiveHome = () => {
                                     <div
                                         key={exec.user_id}
                                         onClick={() => setLeadPopup({
-                                            name: exec.full_name || 'Executive',
+                                            name: employeeName(exec.full_name) || 'Executive',
                                             visits: exec.visits,
                                             wosCount: exec.wosCount,
                                             wosWon: exec.wosWon,
@@ -1222,7 +1223,7 @@ export const ExecutiveHome = () => {
                                                     <span className={`text-[11px] font-bold w-5 text-center ${rankNumColor}`}>#{idx + 1}</span>
                                                 )}
                                                 <span className={`text-[13px] font-bold truncate max-w-[110px] ${nameColor}`}>
-                                                    {exec.full_name || 'Executive'}
+                                                    {employeeName(exec.full_name) || 'Executive'}
                                                 </span>
                                                 {exec.role === 'tl' && (
                                                     <span className="text-[8px] font-bold bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-300 border border-blue-300 dark:border-blue-400/30 px-1.5 py-0.5 rounded-full shrink-0">TL</span>
@@ -1282,7 +1283,7 @@ export const ExecutiveHome = () => {
                     if (!leader || !myEntry || leader.user_id === user?.id) return null;
                     return (
                         <RaceCountdown
-                            leaderName={leader.full_name.split(' ')[0]}
+                            leaderName={employeeName(leader.full_name).split(' ')[0]}
                             leaderScore={leader[leaderboardTab]}
                             myScore={myEntry[leaderboardTab]}
                             category={leaderboardTab}

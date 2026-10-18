@@ -1,41 +1,66 @@
 import { visitDisplayName } from "../_shared/visit-display.ts";
+import { employeeName } from "../_shared/employee-name.ts";
 export const reportDefinitions = [
-  { key: 'daily_planning', title: 'Daily Planned Visits', time: '10:30', weekly: false },
+  { key: 'daily_planning', title: 'Daily Planned Visits', time: '10:00', weekly: false },
   { key: 'plan_actual', title: 'Manager Daily Plan vs Actual', time: '19:00', weekly: false },
   { key: 'followups', title: 'Pending Follow-ups', time: '10:00', weekly: false },
-  { key: 'outcomes', title: 'Visit Outcomes', time: '19:15', weekly: false },
+  { key: 'outcomes', title: 'Visit Outcomes', time: '21:00', weekly: false },
   { key: 'tl_outcomes', title: 'TL Outcome', time: '19:30', weekly: false },
   { key: 'weekly_summary', title: 'Weekly Showroom Summary', time: '18:00', weekly: true },
   { key: 'conveyance', title: 'Conveyance Review', time: '18:15', weekly: true },
+  { key: 'pending_partners', title: 'Partners Pending Visit', time: '10:15', weekly: false },
 ] as const;
 
 export function indiaDate(now = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
-export function reportDue(key: string, now = new Date()) {
+export function reportDue(key: string, now = new Date(), scheduleStart?: string | null) {
   const definition = reportDefinitions.find(r => r.key === key);
   const time = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
   const day = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Kolkata', weekday: 'short' }).format(now);
+  if (key === 'pending_partners') {
+    if (!scheduleStart) return false;
+    const elapsed = (Date.parse(indiaDate(now)) - Date.parse(scheduleStart)) / 86400000;
+    return definition?.time === time && Number.isInteger(elapsed) && elapsed >= 0 && elapsed % 15 === 0;
+  }
   return !!definition && definition.time === time && (!definition.weekly || day === 'Sat');
 }
 export function weekStart(date: string) {
   return new Date(Date.parse(`${date}T00:00:00Z`) - 6 * 86400000).toISOString().slice(0, 10);
 }
 type Row = Record<string, any>;
-// Daily planning covers everyone responsible for showroom visits.
+// Managers' own activity is sent to the Director, separately from showroom reports.
 export async function loadReportPeople(client: any, showroomId: string, reportKey: string): Promise<Row[]> {
-  const includedRoles = reportKey === 'tl_outcomes' ? ['tl'] : ['daily_planning', 'plan_actual', 'outcomes'].includes(reportKey) ? ['executive', 'tl', 'manager'] : ['executive'];
+  const includedRoles = reportKey === 'plan_actual' ? ['manager'] : reportKey === 'tl_outcomes' ? ['tl'] : ['daily_planning', 'outcomes', 'pending_partners'].includes(reportKey) ? ['executive', 'tl'] : ['executive'];
   const roles = await allRows(client.from('user_roles').select('user_id')
     .eq('showroom_id', showroomId).in('role', includedRoles).eq('is_active', true).order('id'));
-  const userIds = [...new Set(roles.map(role => role.user_id))];
+  if (!roles.length) return [];
+  // A manager with an additional TL/executive role must not leak into a group report.
+  const managers = ['daily_planning', 'outcomes', 'tl_outcomes', 'pending_partners'].includes(reportKey)
+    ? await allRows(client.from('user_roles').select('user_id').eq('role', 'manager').eq('is_active', true).order('id')) : [];
+  const excludedIds = new Set(managers.map(role => role.user_id));
+  const userIds = [...new Set(roles.map(role => role.user_id))].filter(id => !excludedIds.has(id));
   if (!userIds.length) return [];
   return allRows(client.from('profiles').select('user_id,full_name').in('user_id', userIds).order('user_id'));
 }
 
-export function buildReport(key: string, showroom: string, date: string, people: Row[], visits: Row[], claims: Row[] = [], clients: Row[] = []) {
+export function buildReport(key: string, showroom: string, date: string, people: Row[], visits: Row[], claims: Row[] = [], clients: Row[] = [], partners: Row[] = []) {
   const definition = reportDefinitions.find(r => r.key === key);
   if (!definition) throw new Error('Unknown report');
   const ids = new Set(people.map(p => p.user_id));
+  if (key === 'pending_partners') {
+    const cutoff = new Date(Date.parse(date) - 15 * 86400000).toISOString().slice(0,10);
+    const lastVisit = new Map<string,string>();
+    for (const visit of visits) {
+      if (visit.status !== 'done' || !visit.partner_id) continue;
+      const completedDate = visit.done_at && Number.isFinite(Date.parse(visit.done_at)) ? indiaDate(new Date(visit.done_at)) : visit.visit_date;
+      if (completedDate && completedDate <= date && completedDate > (lastVisit.get(visit.partner_id) || '')) lastVisit.set(visit.partner_id,completedDate);
+    }
+    const names = new Map(people.map(p=>[p.user_id,employeeName(p.full_name)]));
+    const pending = partners.filter(p=>ids.has(p.created_by)&&p.type!=='self'&&(lastVisit.get(p.id)||'')<=cutoff)
+      .sort((a,b)=>(names.get(a.created_by)||'').localeCompare(names.get(b.created_by)||'')||(a.name||'').localeCompare(b.name||''));
+    return `*PARTNERS PENDING VISIT REPORT*\nShowroom: ${showroom}\nDate: ${date}\n\n${pending.map((p,i)=>`${i+1}. ${p.name}\nEmployee: ${names.get(p.created_by)||'Staff member'}\nLocation: ${[p.address,p.city].filter(Boolean).join(', ')||'Not recorded'}\nLast completed visit: ${lastVisit.get(p.id)||'Never visited'}`).join('\n\n')||'No pending partners.'}\n\nTotal pending partners: ${pending.length}\nIncludes partners never visited or last visited at least 15 days ago. Planned visits do not clear pending status.\n— Art N Glass`;
+  }
   visits = visits.filter(v => ids.has(v.created_by) && v.status !== 'cancelled');
   claims = claims.filter(c => ids.has(c.user_id));
   clients = clients.filter(c => ids.has(c.created_by));
@@ -44,7 +69,7 @@ export function buildReport(key: string, showroom: string, date: string, people:
     const rows = visits.filter(v => v.created_by === p.user_id);
     const target = visitDisplayName;
     let detail = '';
-    if (key === 'daily_planning') detail = rows.map((v,j) => `${j+1}. ${target(v)} — ${v.purpose || 'Purpose not specified'}`).join('\n') || 'No planned visits';
+    if (key === 'daily_planning') detail = rows.map((v,j) => `${j+1}. ${target(v)} — ${v.purpose || 'Purpose not specified'}\nLocation: ${v.address?.trim() || v.clients?.address?.trim() || v.partners?.address?.trim() || 'Not recorded'}`).join('\n') || 'No planned visits';
     if (key === 'plan_actual' || key === 'weekly_summary') {
       const done = rows.filter(v => v.status === 'done').length;
       detail = `Recorded visits: ${rows.length} | Completed: ${done} | Pending: ${rows.length-done}\nCompletion: ${rows.length ? Math.round(done/rows.length*100) : 0}%`;
@@ -60,15 +85,15 @@ export function buildReport(key: string, showroom: string, date: string, people:
       }
     }
     if (key === 'followups') detail = rows.map((v,j) => `${j+1}. ${target(v)} — ${v.purpose}\nDue: ${v.visit_date}${v.visit_date < date ? ' (Overdue)' : ' (Today)'}`).join('\n') || 'No pending follow-ups';
-    if (key === 'outcomes' || key === 'tl_outcomes') detail = rows.filter(v => v.status === 'done').map((v,j) => `${j+1}. ${target(v)} — ${v.purpose}\nRemarks: ${v.remarks || 'Not entered'}\nNext follow-up: ${v.next_followup || 'Not entered'}`).join('\n') || 'No completed visits';
+    if (key === 'outcomes' || key === 'tl_outcomes') detail = rows.filter(v => v.status === 'done').map((v,j) => `${j+1}. ${target(v)} — ${v.purpose}\nRemarks: ${v.remarks || 'Not entered'}${v.next_followup ? '\nNext follow-up: ' + v.next_followup : ''}`).join('\n') || 'No completed visits';
     if (key === 'conveyance') {
       const trips = claims.filter(c => c.user_id === p.user_id);
       const review = trips.filter(c => [c.from_lat,c.from_lng,c.to_lat,c.to_lng].some(x => x == null) || (c.from_lat === 0 && c.from_lng === 0) || (c.to_lat === 0 && c.to_lng === 0)).length;
       detail = `Trips: ${trips.length} | KM: ${trips.reduce((s,c) => s+Number(c.distance_km || 0),0).toFixed(1)}\nClaim: INR ${trips.reduce((s,c) => s+Number(c.amount || 0),0).toFixed(2)}\nMissing trip coordinates: ${review} — ${review ? 'Review required' : 'None'}\nGPS route continuity: not verified by this report`;
     }
-    return `*${i+1}. ${p.full_name || 'Staff member'}*\n\n${detail}`;
+    return `${i+1}. ${employeeName(p.full_name) || 'Staff member'}\n\n${detail}`;
   });
-  const emptyMessage = key === 'tl_outcomes' ? 'No active team leaders found.' : ['daily_planning','plan_actual','outcomes'].includes(key) ? 'No active executives, team leaders or managers found.' : 'No active executives found.';
+  const emptyMessage = key === 'plan_actual' ? 'No active managers found.' : key === 'tl_outcomes' ? 'No active team leaders found.' : ['daily_planning','outcomes'].includes(key) ? 'No active executives or team leaders found.' : 'No active executives found.';
   return `*${title}*\n*Showroom:* ${showroom}\n*Date:* ${definition.weekly ? `${weekStart(date)} to ${date}` : date}\n\n${sections.join('\n\n') || emptyMessage}\n\n${key === 'daily_planning' ? `*Total planned visits: ${visits.length}*\n` : ''}${key === 'followups' ? 'Based on pending visits due today or earlier.\n' : ''}${key === 'plan_actual' ? 'Plan uses visit creation time with a 10:30 AM IST cutoff.\n' : ''}${key === 'weekly_summary' ? 'Conversions show current status of clients created in this period.\n' : ''}— Art N Glass`;
 }
 

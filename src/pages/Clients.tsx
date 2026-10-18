@@ -1,3 +1,5 @@
+import { employeeName } from "@/lib/employeeDisplay";
+import { RecordActions } from "@/components/RecordActions";
 import { sharedOwnerFilter } from "@/lib/sharedOwnerScope";
 import { SearchablePartnerSelect } from "@/components/SearchablePartnerSelect";
 import { useState, useEffect, useId, useRef } from "react";
@@ -123,12 +125,6 @@ const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partne
       </div>
     </div>
 
-    <div className="space-y-1.5">
-      <Label htmlFor={architectId} className="text-xs font-semibold text-foreground">Architect Name {isNew && <span className="text-red-500">*</span>}</Label>
-      <Input id={architectId} required={isNew} aria-describedby={isNew ? `${architectId}-help` : undefined} placeholder={isNew ? "Architect Name *" : "Architect Name"} value={values.architect_name} onChange={(e) => { suggestedArchitect.current = null; onChange({ ...values, architect_name: e.target.value }); }} className="h-9 text-sm" />
-      {isNew && <p id={`${architectId}-help`} className="text-xs text-muted-foreground">Select an Architect in Lead Source to fill this automatically, or enter the project's architect name. For Builder or Partner leads, enter the architect name here.</p>}
-    </div>
-
     {/* ── Status selector — pill buttons ── */}
     <div className="space-y-2">
       <Label className="text-xs font-semibold text-foreground flex items-center gap-1">
@@ -157,11 +153,16 @@ const ClientForm = ({ values, onChange, onSubmit, isPending, submitLabel, partne
     <div className="space-y-1.5 p-3 rounded-xl border border-indigo-500/30 bg-indigo-50/60 dark:bg-indigo-950/30">
       <div className="flex items-center justify-between">
         <Label className="text-xs font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-1">
-          <span>⭐ Lead Source / Partner (Architect / Builder)</span>
+          <span>Lead Source / Partner (Architect / Builder)</span>
         </Label>
-        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-100 dark:bg-indigo-900/50 px-2 py-0.5 rounded-full">Recommended</span>
+        <span className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400">Partner link optional</span>
       </div>
       <SearchablePartnerSelect value={values.partner_id} partners={partners} onChange={selectPartner} />
+      <div className="space-y-1.5 pt-2">
+        <Label htmlFor={architectId} className="text-xs font-semibold text-foreground">Architect Name {isNew && <span className="text-red-500">*</span>}</Label>
+        <Input id={architectId} required={isNew} aria-describedby={isNew ? `${architectId}-help` : undefined} placeholder={isNew ? "Architect Name *" : "Architect Name"} value={values.architect_name} onChange={(e) => { suggestedArchitect.current = null; onChange({ ...values, architect_name: e.target.value }); }} className="h-9 text-sm" />
+        {isNew && <p id={`${architectId}-help`} className="text-xs text-muted-foreground">Select an Architect above to fill this automatically. For Builder, Partner or direct leads, enter the project's architect name here. You only need to select one linked partner.</p>}
+      </div>
       <p className="text-[10px] text-indigo-700/80 dark:text-indigo-300/80 font-medium">
         💡 Selecting a Partner connects this client to the Partner's pipeline in Hierarchy.
       </p>
@@ -463,7 +464,7 @@ const Clients = () => {
   const [form, setForm] = useState({ ...emptyForm });
   const [editForm, setEditForm] = useState({ ...emptyForm });
   const { data: teamMembers = [], isSuccess: sharedOwnershipReady } = useAssignableUsers();
-  const currentOwnerName = teamMembers.find((member) => member.user_id === user?.id)?.full_name || user?.user_metadata?.full_name || "Current user";
+  const currentOwnerName = employeeName(teamMembers.find((member) => member.user_id === user?.id)?.full_name) || employeeName(user?.user_metadata?.full_name) || "Current user";
 
   const { data: executivesList = [] } = useQuery({
     queryKey: ["executives-list-clients"],
@@ -525,7 +526,7 @@ const Clients = () => {
           ? supabase.from("user_roles").select("user_id, role").in("user_id", creatorIds)
           : Promise.resolve({ data: [] }),
       ]);
-      const profileMap = Object.fromEntries((profilesData || []).map(p => [p.user_id, p.full_name]));
+      const profileMap = Object.fromEntries((profilesData || []).map(p => [p.user_id, employeeName(p.full_name)]));
       const roleMap = Object.fromEntries((rolesData || []).map(r => [r.user_id, r.role]));
 
       return data.map(c => ({
@@ -562,7 +563,7 @@ const Clients = () => {
       const { data: profilesData } = creatorIds.length > 0
         ? await supabase.from("profiles").select("user_id, full_name").in("user_id", creatorIds)
         : { data: [] };
-      const profileMap = Object.fromEntries((profilesData || []).map(p => [p.user_id, p.full_name]));
+      const profileMap = Object.fromEntries((profilesData || []).map(p => [p.user_id, employeeName(p.full_name)]));
 
       const seen = new Set<string>();
       const result: Record<string, { visit_date: string; remarks: string | null; exec_name: string | null }> = {};
@@ -708,7 +709,7 @@ const Clients = () => {
         status: rawData.status,
         ...(sharedOwnershipReady ? { secondary_owner_id: rawData.secondary_owner_id || null } : {}),
       };
-      const { error } = await supabase.from("clients").update(updateData).eq("id", editClient.id);
+      const { error } = await supabase.from("clients").update(updateData).eq("id", editClient.id).select("id").single();
       if (error) throw error;
 
       if (rawData.status === "converted" || rawData.status === "lost") {
@@ -831,7 +832,7 @@ const Clients = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h1 className="hidden md:block text-2xl font-bold">Clients</h1>
+        <div><h1 className="text-2xl font-bold">Clients</h1><p className="text-xs text-muted-foreground">Showing {filtered.length} of {clients.length} clients</p></div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button size="sm" className="w-full md:w-auto"><Plus className="mr-1 h-4 w-4" />Add Client</Button>
@@ -862,7 +863,7 @@ const Clients = () => {
               <SelectContent className="bg-popover">
                 <SelectItem value="all">All Executives</SelectItem>
                 {executivesList.map((e) => (
-                  <SelectItem key={e.user_id} value={e.user_id}>{e.full_name}</SelectItem>
+                  <SelectItem key={e.user_id} value={e.user_id}>{employeeName(e.full_name)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -887,7 +888,7 @@ const Clients = () => {
         <p className="text-muted-foreground text-center py-8">No clients found.</p>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-          {visibleClients.map((c) => {
+          {visibleClients.map((c, index) => {
             const lastVisit = (clientLastVisitsMap as Record<string, { visit_date: string; remarks: string | null; exec_name: string | null }>)[c.id] || null;
             const creatorName = (c as { _creator_name?: string | null })._creator_name || null;
             const creatorRole = (c as { _creator_role?: string | null })._creator_role || null;
@@ -896,7 +897,7 @@ const Clients = () => {
             const hasWos = wosItems.length > 0;
 
             return (
-              <ClientCard
+              <div key={c.id} className="space-y-1"><p className="text-xs text-muted-foreground">#{(currentPage - 1) * pageSize + index + 1}</p><ClientCard
                 key={c.id}
                 c={c}
                 creatorName={creatorName}
@@ -910,7 +911,7 @@ const Clients = () => {
                 openDelete={openDelete}
                 setSelectedClient={setSelectedClient}
                 canDelete={canDelete}
-              />
+              /><RecordActions kind="client" id={c.id} name={c.name} ownerId={c.created_by} /></div>
             );
           })}
         </div>

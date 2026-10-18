@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { supabase } from "@/integrations/supabase/client";
 import { sendNotification } from "@/lib/notifications";
 import { format, subDays } from "date-fns";
@@ -190,7 +191,7 @@ export async function triggerInactivityEscalationReport() {
     const targetUserIds = await getMDAndAdminUserIds();
 
     const title = "🚨 Executive Inactivity Escalation Alert (5 Days)";
-    const message = `Alert: ${inactiveProfiles.length} executives recorded 0 visits in the last 5 days! (${inactiveProfiles.slice(0, 3).map((p: any) => p.full_name).join(", ") || "Field Staff"}). Tap to inspect!`;
+    const message = `Alert: ${inactiveProfiles.length} executives recorded 0 visits in the last 5 days! (${inactiveProfiles.slice(0, 3).map((p: any) => employeeName(p.full_name)).join(", ") || "Field Staff"}). Tap to inspect!`;
 
     for (const uId of targetUserIds) {
       await sendNotification({

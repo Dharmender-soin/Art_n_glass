@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Crown, Trophy, Star, Flame, TrendingUp } from "lucide-react";
@@ -142,13 +143,13 @@ const HofCard = ({ champion, rank }: { champion: Champion; rank: number }) => {
         }`}>
           {champion.avatar_url
             ? <img src={champion.avatar_url} className="w-full h-full rounded-full object-cover" alt="" />
-            : champion.full_name.charAt(0).toUpperCase()
+            : employeeName(champion.full_name).charAt(0).toUpperCase()
           }
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             <span className="text-base">{medals[rank] || `#${rank + 1}`}</span>
-            <p className="text-sm font-bold text-[#F5F5F7] truncate">{champion.full_name}</p>
+            <p className="text-sm font-bold text-[#F5F5F7] truncate">{employeeName(champion.full_name)}</p>
           </div>
           <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
             <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full bg-[#A6192E]/20 text-[#A6192E]">
@@ -343,13 +344,13 @@ export const ChampionBanner = () => {
               <div className="h-14 w-14 rounded-2xl bg-gradient-to-br from-[#D4AF37]/30 to-amber-900/20 flex items-center justify-center text-2xl font-bold text-[#D4AF37] border border-[#D4AF37]/20 shrink-0 overflow-hidden">
                 {topChampion.avatar_url
                   ? <img src={topChampion.avatar_url} className="w-full h-full object-cover" alt="" />
-                  : topChampion.full_name.charAt(0).toUpperCase()
+                  : employeeName(topChampion.full_name).charAt(0).toUpperCase()
                 }
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="text-lg">👑</span>
-                  <h3 className="text-lg font-extrabold text-[#F5F5F7] truncate">{topChampion.full_name}</h3>
+                  <h3 className="text-lg font-extrabold text-[#F5F5F7] truncate">{employeeName(topChampion.full_name)}</h3>
                 </div>
                 <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                   <span className="text-[9px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full bg-[#A6192E]/30 text-[#A6192E] border border-[#A6192E]/30">
@@ -375,7 +376,7 @@ export const ChampionBanner = () => {
                     <div key={c.id} className="flex items-center gap-1.5 bg-white/5 rounded-xl px-3 py-1.5 border border-white/5">
                       <span className="text-sm">{cat.icon}</span>
                       <div>
-                        <p className="text-[10px] font-bold text-[#F5F5F7]">{c.full_name}</p>
+                        <p className="text-[10px] font-bold text-[#F5F5F7]">{employeeName(c.full_name)}</p>
                         <p className="text-[9px] text-[#8E939D]">{cat.label} · {c.score}</p>
                       </div>
                     </div>

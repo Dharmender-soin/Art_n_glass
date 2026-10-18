@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -54,7 +55,7 @@ const VisitHistoryList = ({ clientId, partnerId }: VisitHistoryListProps) => {
     enabled: creatorIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("profiles").select("user_id, full_name").in("user_id", creatorIds);
-      return Object.fromEntries((data || []).map((profile) => [profile.user_id, profile.full_name]));
+      return Object.fromEntries((data || []).map((profile) => [profile.user_id, employeeName(profile.full_name)]));
     },
   });
 

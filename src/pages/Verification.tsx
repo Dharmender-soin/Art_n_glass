@@ -89,12 +89,14 @@ const Verification = () => {
   const verifyMutation = useMutation({
     mutationFn: async () => {
       if (!selectedItem) throw new Error("No item selected");
+      if (['lost','hold'].includes(workStatus) && !verificationReason.trim()) throw new Error('A reason is required for Lost or Hold');
       const { error } = await supabase
         .from("work_scope_items")
         .update({
           work_status: workStatus as "pending" | "submitted" | "draft" | "won" | "lost" | "rejected" | "hold",
           verification_remarks: verificationRemarks,
           verification_reason: verificationReason || null,
+          last_status_change_reason: verificationReason.trim() || null,
           is_verified: workStatus === "won" || workStatus === "lost",
           verified_by: user?.id,
           verified_at: new Date().toISOString(),

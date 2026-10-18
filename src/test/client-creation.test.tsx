@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   partnerType: "architect",
   extraPartners: [] as Record<string, unknown>[],
   clients: [] as Record<string, unknown>[],
+  members: [] as Record<string, unknown>[],
 }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { from: mocks.from } }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({
@@ -17,7 +18,7 @@ vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({
   role: "executive", showroomIds: [], showroomId: null,
 }) }));
 vi.mock("@/hooks/useAssignableUsers", () => ({ useAssignableUsers: () => ({
-  data: [], isSuccess: true, isPending: false, isError: false,
+  data: mocks.members, isSuccess: true, isPending: false, isError: false,
 }) }));
 vi.mock("@/lib/notifications", () => ({ sendNotification: vi.fn() }));
 vi.mock("@/components/WorkScopeSection", () => ({ default: () => null }));
@@ -31,6 +32,8 @@ beforeEach(() => {
   mocks.partnerType = "architect";
   mocks.extraPartners = [];
   mocks.clients = [];
+  mocks.members = [];
+  Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', { configurable: true, value: vi.fn() });
   mocks.from.mockImplementation((table: string) => {
     const data = table === "partners" ? [{
       id: "partner-1", name: "Test Partner", type: mocks.partnerType,
@@ -41,8 +44,10 @@ beforeEach(() => {
       select: () => chain, order: () => chain, eq: () => chain, in: () => chain,
       not: () => chain, or: () => chain, range: () => chain,
       maybeSingle: async () => ({ data: null, error: null }),
+      single: async () => ({ data: data[0] || {id:'saved-id'}, error: mocks.saveError }),
       insert: (value: unknown) => {
         mocks.insert(table, value);
+        if (table === 'partners') return chain;
         return Promise.resolve({ data: null, error: mocks.saveError });
       },
       update: (value: unknown) => { mocks.update(table, value); return chain; },
@@ -184,4 +189,45 @@ it("does not treat a Builder partner as an architect in the quick form", async (
   const { architect } = await openCreate("partners");
   expect(architect).toHaveValue("");
   expect(architect).toHaveAccessibleDescription(/Enter the project's architect name/);
+});
+
+async function chooseSecondaryOwner() {
+  fireEvent.click(screen.getByRole('combobox', {name:'Secondary owner'}));
+  fireEvent.click(await screen.findByRole('option', {name:'Second Employee (KAM)'}));
+}
+
+it.each(['clients','partners'] as const)('saves the selected secondary owner when adding a client through %s', async flow => {
+  mocks.members = [{user_id:'employee-2',full_name:'Mr. Second Employee',role:'executive'}];
+  const {form,architect} = await openCreate(flow);
+  fireEvent.change(architect, {target:{value:'Actual Architect'}});
+  await chooseSecondaryOwner();
+  fireEvent.click(within(form).getByRole('button', {name:'Save Client'}));
+  await waitFor(()=>expect(mocks.success).toHaveBeenCalledWith('Client created!'));
+  expect(mocks.insert).toHaveBeenCalledWith('clients',expect.objectContaining({created_by:'employee-1',secondary_owner_id:'employee-2'}));
+});
+
+it('saves the selected secondary owner when creating a partner',async()=>{
+  mocks.members = [{user_id:'employee-2',full_name:'Mr. Second Employee',role:'executive'}];
+  renderPage('partners');
+  fireEvent.click(await screen.findByRole('button',{name:'Add Partner'}));
+  fireEvent.change(screen.getByPlaceholderText('Partner name'),{target:{value:'New Architect'}});
+  fireEvent.change(screen.getByPlaceholderText('Phone number'),{target:{value:'9000000003'}});
+  await chooseSecondaryOwner();
+  fireEvent.click(screen.getByRole('button',{name:'Save Partner'}));
+  await waitFor(()=>expect(mocks.success).toHaveBeenCalledWith('Partner created!'));
+  expect(mocks.insert).toHaveBeenCalledWith('partners',expect.objectContaining({created_by:'employee-1',secondary_owner_id:'employee-2'}));
+});
+
+it.each(['clients','partners'] as const)('does not falsely confirm an inaccessible %s update and preserves the chosen secondary owner',async flow=>{
+  mocks.members = [{user_id:'employee-2',full_name:'Mr. Second Employee',role:'executive'}];
+  mocks.clients = [{id:'client-1',name:'Existing Client',mobile:'9000000004',created_by:'employee-1',status:'new',architect_name:'Architect',secondary_owner_id:null}];
+  renderPage(flow);
+  fireEvent.click(await screen.findByTitle(flow==='clients'?'Edit client':'Edit partner'));
+  await chooseSecondaryOwner();
+  mocks.saveError = {message:'No accessible record was updated'};
+  fireEvent.click(screen.getByRole('button',{name:'Save Changes'}));
+  await waitFor(()=>expect(mocks.error).toHaveBeenCalledWith('No accessible record was updated'));
+  expect(mocks.update).toHaveBeenCalledWith(flow,expect.objectContaining({secondary_owner_id:'employee-2'}));
+  expect(mocks.success).not.toHaveBeenCalled();
+  expect(screen.getByRole('combobox',{name:'Secondary owner'})).toHaveTextContent('Second Employee');
 });

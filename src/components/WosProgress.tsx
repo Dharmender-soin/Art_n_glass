@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 
-export const progressLabels: Record<string, string> = { not_started: 'Not Started', in_progress: 'In Progress', completed: 'Completed' };
+export const progressLabels: Record<string, string> = { not_started: 'Not Started', pre_production: 'Pre-production', production: 'Production', installation: 'Installation', handover: 'Handover', in_progress: 'In Progress', completed: 'Completed' };
 
 /** Execution progress is independent of the commercial Won/Lost stage. */
 export function WosProgress({ id, value }: { id: string; value?: string | null }) {

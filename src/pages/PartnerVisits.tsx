@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -143,8 +144,8 @@ const PartnerVisits = () => {
     },
   });
 
-  const profileMap = useMemo(() => Object.fromEntries(profiles.map((p) => [p.user_id, p.full_name])), [profiles]);
-  const tlProfileMap = useMemo(() => Object.fromEntries(tlProfiles.map((p) => [p.user_id, p.full_name])), [tlProfiles]);
+  const profileMap = useMemo(() => Object.fromEntries(profiles.map((p) => [p.user_id, employeeName(p.full_name)])), [profiles]);
+  const tlProfileMap = useMemo(() => Object.fromEntries(tlProfiles.map((p) => [p.user_id, employeeName(p.full_name)])), [tlProfiles]);
   const showroomMap = useMemo(() => Object.fromEntries(showrooms.map((s) => [s.id, s.name])), [showrooms]);
   const execShowroomMap = useMemo(() => Object.fromEntries(userRoles.map((r) => [r.user_id, r.showroom_id])), [userRoles]);
 
@@ -512,7 +513,7 @@ const PartnerVisits = () => {
                 <SelectTrigger className="h-8 text-xs w-[130px] bg-background"><SelectValue placeholder="All Executives" /></SelectTrigger>
                 <SelectContent className="bg-popover">
                   <SelectItem value="all">All Executives</SelectItem>
-                  {profiles.map((p) => <SelectItem key={p.user_id} value={p.user_id}>{p.full_name}</SelectItem>)}
+                  {profiles.map((p) => <SelectItem key={p.user_id} value={p.user_id}>{employeeName(p.full_name)}</SelectItem>)}
                 </SelectContent>
               </Select>
             )}

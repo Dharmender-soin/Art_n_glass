@@ -33,25 +33,25 @@ function database(roles = roleRows) {
 }
 
 describe('Daily planning report staff', () => {
-  it('includes all three roles once, only when active in the selected showroom', async () => {
+  it('includes active executives and TLs once while excluding managers from showroom planning', async () => {
     const people = await loadReportPeople(database(), 'gurgaon', 'daily_planning');
-    expect(people.map(person => person.user_id).sort()).toEqual(['exec', 'manager', 'tl', 'zero']);
+    expect(people.map(person => person.user_id).sort()).toEqual(['exec', 'tl']);
     const visits = profiles.filter(person => person.user_id !== 'zero').map(person => ({
       created_by: person.user_id, status: 'planned', clients: { name: `${person.user_id} visit` }, purpose: 'Meeting',
     }));
     visits.push({ created_by: 'manager', status: 'cancelled', clients: { name: 'Cancelled stop' }, purpose: 'Meeting' });
     const message = buildReport('daily_planning', 'Gurgaon', '2026-09-17', people, visits);
-    for (const id of ['exec', 'tl', 'manager']) expect(message).toContain(`${id} visit — Meeting`);
-    expect(message).toContain('*4. zero*\n\nNo planned visits');
-    expect(message).toContain('*Total planned visits: 3*');
+    for (const id of ['exec', 'tl']) expect(message).toContain(`${id} visit — Meeting`);
+    expect(message).not.toContain('manager visit');
+    expect(message).toContain('*Total planned visits: 2*');
     for (const excluded of ['inactive-', 'other-', 'admin visit', 'md visit', 'accountant visit', 'backhand_executive visit', 'Cancelled stop']) {
       expect(message).not.toContain(excluded);
     }
   });
 
   it('uses each showroom assignment independently for a multi-showroom manager', async () => {
-    const people = await loadReportPeople(database(), 'kirti', 'daily_planning');
-    expect(people.map(person => person.user_id).sort()).toEqual(['manager', 'other-executive', 'other-manager', 'other-tl']);
+    const people = await loadReportPeople(database(), 'kirti', 'plan_actual');
+    expect(people.map(person => person.user_id).sort()).toEqual(['manager', 'other-manager']);
   });
 
   it('handles no eligible staff without querying unrelated profiles', async () => {
@@ -59,7 +59,7 @@ describe('Daily planning report staff', () => {
     const people = await loadReportPeople(client, 'gurgaon', 'daily_planning');
     expect(people).toEqual([]);
     expect(client.from).toHaveBeenCalledTimes(1);
-    expect(buildReport('daily_planning', 'Gurgaon', '2026-09-17', people, [])).toContain('No active executives, team leaders or managers found.');
+    expect(buildReport('daily_planning', 'Gurgaon', '2026-09-17', people, [])).toContain('No active executives or team leaders found.');
   });
 
   it('surfaces database failures rather than presenting incomplete staff as a valid report', async () => {
@@ -72,12 +72,18 @@ describe('Daily planning report staff', () => {
     const people = await loadReportPeople(database(), 'gurgaon', key);
     expect(people.map(person => person.user_id).sort()).toEqual(['exec', 'tl']);
   });
-  it.each(['plan_actual', 'outcomes'])('includes active managers and TLs, including zero-plan staff, for %s', async key => {
+  it.each(['plan_actual', 'outcomes'])('keeps manager activity separate from showroom outcomes for %s', async key => {
     const people = await loadReportPeople(database(), 'gurgaon', key);
-    expect(people.map(person => person.user_id).sort()).toEqual(['exec','manager','tl','zero']);
+    expect(people.map(person => person.user_id).sort()).toEqual(key === 'plan_actual' ? ['manager','zero'] : ['exec','tl']);
   });
   it('generates the dedicated TL report only for active TLs', async () => {
     const people = await loadReportPeople(database(), 'gurgaon', 'tl_outcomes');
     expect(people.map(person => person.user_id)).toEqual(['tl']);
+  });
+  it('excludes managers with a second TL or executive role from every group visit report',async()=>{
+    const db=database([...roleRows,{user_id:'manager',role:'tl',showroom_id:'gurgaon',is_active:true}]);
+    for(const key of ['daily_planning','outcomes','tl_outcomes','pending_partners']) {
+      expect((await loadReportPeople(db,'gurgaon',key)).map(p=>p.user_id)).not.toContain('manager');
+    }
   });
 });

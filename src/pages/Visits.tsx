@@ -1,3 +1,5 @@
+import { employeeName } from "@/lib/employeeDisplay";
+import { VisitPurposeEditor } from "@/components/VisitPurposeEditor";
 import { sharedOwnerFilter } from "@/lib/sharedOwnerScope";
 import { resolveVisitAddress } from "@/lib/visitLocation";
 import { useState, useEffect, useMemo } from "react";
@@ -85,6 +87,7 @@ const Visits = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [doneDialogId, setDoneDialogId] = useState<string | null>(null);
   const [remarks, setRemarks] = useState("");
+  const [showroomPurpose, setShowroomPurpose] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
   const [filterStatus, setFilterStatus] = useState("");
   const [search, setSearch] = useState("");
@@ -202,7 +205,7 @@ const Visits = () => {
     enabled: creatorUserIds.length > 0,
     queryFn: async () => {
       const { data } = await supabase.from("profiles").select("user_id, full_name").in("user_id", creatorUserIds);
-      return Object.fromEntries((data || []).map(p => [p.user_id, p.full_name]));
+      return Object.fromEntries((data || []).map(p => [p.user_id, employeeName(p.full_name)]));
     },
   });
 
@@ -324,7 +327,7 @@ const Visits = () => {
       const { data } = await supabase.rpc("get_showroom_leaderboard", { p_showroom_id: sid });
       return (data || [])
         .filter((item) => item.user_id !== user.id)
-        .map((item) => ({ user_id: item.user_id, full_name: item.full_name || "Executive" }));
+        .map((item) => ({ user_id: item.user_id, full_name: employeeName(item.full_name) || "Executive" }));
     },
     enabled: !!user,
   });
@@ -357,13 +360,14 @@ const Visits = () => {
       }
 
       if (form.visit_with_type === "showroom" && !form.showroom_id) throw new Error("Select the showroom for this visit");
+      if (form.visit_with_type === "showroom" && !showroomPurpose.trim()) throw new Error("Enter the purpose / remark for this showroom visit");
       const insertData: InsertVisitData = {
         visit_date: form.visit_date,
         visit_with_type: form.visit_with_type,
         ...(form.visit_with_type === "showroom" ? { showroom_id: form.showroom_id } : {}),
         address: form.address,
-        purpose_id: form.purpose_id,
-        purpose: purposes.find(p => p.id === form.purpose_id)?.purpose_name || "Meeting",
+        purpose_id: form.visit_with_type === 'showroom' ? null : form.purpose_id,
+        purpose: form.visit_with_type === "showroom" ? showroomPurpose.trim() : purposes.find(p => p.id === form.purpose_id)?.purpose_name || "Meeting",
         created_by: user!.id,
         travel_mode: form.travel_mode,
         pooled_with_user_id: form.travel_mode === "pooled" && form.pooled_with_user_id ? form.pooled_with_user_id : null,
@@ -388,6 +392,7 @@ const Visits = () => {
         });
       }
       setForm({ visit_date: format(new Date(), "yyyy-MM-dd"), visit_with_type: "client", client_id: "", partner_id: "", showroom_id: "", address: "", purpose_id: "", travel_mode: "own", pooled_with_user_id: "" });
+      setShowroomPurpose("");
       setDialogOpen(false);
     },
     onError: (e: Error) => toast.error(e.message),
@@ -859,14 +864,14 @@ const Visits = () => {
               </div>
               <div className="space-y-1">
                 <Label>Purpose</Label>
-                <Select value={form.purpose_id} onValueChange={(v) => setForm({ ...form, purpose_id: v })} required>
+                {form.visit_with_type === 'showroom' ? <Input aria-label="Showroom visit purpose / remark" required placeholder="Describe the reason for this showroom visit" value={showroomPurpose} onChange={event=>setShowroomPurpose(event.target.value)} /> : <Select value={form.purpose_id} onValueChange={(v) => setForm({ ...form, purpose_id: v })} required>
                   <SelectTrigger><SelectValue placeholder="Select purpose..." /></SelectTrigger>
                   <SelectContent className="bg-popover">
                     {purposes.map((p) => (
                       <SelectItem key={p.id} value={p.id}>{p.purpose_name}</SelectItem>
                     ))}
                   </SelectContent>
-                </Select>
+                </Select>}
               </div>
 
               {/* Travel Mode */}
@@ -907,7 +912,7 @@ const Visits = () => {
                         ) : (
                           colleagues.map((c) => (
                               <SelectItem key={c.user_id} value={c.user_id}>
-                                  {c.full_name}
+                                  {employeeName(c.full_name)}
                                 </SelectItem>
                           ))
                         )}
@@ -1049,6 +1054,9 @@ const Visits = () => {
                             </div>
                           )}
                           <p className="text-xs font-medium">Purpose: {v.purpose}</p>
+                          {v.visit_with_type === 'showroom' && v.created_by === user?.id && ['planned','in_progress'].includes(v.status) && <VisitPurposeEditor id={v.id} purpose={v.purpose} beforeSave={async () => {
+                            if (await checkIfDayEnded(v.visit_date)) throw new Error('This day has already been marked ended. Visits cannot be modified.');
+                          }} />}
                           {(v as VisitRow).travel_mode === "pooled" && (
                             <p className="text-[10px] font-semibold text-amber-500 flex items-center gap-1">
                               🚗 Pooled — no conveyance claimed

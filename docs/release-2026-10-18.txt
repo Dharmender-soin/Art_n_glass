@@ -1,0 +1,41 @@
+ART N GLASS — 18 OCTOBER 2026 RELEASE
+
+Scope: 13 of the latest 14 client points implemented in code. Point 8 is on hold by request.
+Database and WhatsHub changes require the deployment steps below before they work live.
+
+CLIENT CHECKLIST
+1. Partner/client counting: visible filtered totals and numbered records. Counts follow existing access and filters.
+2. Transfer: Admin, Director and scoped Managers can choose a receiving executive and enter a reason. Partner transfers offer an explicit optional linked-client transfer. Original creator is retained; visit/WOS authors and conveyance records are unchanged.
+3. Secondary owner: distinct eligible employees, stable current selection, loading/error/retry states; updates confirm that a record was actually saved. Client creation, partner creation and rejected-update cases are tested. The reported failure on the actual production account has not been reproduced because no signed-in session was available.
+4. Employee Mr. prefix: removed from display names, selectors, reports and new report messages. Stored profiles, employee IDs, roles and access are preserved. Profile editing retains the stored name unless explicitly edited. Historical messages are unchanged.
+5. Client form: one Lead Source/Partner selection section containing Architect Name. Selecting an Architect fills the name; Builder/direct leads still require the actual architect name. No duplicate partner selector is added.
+6. Showroom visit: required free-text purpose/remark while planning; inline editing on the employee's own pending showroom visits. Existing closed-day restrictions remain.
+7. WOS: Pre-production > Production > Installation > Handover, with existing Not Started/In Progress/Completed retained. Lost/Hold require a reason. Existing role scope and progress history remain.
+8. HOLD: Naresh/Deepak October 7 GPS, same-day/location validation, live tracking and disputed conveyance investigation. No route, rate, claimed amount or tracking-interval fix is included.
+9. DSR: completed activity shown on actual completion date in IST; pending plans are optional. Actual check-in and attendance start/end times replace booking times. Legacy completed rows without done_at retain their recorded visit date. Completion status alone is not proof of an on-site GPS visit.
+10. Hierarchy: Client/Partner actions menus for transfer and safe delete. The new delete action refuses records with linked visits, WOS or clients. Existing historical records are not deleted by this release.
+11. WhatsApp: planned visit location added; empty next-follow-up line omitted; employee headings use plain text without Mr.
+12. Managers: their own activity is excluded from showroom daily/outcome reports, including mixed manager/TL roles. Managers' consolidated Plan vs Actual goes only to active Director (MD) personal numbers. Executives and TLs remain in showroom daily/outcome reports.
+13. Pending partners: showroom group report every 15 days at 10:15 AM IST. Includes never visited partners and those last completed at least 15 days ago. A completed visit by a previous owner also counts; a booked plan does not clear pending status. First scheduled run is the day after the SQL is applied, for existing configured showroom groups.
+14. WhatsApp timing: Daily Planned Visits at 10:00 AM IST; Visit Outcomes at 9:00 PM IST. Existing enable/disable choices are preserved. Manager Plan vs Actual remains at 7:00 PM with its existing 10:30 AM planning cutoff; the separate TL Outcome schedule remains at 7:30 PM.
+
+DEPLOYMENT ORDER — ART N GLASS PROJECT ONLY
+1. SQL Editor: run the supplied 01-database-update.sql in full. It requires the already-applied 5 October shared-ownership and WOS migrations. If the preflight fails, stop and report its error rather than running old scripts in arbitrary order.
+2. Edge Functions > whatshub > Code: replace index.ts with the entire supplied 02-whatshub-index.ts and Deploy updates. The file bundles all local helpers; no SQL should be pasted here. Existing function secrets and authentication configuration stay unchanged.
+3. Git main deploys the web frontend on Vercel. A Git push alone does not apply SQL or update the Edge Function.
+4. Android uses bundled frontend files. Install the new version 1.3 APK as an Update over the prior version; do not uninstall first. Package identity and signing must match the installed build. The release certificate is checked against the available version 1.2 APK, not against every employee's installed device.
+5. Preview in Notification Settings > Delivery > Showroom Internal WhatsApp > select showroom > WhatsApp Reports. Check roster, location, schedule anchor and Director destination. Preview does not send. No actual WhatsApp test delivery is performed as part of this release.
+
+QUICK ACCEPTANCE CHECK
+- Search/filter partners and clients: totals and serial numbers follow the visible list.
+- Add a client and partner with a secondary owner; reopen and confirm the same selection.
+- Transfer a test record in an authorized showroom; check its ID and historical visits are retained.
+- On Hierarchy, verify stages and reason-required Lost/Hold. Linked records must not be deleted.
+- Plan a showroom visit with a custom purpose, then edit its purpose while the day is open.
+- DSR for a day with only plans must show zero actual completed visits.
+- Preview Daily Planned Visits and Visit Outcomes: Executive/TL names, no managers, location on plans, no empty follow-up line.
+- Preview Manager Plan vs Actual as Admin/Director: all active managers, Director-only destination.
+- Preview Partners Pending Visit; confirm the 15-day rule and the saved first-run date.
+
+DATA SAFETY
+No employee is deleted or renamed in the database by the prefix change. Ownership transfer is only performed when an authorized user confirms a specific record, receiving executive and reason. It preserves original_created_by separately from the application's existing primary-owner field, created_by. SQL does not transfer or delete any existing client or partner automatically.

@@ -2,10 +2,10 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
-import { beforeAll, afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { beforeAll, afterAll, beforeEach, afterEach, describe, expect, it } from 'vitest';
 
 const id = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
-const files = ['20261005090000_visit_reporting_and_shared_ownership.sql','20261005091000_wos_execution_progress.sql','20261005092000_conveyance_day_details.sql'];
+const files = ['20261005090000_visit_reporting_and_shared_ownership.sql','20261005091000_wos_execution_progress.sql','20261005092000_conveyance_day_details.sql','20261018090000_record_transfers_and_wos_stages.sql','20261018091000_pending_partner_reports.sql'];
 let db: PGlite;
 const login = async (user: number) => { await db.exec('RESET ROLE'); await db.query("SELECT set_config('request.jwt.claim.sub',$1,false)",[id(user)]); await db.exec('SET ROLE authenticated'); };
 
@@ -24,7 +24,7 @@ beforeAll(async () => {
     CREATE TABLE public.clients(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),created_by uuid,architect_name text,partner_id uuid);
     CREATE TABLE public.partners(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),created_by uuid);
     CREATE TABLE public.visits(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),created_by uuid,client_id uuid,partner_id uuid,visit_with_type text,address text,status public.visit_status DEFAULT 'planned');
-    CREATE TABLE public.work_scope_items(id uuid PRIMARY KEY,created_by uuid,client_id uuid,work_status text DEFAULT 'won');
+    CREATE TABLE public.work_scope_items(id uuid PRIMARY KEY,created_by uuid,client_id uuid,work_status text DEFAULT 'won',last_status_change_reason text);
     CREATE TABLE public.daily_attendance(id uuid DEFAULT gen_random_uuid(),user_id uuid,date date,created_at timestamptz DEFAULT now(),UNIQUE(user_id,date));
     CREATE TABLE public.conveyance_records(user_id uuid,date date,created_at timestamptz,visit_id uuid,to_location_name text);
     CREATE TABLE public.whatshub_report_settings(showroom_id uuid,report_key text CHECK (report_key IN ('plan_actual','outcomes')));
@@ -40,7 +40,10 @@ beforeAll(async () => {
     UPDATE user_roles SET is_active=false WHERE user_id='${id(8)}';
     INSERT INTO clients(id,created_by) VALUES ('${id(200)}','${id(1)}'),('${id(201)}','${id(5)}');
     INSERT INTO partners(id,created_by) VALUES ('${id(300)}','${id(1)}');
-    INSERT INTO work_scope_items VALUES ('${id(400)}','${id(1)}','${id(200)}','won');
+    INSERT INTO work_scope_items(id,created_by,client_id,work_status) VALUES ('${id(400)}','${id(1)}','${id(200)}','won');
+    ALTER TABLE showrooms ADD COLUMN whatsapp_group_id text;
+    ALTER TABLE whatshub_report_settings ADD COLUMN enabled boolean NOT NULL DEFAULT false;
+    ALTER TABLE whatshub_report_settings ADD PRIMARY KEY(showroom_id,report_key);
     INSERT INTO visits(created_by,visit_with_type,address) VALUES ('${id(1)}','showroom','Gurgaon Showroom, Gurgaon');
     INSERT INTO daily_attendance(user_id,date) VALUES ('${id(1)}',(now() AT TIME ZONE 'Asia/Kolkata')::date),('${id(5)}',(now() AT TIME ZONE 'Asia/Kolkata')::date);
     ALTER TABLE clients ENABLE ROW LEVEL SECURITY; ALTER TABLE partners ENABLE ROW LEVEL SECURITY;
@@ -54,6 +57,91 @@ beforeAll(async () => {
 }, 60000);
 beforeEach(async () => { await db.exec('RESET ROLE'); await db.query("SELECT set_config('request.jwt.claim.sub','',false)"); });
 afterAll(async () => { await db?.close(); });
+
+describe('Record transfer release',()=>{
+  it('starts the group pending-partner schedule tomorrow and preserves a disabled setting on rerun',async()=>{
+    await db.query('UPDATE showrooms SET whatsapp_group_id=$1 WHERE id=$2',['test-group@g.us',id(100)]);
+    const migration=readFileSync(resolve('supabase/migrations',files[4]),'utf8');
+    await db.exec(migration);
+    const first=await db.query(`SELECT enabled,schedule_start_date=((now() AT TIME ZONE 'Asia/Kolkata')::date+1) AS starts_tomorrow FROM whatshub_report_settings WHERE showroom_id=$1 AND report_key='pending_partners'`,[id(100)]);
+    expect(first.rows).toEqual([{enabled:true,starts_tomorrow:true}]);
+    await db.query(`UPDATE whatshub_report_settings SET enabled=false WHERE showroom_id=$1 AND report_key='pending_partners'`,[id(100)]);
+    await db.exec(migration);
+    expect((await db.query(`SELECT enabled FROM whatshub_report_settings WHERE showroom_id=$1 AND report_key='pending_partners'`,[id(100)])).rows).toEqual([{enabled:false}]);
+    // Older migrations intentionally accept only the older report keys.
+    await db.exec("DELETE FROM whatshub_report_settings WHERE report_key='pending_partners'; UPDATE showrooms SET whatsapp_group_id=NULL");
+  });
+  afterEach(async()=>{
+    await db.exec('RESET ROLE');
+    await db.query("SELECT set_config('request.jwt.claim.sub','',false)");
+    for(const table of ['work_scope_items','visits','clients','partners']) await db.query(`DELETE FROM ${table} WHERE id BETWEEN $1 AND $2`,[id(1000),id(1999)]);
+    await db.query('DELETE FROM record_transfer_history WHERE record_id BETWEEN $1 AND $2',[id(1000),id(1999)]);
+  });
+  it('transfers a client without changing its ID, original creator, WOS author or employee profile',async()=>{
+    await db.exec(`INSERT INTO clients(id,created_by,architect_name,secondary_owner_id) VALUES('${id(1000)}','${id(1)}','Architect','${id(2)}');
+      INSERT INTO work_scope_items(id,created_by,client_id) VALUES('${id(1001)}','${id(1)}','${id(1000)}');
+      INSERT INTO visits(id,created_by,client_id) VALUES('${id(1002)}','${id(1)}','${id(1000)}');`);
+    await login(4);
+    const result=await db.query<{value:{transferred_count:number}}>(`SELECT manage_crm_record('client',$1,'transfer',$2,false,'Territory reassigned') AS value`,[id(1000),id(2)]);
+    expect(result.rows[0].value.transferred_count).toBe(1);
+    await login(2);
+    const client=await db.query(`SELECT id,created_by,original_created_by,secondary_owner_id FROM clients WHERE id=$1`,[id(1000)]);
+    expect(client.rows).toEqual([{id:id(1000),created_by:id(2),original_created_by:id(1),secondary_owner_id:null}]);
+    expect((await db.query(`SELECT created_by FROM work_scope_items WHERE id=$1`,[id(1001)])).rows).toEqual([{created_by:id(1)}]);
+    expect((await db.query(`SELECT created_by FROM visits WHERE id=$1`,[id(1002)])).rows).toEqual([{created_by:id(1)}]);
+    expect((await db.query(`SELECT full_name FROM profiles WHERE user_id=$1`,[id(1)])).rows).toEqual([{full_name:'Employee 1'}]);
+    await login(4);
+    expect((await db.query(`SELECT previous_owner,new_owner,reason FROM record_transfer_history WHERE record_id=$1`,[id(1000)])).rows).toEqual([{previous_owner:id(1),new_owner:id(2),reason:'Territory reassigned'}]);
+  });
+  it('rejects transfers by an executive and to inactive/out-of-showroom targets',async()=>{
+    await login(1);
+    await expect(db.query(`SELECT manage_crm_record('client',$1,'transfer',$2,false,'Reassign')`,[id(200),id(2)])).rejects.toThrow(/Only Admin/);
+    await login(4);
+    for(const target of [5,8]) await expect(db.query(`SELECT manage_crm_record('client',$1,'transfer',$2,false,'Reassign')`,[id(200),id(target)])).rejects.toThrow(/active executive/);
+  });
+  it('rolls back the entire partner transfer if a linked client is outside the manager scope',async()=>{
+    await db.exec(`INSERT INTO partners(id,created_by) VALUES('${id(1010)}','${id(1)}');
+      INSERT INTO clients(id,created_by,architect_name,partner_id) VALUES('${id(1011)}','${id(1)}','Architect','${id(1010)}'),('${id(1012)}','${id(5)}','Architect','${id(1010)}');`);
+    await login(4);
+    await expect(db.query(`SELECT manage_crm_record('partner',$1,'transfer',$2,true,'Transfer portfolio')`,[id(1010),id(2)])).rejects.toThrow(/outside your managed showrooms/);
+    await db.exec('RESET ROLE');
+    expect((await db.query(`SELECT created_by FROM partners WHERE id=$1`,[id(1010)])).rows).toEqual([{created_by:id(1)}]);
+    expect((await db.query(`SELECT created_by FROM clients WHERE id=$1`,[id(1011)])).rows).toEqual([{created_by:id(1)}]);
+    expect((await db.query(`SELECT count(*)::int AS count FROM record_transfer_history WHERE record_id IN ($1,$2)`,[id(1010),id(1011)])).rows).toEqual([{count:0}]);
+  });
+  it('transfers linked clients only when requested and preserves every WOS record',async()=>{
+    await db.exec(`INSERT INTO partners(id,created_by) VALUES('${id(1020)}','${id(1)}');
+      INSERT INTO clients(id,created_by,architect_name,partner_id) VALUES('${id(1021)}','${id(1)}','Architect','${id(1020)}');
+      INSERT INTO work_scope_items(id,created_by,client_id) VALUES('${id(1022)}','${id(1)}','${id(1021)}');`);
+    await login(4);
+    await db.query(`SELECT manage_crm_record('partner',$1,'transfer',$2,false,'Partner only')`,[id(1020),id(2)]);
+    expect((await db.query(`SELECT created_by FROM clients WHERE id=$1`,[id(1021)])).rows).toEqual([{created_by:id(1)}]);
+    await db.query(`SELECT manage_crm_record('partner',$1,'transfer',$2,true,'Full portfolio')`,[id(1020),id(1)]);
+    await db.query(`SELECT manage_crm_record('partner',$1,'transfer',$2,true,'Full portfolio')`,[id(1020),id(2)]);
+    await login(2);
+    expect((await db.query(`SELECT created_by FROM clients WHERE id=$1`,[id(1021)])).rows).toEqual([{created_by:id(2)}]);
+    expect((await db.query(`SELECT created_by FROM work_scope_items WHERE id=$1`,[id(1022)])).rows).toEqual([{created_by:id(1)}]);
+  });
+  it('blocks deletion with linked records and permits only an empty client',async()=>{
+    await db.exec(`INSERT INTO clients(id,created_by,architect_name) VALUES('${id(1030)}','${id(1)}','Architect');`);
+    await login(4);
+    await expect(db.query(`SELECT manage_crm_record('client',$1,'delete',NULL,false,'Duplicate')`,[id(200)])).rejects.toThrow(/linked WOS or visits/);
+    await db.query(`SELECT manage_crm_record('client',$1,'delete',NULL,false,'Duplicate empty client')`,[id(1030)]);
+    expect((await db.query(`SELECT id FROM clients WHERE id=$1`,[id(1030)])).rows).toEqual([]);
+  });
+  it('supports each execution stage and enforces Lost/Hold reasons in the database',async()=>{
+    await db.exec(`INSERT INTO clients(id,created_by,architect_name) VALUES('${id(1040)}','${id(1)}','Architect');
+      INSERT INTO work_scope_items(id,created_by,client_id,work_status) VALUES('${id(1041)}','${id(1)}','${id(1040)}','pending');`);
+    await login(1);
+    for(const stage of ['pre_production','production','installation','handover']) await db.query(`SELECT set_wos_execution_status($1,$2)`,[id(1041),stage]);
+    await expect(db.query(`UPDATE work_scope_items SET work_status='lost' WHERE id=$1`,[id(1041)])).rejects.toThrow(/reason is required/);
+    await db.query(`UPDATE work_scope_items SET work_status='hold',last_status_change_reason='Awaiting site readiness' WHERE id=$1`,[id(1041)]);
+    expect((await db.query(`SELECT execution_status,work_status FROM work_scope_items WHERE id=$1`,[id(1041)])).rows).toEqual([{execution_status:'handover',work_status:'hold'}]);
+    await db.exec('RESET ROLE');
+    for(const file of files.slice(3)) await db.exec(readFileSync(resolve('supabase/migrations',file),'utf8'));
+    expect((await db.query(`SELECT execution_status FROM work_scope_items WHERE id=$1`,[id(1041)])).rows).toEqual([{execution_status:'handover'}]);
+  });
+});
 
 describe('October database migrations', () => {
   it('can be applied twice and only backfills exact showroom matches', async () => {

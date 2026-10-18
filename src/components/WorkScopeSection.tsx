@@ -1,3 +1,4 @@
+import { employeeName } from "@/lib/employeeDisplay";
 import { WosProgress } from "@/components/WosProgress";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -39,7 +40,7 @@ const WorkScopeSection = ({ clientId, createdByOverride, onChanged }: WorkScopeS
         supabase.from("clients").select("name").eq("id", clientId).maybeSingle(),
         supabase.from("profiles").select("full_name").eq("user_id", profileUserId).maybeSingle(),
       ]);
-      const executiveName = profile?.full_name || user?.email || "Executive";
+      const executiveName = employeeName(profile?.full_name) || user?.email || "Executive";
       const clientName = client?.name || "Client";
       const statusLabel = status === "pending" ? "New WOS Added" : status === "submitted" ? "Quotation Sent" : status === "won" ? "WOS Won" : status === "lost" ? "WOS Lost" : "WOS Put On Hold";
       await notifyAllMDs({
@@ -175,12 +176,17 @@ const WorkScopeSection = ({ clientId, createdByOverride, onChanged }: WorkScopeS
     mutationFn: async ({ id, status }: { id: string; status: ExecutiveWorkStatus }) => {
       const now = new Date().toISOString();
       const update: Record<string, unknown> = { work_status: status };
+      if (status === 'lost' || status === 'hold') {
+        const reason = window.prompt(`Reason for ${status === 'lost' ? 'Lost' : 'Hold'} (required):`);
+        if (!reason?.trim()) throw new Error('A reason is required for Lost or Hold');
+        update.last_status_change_reason = reason.trim();
+      }
       if (status === "submitted") update.submitted_at = now;
       if (status === "won" || status === "lost") {
         update.verified_at = now;
         update.is_verified = status === "won";
       }
-      const { error } = await supabase.from("work_scope_items").update(update).eq("id", id).eq("created_by", user!.id);
+      const { error } = await supabase.from("work_scope_items").update(update).eq("id", id).select('id').single();
       if (error) throw error;
       await notifyManagement(status, id);
     },

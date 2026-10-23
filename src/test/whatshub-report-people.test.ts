@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildReport, loadReportPeople } from '../../supabase/functions/whatshub/reports';
+import { buildReport, loadReportPeople, loadManagerReportAssignments } from '../../supabase/functions/whatshub/reports';
 
 type Row = Record<string, unknown>;
 const roleRows: Row[] = [
@@ -18,9 +18,9 @@ const roleRows: Row[] = [
 const profiles = [...new Set(roleRows.map(row => row.user_id))].map(user_id => ({ user_id, full_name: user_id }));
 
 // Execute the production query's filters against a mixed-showroom fixture.
-function database(roles = roleRows) {
+function database(roles = roleRows, exclusions: Row[] = []) {
   return { from: vi.fn((table: string) => {
-    let rows = table === 'user_roles' ? roles : profiles;
+    let rows = table === 'user_roles' ? roles : table === 'whatshub_report_exclusions' ? exclusions : profiles;
     const query = {
       select: () => query,
       eq: (column: string, value: unknown) => { rows = rows.filter(row => row[column] === value); return query; },
@@ -52,6 +52,42 @@ describe('Daily planning report staff', () => {
   it('uses each showroom assignment independently for a multi-showroom manager', async () => {
     const people = await loadReportPeople(database(), 'kirti', 'plan_actual');
     expect(people.map(person => person.user_id).sort()).toEqual(['manager', 'other-manager']);
+  });
+
+  it('omits an excluded manager from every showroom and the consolidated roster while retaining zero-plan managers', async () => {
+    const client = database(roleRows, [{ user_id: 'manager', report_key: 'plan_actual' }]);
+    expect((await loadManagerReportAssignments(client)).some(row => row.user_id === 'manager')).toBe(false);
+    const people = await loadReportPeople(client, 'gurgaon', 'plan_actual');
+    expect(people.map(person => person.user_id)).toEqual(['zero']);
+    const report = buildReport('plan_actual', 'Gurgaon', '2026-10-22', people, [
+      { created_by: 'manager', status: 'done', created_at: '2026-10-22T04:00:00Z' },
+    ]);
+    expect(report).toContain('1. zero');
+    expect(report).toContain('Total completed: 0');
+    expect(report).not.toContain('manager');
+    expect((await loadReportPeople(client, 'kirti', 'plan_actual')).map(person => person.user_id)).toEqual(['other-manager']);
+    expect(roleRows.filter(row => row.user_id === 'manager').every(row => row.is_active)).toBe(true);
+  });
+
+  it('keeps an excluded manager excluded after a rename or unassigned-showroom change', async () => {
+    const client = database([{ user_id: 'manager', role: 'manager', showroom_id: null, is_active: true }],
+      [{ user_id: 'manager', report_key: 'plan_actual' }]);
+    expect(await loadManagerReportAssignments(client)).toEqual([]);
+  });
+
+  it('does not use Manager-report exclusions to remove people from other reports', async () => {
+    const client = database(roleRows, [{ user_id: 'exec', report_key: 'plan_actual' }]);
+    expect((await loadReportPeople(client, 'gurgaon', 'daily_planning')).map(person => person.user_id)).toContain('exec');
+  });
+
+  it('stops rather than including excluded managers when exclusion settings cannot be read', async () => {
+    const client = database();
+    const originalFrom = client.from;
+    const broken = { select: () => broken, eq: () => broken, order: () => broken,
+      range: async () => ({ data: null, error: { message: 'Report exclusions unavailable' } }) };
+    await expect(loadManagerReportAssignments({ from: (table: string) =>
+      table === 'whatshub_report_exclusions' ? broken : originalFrom(table)
+    })).rejects.toThrow('Report exclusions unavailable');
   });
 
   it('handles no eligible staff without querying unrelated profiles', async () => {

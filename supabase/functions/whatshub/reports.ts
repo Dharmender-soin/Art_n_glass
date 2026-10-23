@@ -1,5 +1,6 @@
 import { visitDisplayName } from "../_shared/visit-display.ts";
 import { employeeName } from "../_shared/employee-name.ts";
+import { isDirectorReport } from './report-routing.ts';
 export const reportDefinitions = [
   { key: 'daily_planning', title: 'Daily Planned Visits', time: '10:00', weekly: false },
   { key: 'plan_actual', title: 'Manager Daily Plan vs Actual', time: '19:00', weekly: false },
@@ -9,6 +10,8 @@ export const reportDefinitions = [
   { key: 'weekly_summary', title: 'Weekly Showroom Summary', time: '18:00', weekly: true },
   { key: 'conveyance', title: 'Conveyance Review', time: '18:15', weekly: true },
   { key: 'pending_partners', title: 'Partners Pending Visit', time: '10:15', weekly: false },
+  { key: 'manager_planning', title: 'Manager Daily Planned Visits', time: '10:00', weekly: false },
+  { key: 'manager_outcomes', title: 'Manager Visit Outcomes', time: '21:00', weekly: false },
 ] as const;
 
 export function indiaDate(now = new Date()) {
@@ -29,11 +32,25 @@ export function weekStart(date: string) {
   return new Date(Date.parse(`${date}T00:00:00Z`) - 6 * 86400000).toISOString().slice(0, 10);
 }
 type Row = Record<string, any>;
+// The original plan_actual exclusions define the shared roster for all Director reports.
+// Employee logins, roles and records are unaffected.
+export async function loadManagerReportAssignments(client: any): Promise<Row[]> {
+  const assignments = await allRows(client.from('user_roles').select('user_id,showroom_id')
+    .eq('role', 'manager').eq('is_active', true).order('id'));
+  if (!assignments.length) return [];
+  const exclusions = await allRows(client.from('whatshub_report_exclusions').select('user_id')
+    .eq('report_key', 'plan_actual').order('user_id'));
+  const excludedIds = new Set(exclusions.map(row => row.user_id));
+  return assignments.filter(row => !excludedIds.has(row.user_id));
+}
+
 // Managers' own activity is sent to the Director, separately from showroom reports.
 export async function loadReportPeople(client: any, showroomId: string, reportKey: string): Promise<Row[]> {
-  const includedRoles = reportKey === 'plan_actual' ? ['manager'] : reportKey === 'tl_outcomes' ? ['tl'] : ['daily_planning', 'outcomes', 'pending_partners'].includes(reportKey) ? ['executive', 'tl'] : ['executive'];
-  const roles = await allRows(client.from('user_roles').select('user_id')
-    .eq('showroom_id', showroomId).in('role', includedRoles).eq('is_active', true).order('id'));
+  const includedRoles = isDirectorReport(reportKey) ? ['manager'] : reportKey === 'tl_outcomes' ? ['tl'] : ['daily_planning', 'outcomes', 'pending_partners'].includes(reportKey) ? ['executive', 'tl'] : ['executive'];
+  const roles = isDirectorReport(reportKey)
+    ? (await loadManagerReportAssignments(client)).filter(row => row.showroom_id === showroomId)
+    : await allRows(client.from('user_roles').select('user_id')
+      .eq('showroom_id', showroomId).in('role', includedRoles).eq('is_active', true).order('id'));
   if (!roles.length) return [];
   // A manager with an additional TL/executive role must not leak into a group report.
   const managers = ['daily_planning', 'outcomes', 'tl_outcomes', 'pending_partners'].includes(reportKey)
@@ -42,6 +59,52 @@ export async function loadReportPeople(client: any, showroomId: string, reportKe
   const userIds = [...new Set(roles.map(role => role.user_id))].filter(id => !excludedIds.has(id));
   if (!userIds.length) return [];
   return allRows(client.from('profiles').select('user_id,full_name').in('user_id', userIds).order('user_id'));
+}
+
+export async function loadVisitReportRows(client: any, ids: string[], key: string, date: string): Promise<Row[]> {
+  if (!ids.length) return [];
+  const definition = reportDefinitions.find(report => report.key === key);
+  if (!definition) throw new Error('Unknown report');
+  const outcome = ['outcomes', 'tl_outcomes', 'manager_outcomes'].includes(key);
+  let query = client.from('visits').select('*,clients(name,address),partners(name,address)')
+    .in('created_by', ids).neq('status', 'cancelled').order('id');
+  if (outcome) {
+    const end = new Date(Date.parse(date + 'T00:00:00+05:30') + 86400000).toISOString();
+    query = query.eq('status', 'done').or(`and(done_at.gte.${date}T00:00:00+05:30,done_at.lt.${end}),and(done_at.is.null,visit_date.eq.${date})`);
+  } else {
+    query = key === 'followups' ? query.eq('status', 'planned').lte('visit_date', date)
+      : query.gte('visit_date', definition.weekly ? weekStart(date) : date).lte('visit_date', date);
+  }
+  let visits = await allRows(query);
+  if (outcome) {
+    const upcoming = await allRows(client.from('visits').select('created_by,client_id,partner_id,visit_date')
+      .in('created_by', ids).eq('status', 'planned').gt('visit_date', date).order('visit_date').order('id'));
+    visits = visits.map(visit => ({ ...visit, next_followup: upcoming.find(next => next.created_by === visit.created_by &&
+      ((visit.client_id && next.client_id === visit.client_id) || (visit.partner_id && next.partner_id === visit.partner_id)))?.visit_date }));
+  }
+  return visits;
+}
+
+export async function loadDirectorReport(client: any, key: string, date = indiaDate()): Promise<string> {
+  if (!isDirectorReport(key)) throw new Error('Unknown Director report');
+  const showrooms = await allRows(client.from('showrooms').select('id,name').order('id'));
+  const assignments = await loadManagerReportAssignments(client);
+  const managerIds = [...new Set(assignments.map(row => row.user_id))];
+  const managers = managerIds.length ? await allRows(client.from('profiles').select('user_id,full_name').in('user_id', managerIds).order('user_id')) : [];
+  const names = new Map(managers.map(person => [person.user_id, employeeName(person.full_name)]));
+  const visits = await loadVisitReportRows(client, managerIds, key, date);
+  const sections = [];
+  for (const showroom of showrooms) {
+    const ids = [...new Set(assignments.filter(row => row.showroom_id === showroom.id).map(row => row.user_id))];
+    if (!ids.length) continue;
+    sections.push('*Managers:* ' + ids.map(id => names.get(id) || 'Manager').join(', ') + '\n' +
+      buildReport(key, showroom.name, date, managers.filter(person => ids.includes(person.user_id)), visits));
+  }
+  const unassignedIds = managerIds.filter(id => !assignments.some(row => row.user_id === id && row.showroom_id));
+  if (unassignedIds.length) sections.push(buildReport(key, 'Unassigned managers', date,
+    managers.filter(person => unassignedIds.includes(person.user_id)), visits));
+  const title = key === 'manager_planning' ? 'DAILY PLANNING' : key === 'manager_outcomes' ? 'VISIT OUTCOMES' : 'DAILY PLAN VS ACTUAL';
+  return `*DIRECTOR — ALL MANAGERS ${title}*\n\n` + (sections.join('\n\n────────────\n\n') || 'No active managers found.');
 }
 
 export function buildReport(key: string, showroom: string, date: string, people: Row[], visits: Row[], claims: Row[] = [], clients: Row[] = [], partners: Row[] = []) {
@@ -69,7 +132,7 @@ export function buildReport(key: string, showroom: string, date: string, people:
     const rows = visits.filter(v => v.created_by === p.user_id);
     const target = visitDisplayName;
     let detail = '';
-    if (key === 'daily_planning') detail = rows.map((v,j) => `${j+1}. ${target(v)} — ${v.purpose || 'Purpose not specified'}\nLocation: ${v.address?.trim() || v.clients?.address?.trim() || v.partners?.address?.trim() || 'Not recorded'}`).join('\n') || 'No planned visits';
+    if (key === 'daily_planning' || key === 'manager_planning') detail = rows.map((v,j) => `${j+1}. ${target(v)} — ${v.purpose || 'Purpose not specified'}\nLocation: ${v.address?.trim() || v.clients?.address?.trim() || v.partners?.address?.trim() || 'Not recorded'}`).join('\n') || 'No planned visits';
     if (key === 'plan_actual' || key === 'weekly_summary') {
       const done = rows.filter(v => v.status === 'done').length;
       detail = `Recorded visits: ${rows.length} | Completed: ${done} | Pending: ${rows.length-done}\nCompletion: ${rows.length ? Math.round(done/rows.length*100) : 0}%`;
@@ -85,7 +148,7 @@ export function buildReport(key: string, showroom: string, date: string, people:
       }
     }
     if (key === 'followups') detail = rows.map((v,j) => `${j+1}. ${target(v)} — ${v.purpose}\nDue: ${v.visit_date}${v.visit_date < date ? ' (Overdue)' : ' (Today)'}`).join('\n') || 'No pending follow-ups';
-    if (key === 'outcomes' || key === 'tl_outcomes') detail = rows.filter(v => v.status === 'done').map((v,j) => `${j+1}. ${target(v)} — ${v.purpose}\nRemarks: ${v.remarks || 'Not entered'}${v.next_followup ? '\nNext follow-up: ' + v.next_followup : ''}`).join('\n') || 'No completed visits';
+    if (key === 'outcomes' || key === 'tl_outcomes' || key === 'manager_outcomes') detail = rows.filter(v => v.status === 'done').map((v,j) => `${j+1}. ${target(v)} — ${v.purpose}\nRemarks: ${v.remarks || 'Not entered'}${v.next_followup ? '\nNext follow-up: ' + v.next_followup : ''}`).join('\n') || 'No completed visits';
     if (key === 'conveyance') {
       const trips = claims.filter(c => c.user_id === p.user_id);
       const review = trips.filter(c => [c.from_lat,c.from_lng,c.to_lat,c.to_lng].some(x => x == null) || (c.from_lat === 0 && c.from_lng === 0) || (c.to_lat === 0 && c.to_lng === 0)).length;
@@ -93,8 +156,8 @@ export function buildReport(key: string, showroom: string, date: string, people:
     }
     return `${i+1}. ${employeeName(p.full_name) || 'Staff member'}\n\n${detail}`;
   });
-  const emptyMessage = key === 'plan_actual' ? 'No active managers found.' : key === 'tl_outcomes' ? 'No active team leaders found.' : ['daily_planning','outcomes'].includes(key) ? 'No active executives or team leaders found.' : 'No active executives found.';
-  return `*${title}*\n*Showroom:* ${showroom}\n*Date:* ${definition.weekly ? `${weekStart(date)} to ${date}` : date}\n\n${sections.join('\n\n') || emptyMessage}\n\n${key === 'daily_planning' ? `*Total planned visits: ${visits.length}*\n` : ''}${key === 'followups' ? 'Based on pending visits due today or earlier.\n' : ''}${key === 'plan_actual' ? 'Plan uses visit creation time with a 10:30 AM IST cutoff.\n' : ''}${key === 'weekly_summary' ? 'Conversions show current status of clients created in this period.\n' : ''}— Art N Glass`;
+  const emptyMessage = isDirectorReport(key) ? 'No active managers found.' : key === 'tl_outcomes' ? 'No active team leaders found.' : ['daily_planning','outcomes'].includes(key) ? 'No active executives or team leaders found.' : 'No active executives found.';
+  return `*${title}*\n*Showroom:* ${showroom}\n*Date:* ${definition.weekly ? `${weekStart(date)} to ${date}` : date}\n\n${sections.join('\n\n') || emptyMessage}\n\n${['daily_planning','manager_planning'].includes(key) ? `*Total planned visits: ${visits.length}*\n` : ''}${key === 'manager_outcomes' ? `*Total completed visits: ${visits.filter(visit => visit.status === 'done').length}*\n` : ''}${key === 'followups' ? 'Based on pending visits due today or earlier.\n' : ''}${key === 'plan_actual' ? 'Plan uses visit creation time with a 10:30 AM IST cutoff.\n' : ''}${key === 'weekly_summary' ? 'Conversions show current status of clients created in this period.\n' : ''}— Art N Glass`;
 }
 
 // Fetch every page and fail visibly rather than sending a truncated/empty report on errors.

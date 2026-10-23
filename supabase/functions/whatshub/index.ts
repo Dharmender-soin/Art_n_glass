@@ -1,10 +1,10 @@
-import { reportDestination } from "./report-routing.ts";
-import { employeeName } from '../_shared/employee-name.ts';
+import { reportDestination, isDirectorReport, directorIdempotencyKey } from "./report-routing.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { parseTestTarget } from "./test-target.ts";
-import { reportDefinitions, indiaDate, reportDue, weekStart, buildReport, allRows, loadReportPeople } from "./reports.ts";
+import { reportDefinitions, indiaDate, reportDue, weekStart, buildReport, allRows, loadReportPeople, loadVisitReportRows, loadDirectorReport } from "./reports.ts";
 import { createWhatsHubSender, parseWhatsHubSlot } from "./sender.ts";
+import { runScheduledDirectorReports } from './director-schedules.ts';
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -166,16 +166,7 @@ serve(async (req) => {
         if (key === "conveyance") {
           claims = await allRows(admin.from("conveyance_records").select("*").in("user_id",ids).gte("date",start).lte("date",today).order("id"));
         } else {
-          let query = admin.from("visits").select("*,clients(name,address),partners(name,address)").in("created_by",ids).neq("status","cancelled").order("id");
-          if (key === 'outcomes' || key === 'tl_outcomes') {
-            const end=new Date(Date.parse(today+'T00:00:00+05:30')+86400000).toISOString();
-            query=query.eq('status','done').or(`and(done_at.gte.${today}T00:00:00+05:30,done_at.lt.${end}),and(done_at.is.null,visit_date.eq.${today})`);
-          } else query = key === "followups" ? query.eq("status","planned").lte('visit_date',today) : query.gte("visit_date",start).lte('visit_date',today);
-          visits = await allRows(query);
-          if (key === "outcomes" || key === "tl_outcomes") {
-            const upcoming = await allRows(admin.from("visits").select("created_by,client_id,partner_id,visit_date").in("created_by",ids).eq("status","planned").gt("visit_date",today).order("visit_date").order("id"));
-            visits = visits.map(v => ({...v, next_followup: upcoming.find(n => n.created_by === v.created_by && ((v.client_id && n.client_id === v.client_id) || (v.partner_id && n.partner_id === v.partner_id)))?.visit_date}));
-          }
+          visits = await loadVisitReportRows(admin, ids, key, today);
           if (key === "weekly_summary") {
             const end = new Date(Date.parse(today+"T00:00:00+05:30")+86400000).toISOString();
             clients = (await allRows(admin.from("clients").select("original_created_by,status").in("original_created_by",ids).gte("created_at",start+"T00:00:00+05:30").lt("created_at",end).order("id"))).map(c=>({...c,created_by:c.original_created_by}));
@@ -184,28 +175,12 @@ serve(async (req) => {
       }
       return buildReport(key,showroom.name,today,people,visits,claims,clients);
     };
-    const directorReport = async () => {
+    const directorReport = async (key: string) => {
       if (!isCron && !["admin", "md"].includes(caller?.role || "")) throw new Error("Only Admin or Director can access the consolidated report");
-      const showrooms = await allRows(admin.from("showrooms").select("id,name").order("id"));
-      const assignments = await allRows(admin.from("user_roles").select("user_id,showroom_id").eq("role", "manager").eq("is_active", true).order("id"));
-      const managerIds = [...new Set(assignments.map(row => row.user_id))];
-      const managers = managerIds.length ? await allRows(admin.from("profiles").select("user_id,full_name").in("user_id", managerIds).order("user_id")) : [];
-      const names = new Map(managers.map(person => [person.user_id, employeeName(person.full_name)]));
-      const sections = [];
-      for (const showroom of showrooms) {
-        const ids = [...new Set(assignments.filter(row => row.showroom_id === showroom.id).map(row => row.user_id))];
-        if (!ids.length) continue;
-        sections.push('*Managers:* ' + ids.map(id => names.get(id) || 'Manager').join(', ') + '\n' + await loadReport(showroom.id, "plan_actual"));
-      }
-      const unassignedIds = managerIds.filter(id => !assignments.some(row => row.user_id === id && row.showroom_id));
-      if (unassignedIds.length) {
-        const people = managers.filter(person => unassignedIds.includes(person.user_id));
-        const visits = await allRows(admin.from("visits").select("*,clients(name),partners(name)").in("created_by", unassignedIds).eq("visit_date", indiaDate()).order("id"));
-        sections.push(buildReport("plan_actual", "Unassigned managers", indiaDate(), people, visits));
-      }
-      return '*DIRECTOR — ALL MANAGERS DAILY PLAN VS ACTUAL*\n\n' + (sections.join('\n\n────────────\n\n') || 'No active managers found.');
+      return loadDirectorReport(admin, key);
     };
-    const sendToDirector = async (message: string) => {
+    const sendToDirector = async (message: string, key: string) => {
+      if (!isDirectorReport(key)) throw new Error('Unknown Director report');
       const roles = await allRows(admin.from("user_roles").select("user_id").eq("role", "md").eq("is_active", true).order("id"));
       const ids = [...new Set(roles.map(row => row.user_id))];
       if (!ids.length) throw new Error("No active Director (MD) is configured");
@@ -214,11 +189,11 @@ serve(async (req) => {
       if (people.length !== ids.length || phones.some(phone => phone.length < 11)) throw new Error("A Director's WhatsApp number is missing or invalid");
       let sent = 0;
       for (const phone of phones) {
-        const response = await sendMessage({ kind: "phone", target: phone }, message, isCron ? 'director-plan-' + indiaDate() + '-' + phone : undefined);
+        const response = await sendMessage({ kind: "phone", target: phone }, message, isCron ? directorIdempotencyKey(key, indiaDate(), phone) : undefined);
         const result = await response.json().catch(() => null);
         if (response.ok && result?.success !== false && result?.ok !== false && !result?.error) sent++;
       }
-      const { error } = await admin.from("whatshub_message_logs").insert({showroom_id: null, message_type:"plan_actual", message, recipient_count:phones.length, success_count:sent, status:sent === phones.length ? "sent" : "partial", created_by:caller?.id || null});
+      const { error } = await admin.from("whatshub_message_logs").insert({showroom_id: null, message_type:key, message, recipient_count:phones.length, success_count:sent, status:sent === phones.length ? "sent" : "partial", created_by:caller?.id || null});
       if (error) throw error;
       if (sent !== phones.length) throw new Error("Director report delivery incomplete");
       return { recipients: phones.length, sent, deliveryMode: "director_personal" };
@@ -231,6 +206,8 @@ serve(async (req) => {
         if (!reportDefinitions.some(r => r.key === body.reportKey) || typeof body.enabled !== "boolean") throw new Error("Invalid report setting");
         const result = body.reportKey === "daily_planning"
           ? await admin.from("showrooms").update({whatsapp_planning_enabled:body.enabled}).eq("id",showroomId).select("id").single()
+          : ["manager_planning", "manager_outcomes"].includes(body.reportKey)
+          ? await admin.from("whatshub_director_report_settings").upsert({report_key:body.reportKey,enabled:body.enabled})
           : await admin.from("whatshub_report_settings").upsert({showroom_id:showroomId,report_key:body.reportKey,enabled:body.enabled});
         if (result.error) throw result.error;
         return json({saved:true});
@@ -238,15 +215,16 @@ serve(async (req) => {
       const {data: showroom,error} = await admin.from("showrooms").select("whatsapp_planning_enabled").eq("id",showroomId).single();
       if (error) throw error;
       const settings = await allRows(admin.from("whatshub_report_settings").select("report_key,enabled,schedule_start_date").eq("showroom_id",showroomId).order("report_key"));
-      return json({reports:reportDefinitions.map(r => ({...r,scheduleStart:settings.find(s=>s.report_key===r.key)?.schedule_start_date,enabled:r.key === "daily_planning" ? showroom.whatsapp_planning_enabled : settings.find(s => s.report_key === r.key)?.enabled === true}))});
+      const directorSettings = await allRows(admin.from("whatshub_director_report_settings").select("report_key,enabled").order("report_key"));
+      return json({reports:reportDefinitions.map(r => ({...r,scheduleStart:settings.find(s=>s.report_key===r.key)?.schedule_start_date,enabled:r.key === "daily_planning" ? showroom.whatsapp_planning_enabled : ["manager_planning","manager_outcomes"].includes(r.key) ? directorSettings.find(s => s.report_key === r.key)?.enabled === true : settings.find(s => s.report_key === r.key)?.enabled === true}))});
     }
     if (action === "preview_report" || action === "send_report") {
       const showroomId = String(body.showroomId || "");
       const key = String(body.reportKey || "");
-      const consolidated = key === "plan_actual" && (action === "send_report" || ["admin", "md"].includes(caller?.role || ""));
-      const message = consolidated ? await directorReport() : await loadReport(showroomId,key);
+      const consolidated = isDirectorReport(key) && (action === "send_report" || ["admin", "md"].includes(caller?.role || ""));
+      const message = consolidated ? await directorReport(key) : await loadReport(showroomId,key);
       if (action === "preview_report") return json({message});
-      return json(key === "plan_actual" ? await sendToDirector(message) : await sendToShowroom(showroomId,message,key));
+      return json(isDirectorReport(key) ? await sendToDirector(message,key) : await sendToShowroom(showroomId,message,key));
     }
     if (action === "run_scheduled_reports" || action === "send_planning_summaries") {
       if (action === "run_scheduled_reports" && !isCron) return json({error:"Scheduler authentication required"},403);
@@ -259,25 +237,8 @@ serve(async (req) => {
       const settings = await allRows(admin.from("whatshub_report_settings").select("*").eq("enabled",true).order("showroom_id").order("report_key"));
       const results = [];
       const now = new Date();
-      if (settings.some(setting => setting.report_key === "plan_actual") && reportDue("plan_actual", now)) {
-        const run = { report_key: "plan_actual", report_date: indiaDate(now) };
-        const { error: claimError } = await admin.from("whatshub_director_report_runs").insert(run);
-        if (claimError && claimError.code !== "23505") throw claimError;
-        if (!claimError) {
-          try {
-            const delivery = await sendToDirector(await directorReport());
-            const { error } = await admin.from("whatshub_director_report_runs").update({ status: "sent" }).match(run);
-            if (error) throw error;
-            results.push(delivery);
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            await admin.from("whatshub_director_report_runs").update({status: "failed", error: message}).match(run);
-            results.push({report: "plan_actual", error: message});
-          }
-        }
-      }
       for (const showroom of showrooms) for (const report of reportDefinitions) {
-        if (report.key === "plan_actual") continue;
+        if (isDirectorReport(report.key)) continue;
         const enabled = report.key === "daily_planning" ? showroom.whatsapp_planning_enabled : settings.some(s => s.showroom_id === showroom.id && s.report_key === report.key);
         if (!enabled || !reportDue(report.key,now,settings.find(s=>s.showroom_id===showroom.id&&s.report_key===report.key)?.schedule_start_date)) continue;
         const run = {showroom_id:showroom.id, report_key:report.key, report_date:indiaDate(now)};
@@ -296,6 +257,9 @@ serve(async (req) => {
           results.push({showroom:showroom.id,report:report.key,error:message});
         }
       }
+      // Group delivery completes first; Director configuration/delivery errors stay isolated.
+      results.push(...await runScheduledDirectorReports(admin, settings, now,
+        async key => sendToDirector(await directorReport(key), key)));
       return json({results});
     }
     return json({ error: "Unsupported WhatsHub action" }, 400);
